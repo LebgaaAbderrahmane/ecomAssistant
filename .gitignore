@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+.turbo/
+coverage/
+.prisma/
+.pnpm-store/
+*.tsbuildinfo
+
