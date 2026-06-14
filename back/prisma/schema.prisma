@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Merchant {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  stores        StoreConnection[]
+  agentConfig   AgentConfig?
+  conversations Conversation[]
+  products      Product[]
+  orders        Order[]
+  wilayaCosts   WilayaDeliveryCost[]
+}
+
+model StoreConnection {
+  id          String    @id @default(cuid())
+  merchantId  String
+  platform    String // shopify | woocommerce
+  storeName   String
+  storeUrl    String
+  accessToken String? // encrypted OAuth token or API key
+  isConnected Boolean   @default(false)
+  lastSyncAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+}
+
+model AgentConfig {
+  id               String   @id @default(cuid())
+  merchantId       String   @unique
+  defaultLanguage  String   @default("auto")
+  tone             String   @default("friendly")
+  followUpDelays   Int[]    @default([2, 24, 48])
+  maxFollowUps     Int      @default(3)
+  deliveryProvider String?
+  isActive         Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  merchantId        String
+  platformProductId String
+  name              String
+  description       String   @default("")
+  price             Float
+  currency          String   @default("DZD")
+  images            String[] @default([])
+  variants          Json     @default("[]")
+  stockStatus       String   @default("in_stock")
+  category          String?
+  createdAt         DateTime @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  orders   Order[]
+
+  @@unique([merchantId, platformProductId])
+  @@index([merchantId])
+}
+
+model Order {
+  id               String   @id @default(cuid())
+  merchantId       String
+  platformOrderId  String
+  customerName     String
+  customerPhone    String
+  wilaya           String
+  commune          String?
+  address          String
+  productId        String
+  productName      String
+  quantity         Int      @default(1)
+  totalAmount      Float
+  deliveryCost     Float    @default(0)
+  status           String   @default("pending")
+  trackingNumber   String?
+  deliveryProvider String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  merchant     Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [id])
+  conversation Conversation?
+
+  @@index([merchantId])
+  @@index([customerPhone])
+}
+
+model Conversation {
+  id               String    @id @default(cuid())
+  merchantId       String
+  orderId          String    @unique
+  customerPhone    String
+  status           String    @default("active")
+  language         String    @default("auto")
+  followUpStep     Int       @default(0)
+  lastMessageAt    DateTime?
+  escalatedAt      DateTime?
+  takenOverByHuman Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+
+  merchant Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([merchantId])
+  @@index([customerPhone])
+  @@index([status])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // agent | customer | system
+  content        String
+  contentType    String   @default("text")
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model WilayaDeliveryCost {
+  id         String @id @default(cuid())
+  merchantId String
+  wilaya     String
+  wilayaCode Int
+  cost       Float
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, wilayaCode])
+  @@index([merchantId])
+}
