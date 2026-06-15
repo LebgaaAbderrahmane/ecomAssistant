@@ -45,6 +45,7 @@ services:
     build:
       context: .
       dockerfile: front/Dockerfile
+    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     ports:
       - "5173:5173"

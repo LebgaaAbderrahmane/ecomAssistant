@@ -14,9 +14,7 @@ export function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 flex h-screen w-[250px] flex-col border-r border-gray-200 bg-white">
       <div className="flex items-center gap-3 px-6 pt-5 pb-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
-          EA
-        </div>
+        <img src="/ecomAssistantLogo.svg" alt="EcomAssistant" className="h-8 w-8" />
         <span className="text-lg font-semibold text-gray-900">EcomAssistant</span>
       </div>
 

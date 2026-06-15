@@ -17,17 +17,8 @@ export function OnboardingLayout() {
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <div className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-8 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
-              EA
-            </div>
-            <span className="text-lg font-semibold text-gray-900">EcomAssistant</span>
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-3xl px-8 pb-6">
-          <div className="mb-8 flex items-center justify-between">
+        <div className="mx-auto max-w-3xl px-8 pt-4 pb-6">
+          <div className="mb-8 flex items-center justify-center">
             {steps.map((step, index) => (
               <div key={step.path} className="flex items-center">
                 <div className="flex items-center gap-2">
