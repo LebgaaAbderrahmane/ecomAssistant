@@ -8,4 +8,5 @@ coverage/
 .prisma/
 .pnpm-store/
 *.tsbuildinfo
+screenshots/
 
