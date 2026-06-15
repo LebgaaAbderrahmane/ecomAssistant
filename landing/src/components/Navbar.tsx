@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { APP_URL } from '@/lib/constants'
 
 const navLinks = [
   { label: 'Fonctionnalités', href: '#features' },
@@ -43,13 +44,13 @@ export default function Navbar() {
 
         <div className="flex items-center gap-3">
           <a
-            href="/login"
+            href={`${APP_URL}/login`}
             className="hidden text-sm font-medium text-gray-600 hover:text-brand-600 transition-colors sm:inline"
           >
             Se connecter
           </a>
           <a
-            href="/signup"
+            href={`${APP_URL}/signup`}
             className="inline-flex h-10 items-center rounded-md bg-brand-600 px-5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
           >
             Essai gratuit

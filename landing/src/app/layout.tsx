@@ -8,9 +8,6 @@ export const metadata: Metadata = {
   title: "EcomAssistant — Agent WhatsApp IA pour le e-commerce algérien",
   description:
     "EcomAssistant contacte vos clients sur WhatsApp, confirme les commandes COD, relance les silencieux — en darija, français et arabe.",
-  icons: {
-    icon: "/ecomAssistantLogo.ico",
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,3 +1,4 @@
+import { APP_URL } from '@/lib/constants'
 import AnimatedHeroText from './AnimatedHeroText'
 
 export default function Hero() {
@@ -14,7 +15,7 @@ export default function Hero() {
             </p>
             <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:items-center md:justify-start">
               <a
-                href="/signup"
+                href={`${APP_URL}/signup`}
                 className="animate-pulse-ring relative inline-flex h-12 items-center rounded-md bg-brand-600 px-6 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
               >
                 Commencer l&apos;essai gratuit — 14 jours

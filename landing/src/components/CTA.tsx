@@ -1,3 +1,5 @@
+import { APP_URL } from '@/lib/constants'
+
 export default function CTA() {
   return (
     <section className="bg-white py-20 md:py-28">
@@ -18,7 +20,7 @@ export default function CTA() {
             Votre agent WhatsApp est prêt en 10 minutes.
           </p>
           <a
-            href="/signup"
+            href={`${APP_URL}/signup`}
             className="animate-pulse-ring relative mt-8 inline-flex h-14 items-center rounded-md bg-white px-8 text-base font-semibold text-brand-600 hover:bg-gray-100 transition-colors"
           >
             Commencer gratuitement

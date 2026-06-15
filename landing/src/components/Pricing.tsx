@@ -1,3 +1,5 @@
+import { APP_URL } from '@/lib/constants'
+
 const plans = [
   {
     name: 'Starter',
@@ -105,7 +107,7 @@ export default function Pricing() {
                 ))}
               </ul>
               <a
-                href="/signup"
+                href={`${APP_URL}/signup`}
                 className={`mt-8 flex h-11 w-full items-center justify-center rounded-md text-sm font-semibold transition-colors ${
                   plan.highlighted
                     ? 'bg-brand-600 text-white hover:bg-brand-700'
