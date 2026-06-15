@@ -11,7 +11,7 @@ export interface VerificationEmailJob {
 export const emailQueue = new Queue<VerificationEmailJob>("email", {
   connection: redisConnection,
   defaultJobOptions: {
-    attempts: 3,                       // Retry up to 3 times on failure
+    attempts: 3,                       
     backoff: {
       type: "exponential",
       delay: 5000,                     // 5s → 10s → 20s
