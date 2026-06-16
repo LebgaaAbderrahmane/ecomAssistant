@@ -21,7 +21,7 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
 export const signup = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { email, password, shopName } = req.body;
@@ -46,7 +46,7 @@ export const signup = async (
 export const verifyEmail = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     // now coming from body, not query
@@ -54,7 +54,7 @@ export const verifyEmail = async (
 
     const result = await authService.verifyEmail(email, code);
 
-    return res.status(200).json({result});
+    return res.status(200).json(result);
   } catch (error: any) {
     const clientErrors = [
       "Verification code expired or invalid",

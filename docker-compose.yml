@@ -35,6 +35,9 @@ services:
       - .:/app
       - /app/node_modules
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      PRISMA_QUERY_ENGINE_LIBRARY: /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
     depends_on:
       postgres:
         condition: service_healthy

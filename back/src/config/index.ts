@@ -24,7 +24,7 @@ export const redisConnection: ConnectionOptions = {
 };
 
 export const redis = createClient({
-  url: redisConnection.url,
+  url: process.env.REDIS_URL ?? "redis://localhost:6379",
 });
 
 redis.connect();

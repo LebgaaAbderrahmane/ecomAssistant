@@ -58,6 +58,7 @@ export const registerMerchant = async (
 
   // 5. Generate fresh OTP
   const otp = generateOTP();
+  console.log(`\n🔑 [DEV] OTP for ${email}: ${otp}\n`);
   const hashedOTP = await hashOTP(otp);
 
   // 6. Store/Overwrite OTP in Redis (10 min expiry)
