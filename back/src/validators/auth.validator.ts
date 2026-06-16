@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-/**
- * SIGNUP
- */
+
 export const signupSchema = z.object({
   email: z
     .string({ required_error: "Email is required" })
@@ -19,9 +17,6 @@ export const signupSchema = z.object({
     .max(64, "Shop name must be at most 64 characters"),
 });
 
-/**
- * VERIFY EMAIL (OTP VERSION)
- */
 export const verifyEmailSchema = z.object({
   email: z
     .string({ required_error: "Email is required" })
@@ -33,6 +28,13 @@ export const verifyEmailSchema = z.object({
     .regex(/^\d{6}$/, "Code must contain only numbers"),
 });
 
+export const loginSchema = z.object({
+  email: z
+    .string({ required_error: "Email is required" })
+    .email("Invalid email address"),
+
+  password: z.string({ required_error: "Password is required" })
+})
 // Types
 export type SignupInput = z.infer<typeof signupSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;

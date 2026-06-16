@@ -4,8 +4,8 @@ import { generateToken } from "../lib/jwt"
 import { hashPassword } from "../lib/crypto";
 import { generateOTP, hashOTP, compareOTP } from "../lib/otp";
 import { emailQueue } from "../queues/email.queue";
-
-
+import { comparePassword } from "../lib/crypto"
+ 
 export const registerMerchant = async (
   email: string,
   passwordPlain: string,
@@ -76,9 +76,6 @@ export const registerMerchant = async (
   return merchant;
 };
 
-/**
- * VERIFY EMAIL WITH OTP
- */
 export const verifyEmail = async (email: string, code: string) => {
   // 1. Get OTP from Redis
   const storedHash = await redis.get(`otp:${email}`);
@@ -132,5 +129,49 @@ export const verifyEmail = async (email: string, code: string) => {
       isVerified: updatedMerchant.isVerified,
       shop: updatedMerchant.shop,
     }
+  };
+};
+
+export const loginMerchant = async (
+  email: string,
+  password: string
+) => {
+
+  const merchant = await prisma.merchant.findUnique({
+    where: { email },
+    include: { shop: true },
+  });
+
+
+  // Treat unverified accounts as not registered
+  if (!merchant) {
+    throw new Error("Invalid Email");
+  }
+  if (!merchant.isVerified) {
+    throw new Error("Email address not yet registered")
+  }
+  const isPasswordValid = await comparePassword(
+    password,
+    merchant.passwordHash
+  );
+
+  if (!isPasswordValid) {
+    throw new Error("Password Incorrect");
+  }
+
+
+  const token = generateToken({
+    merchantId: merchant.id,
+    email: merchant.email,
+  });
+
+
+  return {
+    accessToken: token,
+    merchant: {
+      id: merchant.id,
+      email: merchant.email,
+      shop: merchant.shop,
+    },
   };
 };

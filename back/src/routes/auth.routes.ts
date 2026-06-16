@@ -1,12 +1,12 @@
 import express, { Router } from "express";
-import { signup, verifyEmail, getMe } from "../controllers/auth.controller";
+import * as controller from "../controllers/auth.controller";
 import { validate } from "../middlewares/validation.middleware";
-import { signupSchema, verifyEmailSchema } from "../validators/auth.validator";
+import { signupSchema, verifyEmailSchema, loginSchema } from "../validators/auth.validator";
 
 const router: Router = express.Router();
 
-router.get("/me", getMe);
-router.post("/signup", validate(signupSchema, "body"), signup);
-router.post("/verify-email", validate(verifyEmailSchema, "body"), verifyEmail);
-
+router.get("/me", controller.getMe);
+router.post("/signup", validate(signupSchema, "body"), controller.signup);
+router.post("/verify-email", validate(verifyEmailSchema, "body"), controller.verifyEmail);
+router.post("/login", validate(loginSchema, "body"),controller.login);
 export default router;
