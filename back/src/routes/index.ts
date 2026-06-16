@@ -1,8 +1,9 @@
-import express, {Router} from 'express'
-import authRoutes from "./auth.routes"
+import { Router, type IRouter } from 'express'
 
-const router: Router = express.Router()
+const apiRouter: IRouter = Router()
 
-router.use('/auth', authRoutes);
+apiRouter.get('/ping', (_req, res) => {
+  res.json({ message: 'pong' })
+})
 
-export default router;
+export { apiRouter }

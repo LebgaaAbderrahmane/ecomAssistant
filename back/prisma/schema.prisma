@@ -14,36 +14,22 @@ model Merchant {
   name         String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  isVerified   Boolean @default(false)
-  verificationTokenHash String?
-  verificationTokenExpiresAt  DateTime?
-  // One-to-One Relationships
-  storeConnection StoreConnection?
-  shop            Shop?
-  agentConfig     AgentConfig?
 
-  // One-to-Many Relationships
+  stores        StoreConnection[]
+  agentConfig   AgentConfig?
   conversations Conversation[]
   products      Product[]
   orders        Order[]
   wilayaCosts   WilayaDeliveryCost[]
 }
 
-model Shop {
-  id         String   @id @default(cuid())
-  merchantId String   @unique // Ensures 1:1 relationship
-  shopName   String
-
-  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-}
-
 model StoreConnection {
   id          String    @id @default(cuid())
-  merchantId  String    @unique // Changed from many-to-one to unique for 1:1
-  platform    String    // shopify | woocommerce
+  merchantId  String
+  platform    String // shopify | woocommerce
   storeName   String
   storeUrl    String
-  accessToken String?   // encrypted OAuth token or API key
+  accessToken String? // encrypted OAuth token or API key
   isConnected Boolean   @default(false)
   lastSyncAt  DateTime?
   createdAt   DateTime  @default(now())
@@ -141,7 +127,7 @@ model Conversation {
 model Message {
   id             String   @id @default(cuid())
   conversationId String
-  role           String   // agent | customer | system
+  role           String // agent | customer | system
   content        String
   contentType    String   @default("text")
   createdAt      DateTime @default(now())
