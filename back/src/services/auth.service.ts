@@ -1,7 +1,10 @@
-import { hashPassword } from "../lib/crypto";
-import { generateVerificationToken, hashToken, getTokenExpiry } from "../lib/token";
-import { emailQueue } from "../queues/email.queue";
 import prisma from "../config/db.config";
+import { redis } from "../config";
+import { generateToken } from "../lib/jwt"
+import { hashPassword } from "../lib/crypto";
+import { generateOTP, hashOTP, compareOTP } from "../lib/otp";
+import { emailQueue } from "../queues/email.queue";
+
 
 export const registerMerchant = async (
   email: string,
@@ -9,78 +12,125 @@ export const registerMerchant = async (
   shopName: string
 ) => {
   // 1. Check if merchant already exists
-  const existingMerchant = await prisma.merchant.findUnique({ where: { email } });
-  if (existingMerchant) {
+  const existingMerchant = await prisma.merchant.findUnique({
+    where: { email },
+  });
+
+  // 2. If they exist and are already verified, block them (Normal conflict)
+  if (existingMerchant && existingMerchant.isVerified) {
     throw new Error("Email is already registered");
   }
 
-  // 2. Hash the password
+  // 3. Hash the incoming password (even if it's a new one)
   const passwordHash = await hashPassword(passwordPlain);
 
-  // 3. Generate verification token
-  const { rawToken, hashedToken } = generateVerificationToken();
-  const tokenExpiry = getTokenExpiry(24); // 24 hours
+  let merchant;
 
-  // 4. Create Merchant and Shop atomically
-  const newMerchant = await prisma.merchant.create({
-    data: {
-      email,
-      passwordHash,
-      name: shopName,
-      isVerified: false,
-      verificationTokenHash: hashedToken,
-      verificationTokenExpiresAt: tokenExpiry,
-      shop: {
-        create: { shopName },
+  if (existingMerchant && !existingMerchant.isVerified) {
+    // 4A. OVERWRITE FLOW: Clear old data and update with new credentials
+    merchant = await prisma.merchant.update({
+      where: { email },
+      data: {
+        passwordHash,
+        name: shopName,
+        // Update the related shop name as well
+        shop: {
+          update: { shopName },
+        },
       },
-    },
-    include: { shop: true },
+      include: { shop: true },
+    });
+  } else {
+    // 4B. STANDARD FLOW: Brand new email registration
+    merchant = await prisma.merchant.create({
+      data: {
+        email,
+        passwordHash,
+        name: shopName,
+        isVerified: false,
+        shop: {
+          create: { shopName },
+        },
+      },
+      include: { shop: true },
+    });
+  }
+
+  // 5. Generate fresh OTP
+  const otp = generateOTP();
+  const hashedOTP = await hashOTP(otp);
+
+  // 6. Store/Overwrite OTP in Redis (10 min expiry)
+  // Using the same key automatically overwrites any old pending OTPs
+  await redis.set(`otp:${email}`, hashedOTP, {
+    EX: 600,
   });
 
-  // 5. Enqueue verification email (non-blocking — happens in background)
-  const verificationUrl = `${process.env.APP_URL}/auth/verify-email?token=${rawToken}`;
-
-  await emailQueue.add("send-verification-email", {
+  // 7. Send verification email via BullMQ
+  await emailQueue.add("send-verification", {
     to: email,
     shopName,
-    verificationUrl,
-  });
-
-  return newMerchant;
-};
-
-export const verifyEmail = async (rawToken: string) => {
-  // 1. Hash the incoming token to look it up in DB
-  const hashedToken = hashToken(rawToken);
-
-  // 2. Find merchant with this token
-  const merchant = await prisma.merchant.findFirst({
-    where: { verificationTokenHash: hashedToken },
-  });
-
-  if (!merchant) {
-    throw new Error("Invalid verification token");
-  }
-
-  // 3. Check if already verified
-  if (merchant.isVerified) {
-    throw new Error("Email is already verified");
-  }
-
-  // 4. Check expiry
-  if (!merchant.verificationTokenExpiresAt || merchant.verificationTokenExpiresAt < new Date()) {
-    throw new Error("Verification token has expired");
-  }
-
-  // 5. Mark as verified and clear the token
-  await prisma.merchant.update({
-    where: { id: merchant.id },
-    data: {
-      isVerified: true,
-      verificationTokenHash: null,
-      verificationTokenExpiresAt: null,
-    },
+    code: otp,
   });
 
   return merchant;
+};
+
+/**
+ * VERIFY EMAIL WITH OTP
+ */
+export const verifyEmail = async (email: string, code: string) => {
+  // 1. Get OTP from Redis
+  const storedHash = await redis.get(`otp:${email}`);
+
+  if (!storedHash) {
+    throw new Error("Verification code expired or invalid");
+  }
+
+  // 2. Compare OTP
+  const isValid = await compareOTP(code, storedHash);
+
+  if (!isValid) {
+    throw new Error("Invalid verification code");
+  }
+
+  // 3. Find merchant
+  const merchant = await prisma.merchant.findUnique({
+    where: { email },
+  });
+
+  if (!merchant) {
+    throw new Error("Merchant not found");
+  }
+
+  if (merchant.isVerified) {
+    throw new Error("Email already verified");
+  }
+
+  // 4. Mark as verified
+  const updatedMerchant = await prisma.merchant.update({
+    where: { email },
+    data: { isVerified: true },
+    include: { shop: true }
+  });
+
+  // 5. Delete OTP from Redis (one-time use)
+  await redis.del(`otp:${email}`);
+
+  const token = generateToken({
+    merchantId: updatedMerchant.id, // Maps to your verifyToken expectations
+    email: updatedMerchant.email,
+  });
+
+  return {
+    message: "Email verified successfully",
+    accessToken: token,
+    merchant: {
+      id: updatedMerchant.id,
+      email: updatedMerchant.email,
+      name: updatedMerchant.name,
+      isVerified: updatedMerchant.isVerified,
+      shop: updatedMerchant.shop,
+    }
+  };
 };

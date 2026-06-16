@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import * as authService from "../services/auth.service";
 
+/**
+ * GET CURRENT USER (placeholder)
+ */
 export async function getMe(req: Request, res: Response, next: NextFunction) {
   try {
     res.json({
@@ -12,16 +15,22 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export const signup = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * SIGNUP
+ */
+export const signup = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    // req.body is already validated and typed by the validation middleware
     const { email, password, shopName } = req.body;
 
     await authService.registerMerchant(email, password, shopName);
 
-    // Don't issue JWT yet — the merchant must verify their email first
     return res.status(201).json({
-      message: "Registration successful. Please check your email to verify your account.",
+      message:
+        "Registration successful. Please check your email for the verification code.",
     });
   } catch (error: any) {
     if (error.message === "Email is already registered") {
@@ -31,21 +40,27 @@ export const signup = async (req: Request, res: Response, next: NextFunction) =>
   }
 };
 
-export const verifyEmail = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * VERIFY EMAIL (OTP VERSION)
+ */
+export const verifyEmail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    // req.query is already validated by the validation middleware
-    const { token } = req.query as { token: string };
+    // now coming from body, not query
+    const { email, code } = req.body;
 
-    await authService.verifyEmail(token);
+    const result = await authService.verifyEmail(email, code);
 
-    return res.status(200).json({
-      message: "Email verified successfully. You can now log in.",
-    });
+    return res.status(200).json({result});
   } catch (error: any) {
     const clientErrors = [
-      "Invalid verification token",
-      "Email is already verified",
-      "Verification token has expired",
+      "Verification code expired or invalid",
+      "Invalid verification code",
+      "Merchant not found",
+      "Email already verified",
     ];
 
     if (clientErrors.includes(error.message)) {

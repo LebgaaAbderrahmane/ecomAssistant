@@ -3,8 +3,8 @@ import { redisConnection } from "../config";
 
 export interface VerificationEmailJob {
   to: string;
-  verificationUrl: string;
   shopName: string;
+  code: string;
 }
 
 // One queue for all outgoing emails — job name distinguishes the type

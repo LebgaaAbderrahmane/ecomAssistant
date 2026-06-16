@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+/**
+ * SIGNUP
+ */
 export const signupSchema = z.object({
   email: z
     .string({ required_error: "Email is required" })
@@ -16,12 +19,20 @@ export const signupSchema = z.object({
     .max(64, "Shop name must be at most 64 characters"),
 });
 
+/**
+ * VERIFY EMAIL (OTP VERSION)
+ */
 export const verifyEmailSchema = z.object({
-  token: z
-    .string({ required_error: "Verification token is required" })
-    .min(1, "Token cannot be empty"),
+  email: z
+    .string({ required_error: "Email is required" })
+    .email("Invalid email address"),
+
+  code: z
+    .string({ required_error: "Verification code is required" })
+    .length(6, "Code must be exactly 6 digits")
+    .regex(/^\d{6}$/, "Code must contain only numbers"),
 });
 
-// Inferred types — useful in controller/service if needed
+// Types
 export type SignupInput = z.infer<typeof signupSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;

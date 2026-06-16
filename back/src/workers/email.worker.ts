@@ -1,74 +1,158 @@
 import { Worker, Job } from "bullmq";
-import { Resend } from "resend";
 import { redisConnection } from "../config";
 import { VerificationEmailJob } from "../queues/email.queue";
+import sgMail from "@sendgrid/mail";
 
-console.log("the resend key is: ", process.env.RESEND_API_KEY)
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-async function sendVerificationEmail(job: Job<VerificationEmailJob>) {
-  const { to, verificationUrl, shopName } = job.data;
-
-  const result = await resend.emails.send({
-  from: process.env.EMAIL_FROM ?? "monboarding@resend.dev",
-  to,
-  subject: "Verify your email address",
-  html: buildVerificationEmailHtml({ shopName, verificationUrl }),
-});
-
-console.log("Resend response:", result);
-
-  console.log(`[EmailWorker] Verification email sent to ${to}`);
+if (!process.env.EMAIL_PROVIDER_API_KEY) {
+  throw new Error("Email provider API key cannot be undefined!");
 }
+
+if (!process.env.EMAIL_FROM) {
+  throw new Error("EMAIL_FROM cannot be undefined!");
+}
+
+sgMail.setApiKey(process.env.EMAIL_PROVIDER_API_KEY);
+
+
+async function sendVerificationEmail(
+  job: Job<VerificationEmailJob>
+) {
+  const { to, shopName, code } = job.data;
+
+  try {
+    const result = await sgMail.send({
+      to,
+      from: {
+        email: process.env.EMAIL_FROM! ,
+        name: shopName,
+      },
+      subject: "Verify your email address",
+      html: buildVerificationEmailHtml({
+        shopName,
+        code,
+      }),
+    });
+
+    console.log(
+      `[EmailWorker] Verification email sent to ${to}`,
+      result[0].statusCode
+    );
+
+  } catch (error: any) {
+    console.error(
+      `[EmailWorker] Failed sending email to ${to}`,
+      error.response?.body ?? error.message
+    );
+
+    throw error; // important: BullMQ retries failed jobs
+  }
+}
+
 
 function buildVerificationEmailHtml({
   shopName,
-  verificationUrl,
+  code,
 }: {
   shopName: string;
-  verificationUrl: string;
+  code: string;
 }): string {
+
   return `
-    <div style="font-family: sans-serif; max-width: 480px; margin: auto; padding: 32px;">
-      <h2>Welcome to the platform, ${shopName}!</h2>
-      <p>Please verify your email address by clicking the button below.</p>
-      <p>This link expires in <strong>24 hours</strong>.</p>
-      <a
-        href="${verificationUrl}"
-        style="
-          display: inline-block;
-          margin-top: 16px;
-          padding: 12px 24px;
-          background-color: #4f46e5;
-          color: #fff;
-          text-decoration: none;
-          border-radius: 6px;
-          font-weight: bold;
-        "
-      >
-        Verify Email
-      </a>
-      <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">
-        If you didn't create an account, you can safely ignore this email.
+    <div style="
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      max-width: 500px;
+      margin: 40px auto;
+      padding: 40px 24px;
+      background: #ffffff;
+      color: #1a1a1a;
+    ">
+      
+      <h2 style="
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 24px;
+        color: #000000;
+      ">
+        Verify your account
+      </h2>
+
+
+      <p style="
+        font-size: 14px;
+        line-height: 1.6;
+        color: #444444;
+        margin-bottom: 32px;
+      ">
+        Thanks for signing up, 
+        <strong>${shopName}</strong>.
+        Please use the following code to verify your email.
       </p>
+
+
+      <div style="
+        margin: 32px 0;
+        padding: 20px;
+        text-align: center;
+        font-family: monospace;
+        font-size: 32px;
+        letter-spacing: 4px;
+        font-weight: 700;
+        background: #f4f4f5;
+        border-radius: 6px;
+      ">
+        ${code}
+      </div>
+
+
+      <p style="
+        font-size: 13px;
+        color: #666666;
+        margin-bottom: 40px;
+      ">
+        This code is valid for 
+        <strong>10 minutes</strong>.
+      </p>
+
+
+      <hr style="
+        border: 0;
+        border-top: 1px solid #e4e4e7;
+      "/>
+
+
+      <p style="
+        font-size: 12px;
+        color: #888888;
+      ">
+        If you didn't request this email, ignore it.
+      </p>
+
     </div>
   `;
 }
 
-// The worker — starts automatically when this file is imported
+
+// Worker starts automatically when imported
 export const emailWorker = new Worker<VerificationEmailJob>(
   "email",
   sendVerificationEmail,
   {
     connection: redisConnection,
-    concurrency: 5, // Process up to 5 email jobs in parallel
+    concurrency: 5,
   }
 );
 
+
 emailWorker.on("completed", (job) => {
-  console.log(`[EmailWorker] Job ${job.id} completed`);
+  console.log(
+    `[EmailWorker] Job ${job.id} completed`
+  );
 });
 
+
 emailWorker.on("failed", (job, err) => {
-  console.error(`[EmailWorker] Job ${job?.id} failed:`, err.message);
+  console.error(
+    `[EmailWorker] Job ${job?.id} failed:`,
+    err.message
+  );
 });

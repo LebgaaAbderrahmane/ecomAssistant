@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { ConnectionOptions } from "bullmq";
+import { createClient } from "redis";
 
 function env(key: string, fallback?: string): string {
   const value = process.env[key] ?? fallback
@@ -21,3 +22,9 @@ export const redisConnection: ConnectionOptions = {
   host: process.env.REDIS_HOST ?? "localhost",
   port: Number(process.env.REDIS_PORT ?? 6379),
 };
+
+export const redis = createClient({
+  url: redisConnection.url,
+});
+
+redis.connect();
