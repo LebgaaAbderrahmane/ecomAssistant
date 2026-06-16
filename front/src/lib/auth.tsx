@@ -14,6 +14,16 @@ interface User {
   shop?: { shopName: string };
 }
 
+interface LoginResponse {
+  message: string;
+  accessToken: string;
+  merchant: {
+    id: string;
+    email: string;
+    shop?: { shopName: string };
+  };
+}
+
 interface VerifyEmailResponse {
   message: string;
   accessToken: string;
@@ -77,13 +87,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           devLogin(email);
           return;
         }
-        const data = await api.post<{ user: User; token: string }>(
+        const data = await api.post<LoginResponse>(
           "/auth/login",
           { email, password },
         );
-        persistSession(data);
-        setToken(data.token);
-        setUser(data.user);
+        const user: User = {
+          id: data.merchant.id,
+          email: data.merchant.email,
+          name: email.split("@")[0],
+          shop: data.merchant.shop,
+        };
+        persistSession({ user, token: data.accessToken });
+        setToken(data.accessToken);
+        setUser(user);
       } catch (err) {
         if (isApiError(err)) throw err;
         if (

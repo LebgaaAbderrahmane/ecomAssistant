@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as authService from "../services/auth.service";
 
-/**
- * GET CURRENT USER (placeholder)
- */
+
 export async function getMe(req: Request, res: Response, next: NextFunction) {
   try {
     res.json({
@@ -15,9 +13,6 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-/**
- * SIGNUP
- */
 export const signup = async (
   req: Request,
   res: Response,
@@ -40,9 +35,6 @@ export const signup = async (
   }
 };
 
-/**
- * VERIFY EMAIL (OTP VERSION)
- */
 export const verifyEmail = async (
   req: Request,
   res: Response,
@@ -65,6 +57,38 @@ export const verifyEmail = async (
 
     if (clientErrors.includes(error.message)) {
       return res.status(400).json({ message: error.message });
+    }
+
+    next(error);
+  }
+};
+
+
+export const login = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { email, password } = req.body;
+    const result = await authService.loginMerchant(email, password);
+
+    return res.status(200).json({
+      message: "Login successful",
+      ...result,
+    });
+
+  } catch (error: any) {
+    const clientErrors = [
+      "Invalid Email",
+      "Email address not yet registered",
+      "Password Incorrect",
+    ];
+
+    if (clientErrors.includes(error.message)) {
+      return res.status(401).json({
+        message: error.message,
+      });
     }
 
     next(error);
