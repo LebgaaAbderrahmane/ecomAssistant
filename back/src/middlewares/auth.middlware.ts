@@ -1,14 +1,16 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../lib/jwt";
+import { redis } from "../config";
 
 export interface AuthenticatedRequest extends Request {
   merchant?: {
     merchantId: string;
     email: string;
+    jti: string;
   };
 }
 
-export const authenticate = (
+export const authenticate = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -22,6 +24,16 @@ export const authenticate = (
     }
 
     const decoded = verifyToken(token);
+
+    const blacklisted = await redis.get(`jwt-blacklist:${decoded.jti}`);
+    if (blacklisted) {
+      return res.status(401).json({ message: "Token revoked" });
+    }
+
+    const revokedBefore = await redis.get(`revoke-before:${decoded.merchantId}`);
+    if (revokedBefore && decoded.iat <= parseInt(revokedBefore, 10)) {
+      return res.status(401).json({ message: "Session revoked" });
+    }
 
     req.merchant = decoded;
 

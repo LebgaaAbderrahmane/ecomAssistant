@@ -6,6 +6,12 @@ export interface ApiError {
   errors?: { field: string; message: string }[]
 }
 
+// CSRF token
+function getCSRFToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/)
+  return match ? match[1] : null
+}
+
 let refreshPromise: Promise<boolean> | null = null
 
 async function tryRefreshToken(): Promise<boolean> {
@@ -16,9 +22,13 @@ async function tryRefreshToken(): Promise<boolean> {
   if (!merchantId) return false
 
   try {
+    const csrfToken = getCSRFToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken
+
     const res = await fetch(`${BASE_URL}/auth/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       credentials: 'include',
       body: JSON.stringify({ merchantId }),
     })
@@ -34,9 +44,14 @@ function clearSession() {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const csrfToken = getCSRFToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
+  }
+
+  if (csrfToken && options.method && options.method !== 'GET') {
+    headers['X-CSRF-Token'] = csrfToken
   }
 
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -54,7 +69,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       refreshPromise = null
 
       if (refreshed) {
-        const retryRes = await fetch(`${BASE_URL}${path}`, { ...options, headers, credentials: 'include' })
+        const retryCsrf = getCSRFToken()
+        const retryHeaders = { ...headers }
+        if (retryCsrf) retryHeaders['X-CSRF-Token'] = retryCsrf
+        const retryRes = await fetch(`${BASE_URL}${path}`, { ...options, headers: retryHeaders, credentials: 'include' })
         if (retryRes.ok) {
           return retryRes.json()
         }

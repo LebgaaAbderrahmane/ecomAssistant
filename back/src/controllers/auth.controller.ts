@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, type CookieOptions } from "express";
 import * as authService from "../services/auth.service";
 import { AuthenticatedRequest } from "../middlewares/auth.middlware";
+import crypto from "crypto";
 
 const COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
@@ -12,19 +13,20 @@ const COOKIE_OPTIONS: CookieOptions = {
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
   res.cookie("accessToken", accessToken, COOKIE_OPTIONS);
   res.cookie("refreshToken", refreshToken, { ...COOKIE_OPTIONS, path: "/auth" });
+  res.cookie("csrf-token", crypto.randomUUID(), { ...COOKIE_OPTIONS, httpOnly: false });
 }
 
 function clearAuthCookies(res: Response) {
   res.clearCookie("accessToken", COOKIE_OPTIONS);
   res.clearCookie("refreshToken", { ...COOKIE_OPTIONS, path: "/auth" });
+  res.clearCookie("csrf-token", { ...COOKIE_OPTIONS, httpOnly: false });
 }
 
-export async function getMe(req: Request, res: Response, next: NextFunction) {
+export async function getMe(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
-    res.json({
-      name: "nedjar",
-      firstname: "abdelmoumen",
-    });
+    const merchantId = req.merchant!.merchantId;
+    const profile = await authService.getMerchantProfile(merchantId);
+    res.json(profile);
   } catch (err) {
     next(err);
   }
@@ -74,8 +76,12 @@ export const verifyEmail = async (
       "Invalid verification code",
       "Merchant not found",
       "Email already verified",
+      "Trop de tentatives. Veuillez réessayer dans 15 minutes.",
     ];
 
+    if (error.message === "Trop de tentatives. Veuillez réessayer dans 15 minutes.") {
+      return res.status(429).json({ message: error.message });
+    }
     if (clientErrors.includes(error.message)) {
       return res.status(400).json({ message: error.message });
     }
@@ -152,11 +158,11 @@ export const logout = async (
   next: NextFunction
 ) => {
   try {
-    const merchantId = req.merchant!.merchantId;
+    const { merchantId, jti } = req.merchant!;
     const refreshToken = req.cookies?.refreshToken;
 
     if (refreshToken) {
-      await authService.logoutMerchant(merchantId, refreshToken);
+      await authService.logoutMerchant(merchantId, refreshToken, jti);
     }
 
     clearAuthCookies(res);
@@ -218,8 +224,12 @@ export const resetPassword = async (
     const clientErrors = [
       "Reset code expired or invalid",
       "Invalid reset code",
+      "Trop de tentatives. Veuillez réessayer dans 15 minutes.",
     ];
 
+    if (error.message === "Trop de tentatives. Veuillez réessayer dans 15 minutes.") {
+      return res.status(429).json({ message: error.message });
+    }
     if (clientErrors.includes(error.message)) {
       return res.status(400).json({ message: error.message });
     }

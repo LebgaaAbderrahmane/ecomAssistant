@@ -89,11 +89,35 @@ export const registerMerchant = async (
   return merchant;
 };
 
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_LOCKOUT_MINUTES = 15;
+
+async function checkOTPAttempts(email: string): Promise<void> {
+  const attemptsKey = `otp-attempts:${email}`;
+  const attempts = await redis.get(attemptsKey);
+  const count = attempts ? parseInt(attempts, 10) : 0;
+
+  if (count >= OTP_MAX_ATTEMPTS) {
+    throw new Error("Trop de tentatives. Veuillez réessayer dans 15 minutes.");
+  }
+}
+
+async function incrementOTPAttempts(email: string): Promise<void> {
+  const attemptsKey = `otp-attempts:${email}`;
+  await redis.incr(attemptsKey);
+  await redis.expire(attemptsKey, OTP_LOCKOUT_MINUTES * 60);
+}
+
+async function clearOTPAttempts(email: string): Promise<void> {
+  await redis.del(`otp-attempts:${email}`);
+}
+
 export const verifyEmail = async (email: string, code: string) => {
   // 1. Get OTP from Redis
   const storedHash = await redis.get(`otp:${email}`);
 
   if (!storedHash) {
+    await incrementOTPAttempts(email);
     throw new Error("Verification code expired or invalid");
   }
 
@@ -101,8 +125,14 @@ export const verifyEmail = async (email: string, code: string) => {
   const isValid = await compareOTP(code, storedHash);
 
   if (!isValid) {
+    // Always check lockout to prevent timing attacks
+    await checkOTPAttempts(email);
+    await incrementOTPAttempts(email);
     throw new Error("Invalid verification code");
   }
+
+  // Reset attempts on success
+  await clearOTPAttempts(email);
 
   // 3. Find merchant
   const merchant = await prisma.merchant.findUnique({
@@ -249,10 +279,19 @@ export const resetPassword = async (
 ) => {
   const storedHash = await redis.get(`reset-otp:${email}`);
 
-  if (!storedHash) throw new Error("Reset code expired or invalid");
+  if (!storedHash) {
+    await incrementOTPAttempts(email);
+    throw new Error("Reset code expired or invalid");
+  }
 
   const isValid = await compareOTP(code, storedHash);
-  if (!isValid) throw new Error("Invalid reset code");
+  if (!isValid) {
+    await checkOTPAttempts(email);
+    await incrementOTPAttempts(email);
+    throw new Error("Invalid reset code");
+  }
+
+  await clearOTPAttempts(email);
 
   const newPasswordHash = await hashPassword(newPasswordPlain);
 
@@ -263,11 +302,37 @@ export const resetPassword = async (
 
   await redis.del(`reset-otp:${email}`);
 
+  const merchant = await prisma.merchant.findUnique({ where: { email }, select: { id: true } });
+  if (merchant) {
+    const sessionKeys = await redis.keys(`refresh:${merchant.id}:*`);
+    if (sessionKeys.length > 0) {
+      await redis.del(sessionKeys);
+    }
+  }
+
   return { message: "Password updated successfully. You can now log in." };
 };
 
-export const logoutMerchant = async (merchantId: string, token: string) => {
-  await redis.del(`refresh:${merchantId}:${token}`);
+export const getMerchantProfile = async (merchantId: string) => {
+  const merchant = await prisma.merchant.findUnique({
+    where: { id: merchantId },
+    include: { shop: true },
+  });
+
+  if (!merchant) throw new Error("Merchant not found");
+
+  return {
+    id: merchant.id,
+    email: merchant.email,
+    name: merchant.name,
+    isVerified: merchant.isVerified,
+    shop: merchant.shop,
+  };
+};
+
+export const logoutMerchant = async (merchantId: string, refreshToken: string, jti: string) => {
+  await redis.del(`refresh:${merchantId}:${refreshToken}`);
+  await redis.set(`jwt-blacklist:${jti}`, "1", { EX: 7 * 24 * 60 * 60 });
   return { message: "Logged out successfully" };
 };
 
@@ -276,5 +341,6 @@ export const logoutAllDevices = async (merchantId: string) => {
   if (keys.length > 0) {
     await redis.del(keys);
   }
+  await redis.set(`revoke-before:${merchantId}`, Math.floor(Date.now() / 1000).toString(), { EX: 7 * 24 * 60 * 60 });
   return { message: "Logged out from all devices" };
 };
