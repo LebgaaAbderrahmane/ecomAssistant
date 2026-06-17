@@ -15,12 +15,11 @@ export const authenticate = (
 ) => {
   try {
     const authHeader = req.headers.authorization;
+    const token = req.cookies?.accessToken || (authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : undefined);
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!token) {
       return res.status(401).json({ message: "Authorization token missing" });
     }
-
-    const token = authHeader.split(" ")[1];
 
     const decoded = verifyToken(token);
 

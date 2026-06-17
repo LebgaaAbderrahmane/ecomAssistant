@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 import { api, type ApiError } from "./api.js";
@@ -16,8 +17,6 @@ interface User {
 
 interface LoginResponse {
   message: string;
-  accessToken: string;
-  refreshToken: string;
   merchant: {
     id: string;
     email: string;
@@ -27,14 +26,12 @@ interface LoginResponse {
 
 interface VerifyEmailResponse {
   message: string;
-  accessToken: string;
-  refreshToken: string;
   merchant: User & { isVerified: boolean; shop?: { shopName: string } };
 }
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
+  isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (shopName: string, email: string, password: string) => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
@@ -46,16 +43,11 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 function createDevSession(email: string, name?: string) {
   const user: User = { id: "dev-1", email, name: name || email.split("@")[0] };
-  const token = "dev-mock-token-" + Date.now();
-  return { user, token };
+  return { user };
 }
 
-function persistSession(data: { user: User; token: string; refreshToken?: string }) {
-  localStorage.setItem("token", data.token);
-  localStorage.setItem("user", JSON.stringify(data.user));
-  if (data.refreshToken) {
-    localStorage.setItem("refreshToken", data.refreshToken);
-  }
+function persistUser(user: User) {
+  localStorage.setItem("user", JSON.stringify(user));
 }
 
 function isApiError(err: unknown): err is ApiError {
@@ -72,16 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem("user");
     return stored ? JSON.parse(stored) : null;
   });
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem("token"),
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!localStorage.getItem("user"));
   const [isLoading, setIsLoading] = useState(false);
 
   const devLogin = useCallback((email: string, name?: string) => {
-    const session = createDevSession(email, name);
-    persistSession(session);
-    setToken(session.token);
-    setUser(session.user);
+    const { user } = createDevSession(email, name);
+    persistUser(user);
+    setUser(user);
+    setIsAuthenticated(true);
   }, []);
 
   const login = useCallback(
@@ -102,9 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: email.split("@")[0],
           shop: data.merchant.shop,
         };
-        persistSession({ user, token: data.accessToken, refreshToken: data.refreshToken });
-        setToken(data.accessToken);
+        persistUser(user);
         setUser(user);
+        setIsAuthenticated(true);
       } catch (err) {
         if (isApiError(err)) throw err;
         if (
@@ -165,32 +155,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: data.merchant.name,
         shop: data.merchant.shop,
       };
-      persistSession({ user, token: data.accessToken, refreshToken: data.refreshToken });
-      setToken(data.accessToken);
+      persistUser(user);
       setUser(user);
+      setIsAuthenticated(true);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const logout = useCallback(() => {
-    const refreshToken = localStorage.getItem("refreshToken");
-    const token = localStorage.getItem("token");
-
-    if (refreshToken && token) {
-      api.post("/auth/logout", { refreshToken }).catch(() => {});
-    }
-
-    localStorage.removeItem("token");
+    api.post("/auth/logout", {}).catch(() => {});
     localStorage.removeItem("user");
-    localStorage.removeItem("refreshToken");
-    setToken(null);
     setUser(null);
+    setIsAuthenticated(false);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      localStorage.removeItem("user");
+      setUser(null);
+      setIsAuthenticated(false);
+    };
+    window.addEventListener("auth:expired", handler);
+    return () => window.removeEventListener("auth:expired", handler);
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, token, login, signup, verifyEmail, logout, isLoading }}
+      value={{ user, isAuthenticated, login, signup, verifyEmail, logout, isLoading }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,7 +1,23 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction, type CookieOptions } from "express";
 import * as authService from "../services/auth.service";
 import { AuthenticatedRequest } from "../middlewares/auth.middlware";
 
+const COOKIE_OPTIONS: CookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  path: "/",
+};
+
+function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+  res.cookie("accessToken", accessToken, COOKIE_OPTIONS);
+  res.cookie("refreshToken", refreshToken, { ...COOKIE_OPTIONS, path: "/auth" });
+}
+
+function clearAuthCookies(res: Response) {
+  res.clearCookie("accessToken", COOKIE_OPTIONS);
+  res.clearCookie("refreshToken", { ...COOKIE_OPTIONS, path: "/auth" });
+}
 
 export async function getMe(req: Request, res: Response, next: NextFunction) {
   try {
@@ -42,12 +58,16 @@ export const verifyEmail = async (
   next: NextFunction,
 ) => {
   try {
-    // now coming from body, not query
     const { email, code } = req.body;
 
     const result = await authService.verifyEmail(email, code);
 
-    return res.status(200).json(result);
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
+    return res.status(200).json({
+      message: result.message,
+      merchant: result.merchant,
+    });
   } catch (error: any) {
     const clientErrors = [
       "Verification code expired or invalid",
@@ -64,7 +84,6 @@ export const verifyEmail = async (
   }
 };
 
-
 export const login = async (
   req: Request,
   res: Response,
@@ -74,11 +93,12 @@ export const login = async (
     const { email, password } = req.body;
     const result = await authService.loginMerchant(email, password);
 
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
     return res.status(200).json({
       message: "Login successful",
-      ...result,
+      merchant: result.merchant,
     });
-
   } catch (error: any) {
     const clientErrors = [
       "Invalid Email",
@@ -102,12 +122,20 @@ export const refresh = async (
   next: NextFunction
 ) => {
   try {
-    const { merchantId, refreshToken } = req.body;
+    const { merchantId } = req.body;
+    const refreshToken = req.cookies?.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh token missing" });
+    }
 
     const result = await authService.refreshToken(merchantId, refreshToken);
 
-    return res.status(200).json(result);
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
+    return res.status(200).json({ message: "Token refreshed" });
   } catch (error: any) {
+    clearAuthCookies(res);
     if (error.message === "Refresh token expired or invalid") {
       return res.status(401).json({ message: error.message });
     }
@@ -125,11 +153,15 @@ export const logout = async (
 ) => {
   try {
     const merchantId = req.merchant!.merchantId;
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.refreshToken;
 
-    const result = await authService.logoutMerchant(merchantId, refreshToken);
+    if (refreshToken) {
+      await authService.logoutMerchant(merchantId, refreshToken);
+    }
 
-    return res.status(200).json(result);
+    clearAuthCookies(res);
+
+    return res.status(200).json({ message: "Logged out successfully" });
   } catch (error: any) {
     next(error);
   }
@@ -143,9 +175,10 @@ export const logoutAll = async (
   try {
     const merchantId = req.merchant!.merchantId;
 
-    const result = await authService.logoutAllDevices(merchantId);
+    await authService.logoutAllDevices(merchantId);
+    clearAuthCookies(res);
 
-    return res.status(200).json(result);
+    return res.status(200).json({ message: "Logged out from all devices" });
   } catch (error: any) {
     next(error);
   }

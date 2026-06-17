@@ -61,7 +61,6 @@ export const resetPasswordSchema = z.object({
 
 export const refreshTokenSchema = z.object({
   merchantId: z.string().cuid(),
-  refreshToken: z.string().uuid(),
 });
 
 // Types
