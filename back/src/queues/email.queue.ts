@@ -1,22 +1,36 @@
 import { Queue } from "bullmq";
 import { redisConnection } from "../config";
 
-export interface VerificationEmailJob {
+// Define individual payload structures
+export interface VerificationEmailPayload {
   to: string;
   shopName: string;
   code: string;
 }
 
-// One queue for all outgoing emails — job name distinguishes the type
-export const emailQueue = new Queue<VerificationEmailJob>("email", {
+export interface ResetPasswordEmailPayload {
+  to: string;
+  shopName: string;
+  code: string;
+}
+
+// Combine into a single type union for the queue
+export type EmailJobDataType = 
+  | { name: "send-verification"; data: VerificationEmailPayload }
+  | { name: "send-reset-password"; data: ResetPasswordEmailPayload };
+
+// Extract just the data part for the generic Queue type declaration
+type QueueData = VerificationEmailPayload | ResetPasswordEmailPayload;
+
+export const emailQueue = new Queue<QueueData>("email", {
   connection: redisConnection,
   defaultJobOptions: {
-    attempts: 3,                       
+    attempts: 3,                    
     backoff: {
       type: "exponential",
-      delay: 5000,                     // 5s → 10s → 20s
+      delay: 5000,                    // 5s → 10s → 20s
     },
-    removeOnComplete: true,            // Clean up completed jobs from Redis
-    removeOnFail: false,               // Keep failed jobs for inspection
+    removeOnComplete: true,           
+    removeOnFail: false,              
   },
 });
