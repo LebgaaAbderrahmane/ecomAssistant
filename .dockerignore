@@ -4,3 +4,4 @@ dist
 .env
 *.md
 .gitignore
+.pnpm-store

@@ -1,6 +1,6 @@
-FROM node:22-alpine
+FROM node:22-slim
 
-RUN apk add --no-cache openssl
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -17,8 +17,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
-RUN pnpm run --filter @ecomassistant/shared build
-RUN npx prisma generate
+RUN ./back/node_modules/.bin/prisma generate --schema=back/prisma/schema.prisma
 
 EXPOSE 3000
 

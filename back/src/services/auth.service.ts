@@ -228,6 +228,7 @@ export const forgetPassword = async (email: string) => {
   }
 
   const otp = generateOTP();
+  console.log(`\n🔑 [DEV] Reset OTP for ${email}: ${otp}\n`);
   const hashedOTP = await hashOTP(otp);
 
   await redis.set(`reset-otp:${email}`, hashedOTP, { EX: 600 });
@@ -276,5 +277,4 @@ export const logoutAllDevices = async (merchantId: string) => {
     await redis.del(keys);
   }
   return { message: "Logged out from all devices" };
-};
 };
