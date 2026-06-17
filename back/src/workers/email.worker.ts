@@ -23,28 +23,50 @@ async function sendVerificationEmail(
     const result = await sgMail.send({
       to,
       from: {
-        email: process.env.EMAIL_FROM! ,
+        email: process.env.EMAIL_FROM!,
         name: shopName,
       },
       subject: "Verify your email address",
-      html: buildVerificationEmailHtml({
-        shopName,
-        code,
-      }),
+      html: buildVerificationEmailHtml({ shopName, code }),
     });
 
     console.log(
       `[EmailWorker] Verification email sent to ${to}`,
       result[0].statusCode
     );
-
   } catch (error: any) {
     console.error(
       `[EmailWorker] Failed sending email to ${to}`,
       error.response?.body ?? error.message
     );
+    throw error;
+  }
+}
 
-    throw error; // important: BullMQ retries failed jobs
+async function sendResetPassword(job: Job<VerificationEmailJob>) {
+  const { to, shopName, code } = job.data;
+
+  try {
+    const result = await sgMail.send({
+      to,
+      from: {
+        email: process.env.EMAIL_FROM!,
+        name: shopName,
+      },
+      subject: "Reset your password",
+      html: buildResetPasswordEmailHtml({ shopName, code }),
+    });
+
+    console.log(
+      `[EmailWorker] Reset password email sent to ${to}`,
+      result[0].statusCode
+    );
+  } catch (error: any) {
+    console.error(
+      `[EmailWorker] Failed sending reset password email to ${to}`,
+      error.response?.body ?? error.message
+    );
+    throw error;
   }
 }
 
@@ -132,10 +154,86 @@ function buildVerificationEmailHtml({
 }
 
 
+function buildResetPasswordEmailHtml({
+  shopName,
+  code,
+}: {
+  shopName: string;
+  code: string;
+}): string {
+  return `
+    <div style="
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      max-width: 500px;
+      margin: 40px auto;
+      padding: 40px 24px;
+      background: #ffffff;
+      color: #1a1a1a;
+    ">
+
+      <h2 style="
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 24px;
+        color: #000000;
+      ">
+        Reset your password
+      </h2>
+
+      <p style="
+        font-size: 14px;
+        line-height: 1.6;
+        color: #444444;
+        margin-bottom: 32px;
+      ">
+        Hello <strong>${shopName}</strong>,
+        please use the following code to reset your password.
+      </p>
+
+      <div style="
+        margin: 32px 0;
+        padding: 20px;
+        text-align: center;
+        font-family: monospace;
+        font-size: 32px;
+        letter-spacing: 4px;
+        font-weight: 700;
+        background: #f4f4f5;
+        border-radius: 6px;
+      ">
+        ${code}
+      </div>
+
+      <p style="
+        font-size: 13px;
+        color: #666666;
+        margin-bottom: 40px;
+      ">
+        This code is valid for <strong>10 minutes</strong>.
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #e4e4e7;" />
+
+      <p style="font-size: 12px; color: #888888;">
+        If you didn't request this, ignore it.
+      </p>
+    </div>
+  `;
+}
+
+const handler: Record<string, (job: Job<VerificationEmailJob>) => Promise<void>> = {
+  "send-verification": sendVerificationEmail,
+  "send-reset-password": sendResetPassword,
+};
+
 // Worker starts automatically when imported
 export const emailWorker = new Worker<VerificationEmailJob>(
   "email",
-  sendVerificationEmail,
+  (job) => {
+    const fn = handler[job.name];
+    if (!fn) throw new Error(`Unknown job name: ${job.name}`);
+    return fn(job);
+  },
   {
     connection: redisConnection,
     concurrency: 5,

@@ -17,6 +17,7 @@ interface User {
 interface LoginResponse {
   message: string;
   accessToken: string;
+  refreshToken: string;
   merchant: {
     id: string;
     email: string;
@@ -27,6 +28,7 @@ interface LoginResponse {
 interface VerifyEmailResponse {
   message: string;
   accessToken: string;
+  refreshToken: string;
   merchant: User & { isVerified: boolean; shop?: { shopName: string } };
 }
 
@@ -48,9 +50,12 @@ function createDevSession(email: string, name?: string) {
   return { user, token };
 }
 
-function persistSession(data: { user: User; token: string }) {
+function persistSession(data: { user: User; token: string; refreshToken?: string }) {
   localStorage.setItem("token", data.token);
   localStorage.setItem("user", JSON.stringify(data.user));
+  if (data.refreshToken) {
+    localStorage.setItem("refreshToken", data.refreshToken);
+  }
 }
 
 function isApiError(err: unknown): err is ApiError {
@@ -97,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: email.split("@")[0],
           shop: data.merchant.shop,
         };
-        persistSession({ user, token: data.accessToken });
+        persistSession({ user, token: data.accessToken, refreshToken: data.refreshToken });
         setToken(data.accessToken);
         setUser(user);
       } catch (err) {
@@ -160,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: data.merchant.name,
         shop: data.merchant.shop,
       };
-      persistSession({ user, token: data.accessToken });
+      persistSession({ user, token: data.accessToken, refreshToken: data.refreshToken });
       setToken(data.accessToken);
       setUser(user);
     } finally {
@@ -169,8 +174,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    const refreshToken = localStorage.getItem("refreshToken");
+    const token = localStorage.getItem("token");
+
+    if (refreshToken && token) {
+      api.post("/auth/logout", { refreshToken }).catch(() => {});
+    }
+
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("refreshToken");
     setToken(null);
     setUser(null);
   }, []);
