@@ -1,6 +1,6 @@
 # Backend API Documentation
 
-Welcome to the backend API documentation for **EcomAssistant**. This document outlines all available endpoints, their input parameters, verification mechanisms, validation rules, and response formats.
+Welcome to the backend API documentation for **EcomAssistant**. This document outlines all available endpoints, validation rules, authentication requirements, input parameters, and response structures.
 
 ---
 
@@ -15,12 +15,52 @@ If the request is routed through the main API router, routes are prefixed as fol
 For all endpoints requesting or returning payload bodies (unless specified otherwise), the content type is:
 - `Content-Type: application/json`
 
-### Error Response Schema
+---
 
-The backend handles request schema validation errors via Zod, which outputs a structured payload with error details. Other service-level validation and business logic exceptions are thrown and returned with a message.
+## Authentication and Security
 
-#### 1. Zod Validation Error Response (`400 Bad Request`)
-Returned when the body, query, or path parameters fail the validation criteria defined in the schemas.
+Several routes are protected and require a Bearer token in the request header.
+
+### Authorization Header Format
+For all protected routes, include the JWT token as follows:
+```http
+Authorization: Bearer <accessToken>
+```
+
+### Authentication Errors (`401 Unauthorized`)
+If authentication fails, the backend will return a `401 Unauthorized` response with a specific message:
+
+- **Token is missing**:
+  ```json
+  {
+    "message": "Authorization token missing"
+  }
+  ```
+- **Token is expired**:
+  ```json
+  {
+    "message": "Access token expired"
+  }
+  ```
+- **Token is invalid or corrupted**:
+  ```json
+  {
+    "message": "Invalid access token"
+  }
+  ```
+- **Other generic authentication failures**:
+  ```json
+  {
+    "message": "Unauthorized"
+  }
+  ```
+
+---
+
+## Error Response Schema
+
+### Zod Validation Error Response (`400 Bad Request`)
+Returned when schema validation fails for the query, path, or body parameters:
 ```json
 {
   "message": "Validation failed",
@@ -31,14 +71,14 @@ Returned when the body, query, or path parameters fail the validation criteria d
     },
     {
       "field": "password",
-      "message": "Password must contain at least one number"
+      "message": "Password must be at least 8 characters"
     }
   ]
 }
 ```
 
-#### 2. Business Logic / Client Error Response (`400 Bad Request` or `401 Unauthorized` or `409 Conflict`)
-Returned when an operation fails validation, conflict, or permission checks in controllers/services.
+### Business Logic Error Response
+Returned when database or logic constraints are violated (e.g., invalid passwords, email conflict, expired codes). The status code is typically `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, or `409 Conflict`.
 ```json
 {
   "message": "Error message description"
@@ -52,22 +92,27 @@ Returned when an operation fails validation, conflict, or permission checks in c
 | HTTP Method | Path | Description | Authentication |
 | :--- | :--- | :--- | :--- |
 | **GET** | [/health](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/app.ts#L10) | Service health check | Public |
-| **GET** | [/auth/me](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L8) | Get current user profile (currently returns mock data) | Needs clarification / Currently Public |
-| **POST** | [/auth/signup](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L9) | Register a new merchant and shop | Public |
-| **POST** | [/auth/verify-email](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L10) | Verify email using verification code from Redis | Public |
-| **POST** | [/auth/login](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L11) | Log in a verified merchant | Public |
+| **GET** | [/auth/me](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L16) | Retrieve authenticated merchant profile (returns mock data) | Protected (Bearer Token) |
+| **POST** | [/auth/signup](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L17) | Register a new merchant and shop | Public |
+| **POST** | [/auth/verify-email](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L18) | Verify merchant email using verification OTP from Redis | Public |
+| **POST** | [/auth/login](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L19) | Login merchant and return access & refresh tokens | Public |
+| **POST** | [/auth/refresh](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L20) | Rotate expired access token using a valid refresh token | Public |
+| **POST** | [/auth/forgot-password](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L21) | Request a password reset verification code | Public |
+| **POST** | [/auth/reset-password](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L22) | Reset password using email, reset OTP, and new password | Public |
+| **POST** | [/auth/logout](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L23) | Revoke a single refresh token | Protected (Bearer Token) |
+| **POST** | [/auth/logout-all](file:///c:/Users/THINKPAD%20T480/Desktop/ecomAssistant/back/src/routes/auth.routes.ts#L24) | Revoke all active refresh tokens for the merchant | Protected (Bearer Token) |
 
 ---
 
 ## Endpoint Details
 
 ### 1. Health Check
-Retrieves the uptime and system status of the backend API.
+Retrieves system status and server time.
 
 - **HTTP Method**: `GET`
 - **Path**: `/health`
-- **Authentication**: Public (No authentication required)
-- **Headers**: None required
+- **Authentication**: Public
+- **Headers**: None
 
 #### Request Parameters
 - **URL Params**: None
@@ -76,39 +121,37 @@ Retrieves the uptime and system status of the backend API.
 
 #### Responses
 ##### Success (`200 OK`)
-Returns the service status and current server timestamp.
 - **Response Body Structure**:
-  - `status` (string): The status statement.
-  - `timestamp` (string): ISO format timestamp of the request.
+  - `status` (string): The status of the server.
+  - `timestamp` (string): ISO timestamp.
 - **Example Response**:
   ```json
   {
     "status": "ok man",
-    "timestamp": "2026-06-16T14:28:44.201Z"
+    "timestamp": "2026-06-17T14:30:00.000Z"
   }
   ```
 
 ---
 
 ### 2. Get Merchant Profile (Get Me)
-Retrieves the logged-in merchant profile details.
+Retrieves profile data of the currently logged-in merchant.
 
 - **HTTP Method**: `GET`
 - **Path**: `/auth/me`
-- **Authentication**: **Needs Clarification** (Currently public. The route has no active authentication middleware and returns hardcoded mock data).
-- **Headers**: None required (as implemented currently)
+- **Authentication**: Protected (Requires `Authorization: Bearer <accessToken>`)
+- **Headers**:
+  - `Authorization: Bearer <accessToken>`
 
 #### Request Parameters
-- **URL Params**: None
-- **Query Params**: None
-- **Body**: None
+- **URL / Query / Body**: None
 
 #### Responses
 ##### Success (`200 OK`)
-Returns the mock merchant profile information.
+Returns the mock profile details.
 - **Response Body Structure**:
-  - `name` (string): The merchant last name.
-  - `firstname` (string): The merchant first name.
+  - `name` (string): Merchant's last name.
+  - `firstname` (string): Merchant's first name.
 - **Example Response**:
   ```json
   {
@@ -117,10 +160,18 @@ Returns the mock merchant profile information.
   }
   ```
 
+##### Error (`401 Unauthorized`)
+- **Example Response**:
+  ```json
+  {
+    "message": "Access token expired"
+  }
+  ```
+
 ---
 
 ### 3. Merchant Signup
-Registers a brand new merchant and creates a related shop. If the merchant email already exists in the database but is **not** verified, this registration overwrites the previous credentials and sends a new OTP code. If the email is verified, it blocks registration.
+Registers a merchant and shop. If the email is registered but not verified, this registration overwrites the previous credentials and resets verification.
 
 - **HTTP Method**: `POST`
 - **Path**: `/auth/signup`
@@ -129,8 +180,6 @@ Registers a brand new merchant and creates a related shop. If the merchant email
   - `Content-Type: application/json`
 
 #### Request Parameters
-- **URL Params**: None
-- **Query Params**: None
 - **Body Payload** (`application/json`):
   | Field | Type | Required | Description / Validation Rules |
   | :--- | :--- | :--- | :--- |
@@ -140,9 +189,8 @@ Registers a brand new merchant and creates a related shop. If the merchant email
 
 #### Responses
 ##### Success (`201 Created`)
-The account is created or updated. A verification email containing a 6-digit OTP code is sent.
 - **Response Body Structure**:
-  - `message` (string): Success message indicating verification email has been sent.
+  - `message` (string): Prompt to check email.
 - **Example Response**:
   ```json
   {
@@ -150,23 +198,7 @@ The account is created or updated. A verification email containing a 6-digit OTP
   }
   ```
 
-##### Error: Validation Failed (`400 Bad Request`)
-The input body does not match validation rules.
-- **Example Response**:
-  ```json
-  {
-    "message": "Validation failed",
-    "errors": [
-      {
-        "field": "password",
-        "message": "Password must be at least 8 characters"
-      }
-    ]
-  }
-  ```
-
-##### Error: Email Already Registered (`409 Conflict`)
-The email address belongs to an already verified merchant.
+##### Error: Email Conflict (`409 Conflict`)
 - **Example Response**:
   ```json
   {
@@ -177,7 +209,7 @@ The email address belongs to an already verified merchant.
 ---
 
 ### 4. Verify Email
-Verifies the merchant's email address by providing the 6-digit OTP code received in the verification email. This endpoint retrieves the OTP from Redis, marks the merchant as verified, deletes the OTP from Redis, and returns an access token.
+Verifies email via the 6-digit OTP code sent to the merchant's email.
 
 - **HTTP Method**: `POST`
 - **Path**: `/auth/verify-email`
@@ -186,8 +218,6 @@ Verifies the merchant's email address by providing the 6-digit OTP code received
   - `Content-Type: application/json`
 
 #### Request Parameters
-- **URL Params**: None
-- **Query Params**: None
 - **Body Payload** (`application/json`):
   | Field | Type | Required | Description / Validation Rules |
   | :--- | :--- | :--- | :--- |
@@ -196,58 +226,37 @@ Verifies the merchant's email address by providing the 6-digit OTP code received
 
 #### Responses
 ##### Success (`200 OK`)
-Verification is successful. The merchant profile is marked verified and an access token is returned.
 - **Response Body Structure**:
-  - `result` (object): Result container.
-    - `message` (string): Success description message.
-    - `accessToken` (string): Signed JWT accessToken for subsequent authenticated requests.
-    - `merchant` (object): Verified merchant profile detail.
-      - `id` (string): Unique identifier (CUID) of the merchant.
-      - `email` (string): The merchant's verified email.
-      - `name` (string): The merchant's name / shop name.
-      - `isVerified` (boolean): `true`.
-      - `shop` (object): Relational shop details.
-        - `id` (string): Unique identifier (CUID) of the shop.
-        - `merchantId` (string): The associated merchant's ID.
-        - `shopName` (string): The name of the shop.
+  - `message` (string): Success verification message.
+  - `accessToken` (string): Generated Access Token.
+  - `refreshToken` (string): Generated Refresh Token.
+  - `merchant` (object): Merchant entity.
+    - `id` (string): Merchant's CUID.
+    - `email` (string): Merchant's email.
+    - `name` (string): Merchant's shop name.
+    - `isVerified` (boolean): `true`.
+    - `shop` (object): Associated shop details.
 - **Example Response**:
   ```json
   {
-    "result": {
-      "message": "Email verified successfully",
-      "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiY2x5Z2k4eXJyMDAwMHNkd3c4NjBrMm16ZSIsImVtYWlsIjoic2hvcEBlbXBlcm9yLmNvbSIsImlhdCI6MTcxODUxNjg2MCwiZXhwIjoxNzE4NjAzMjYwfQ.abcdef...",
-      "merchant": {
-        "id": "clygi8yrr0000sdww860k2mze",
-        "email": "shop@emperor.com",
-        "name": "My Emperor Shop",
-        "isVerified": true,
-        "shop": {
-          "id": "clygi8yrs0001sdww990k8zpe",
-          "merchantId": "clygi8yrr0000sdww860k2mze",
-          "shopName": "My Emperor Shop"
-        }
+    "message": "Email verified successfully",
+    "accessToken": "eyJhbGciOiJIUzI1Ni...",
+    "refreshToken": "70bc8db1-cc72-4d2c-8cb4-05d6880894fe",
+    "merchant": {
+      "id": "clygi8yrr0000sdww860k2mze",
+      "email": "shop@emperor.com",
+      "name": "My Shop",
+      "isVerified": true,
+      "shop": {
+        "id": "clygi8yrs0001sdww990k8zpe",
+        "merchantId": "clygi8yrr0000sdww860k2mze",
+        "shopName": "My Shop"
       }
     }
   }
   ```
 
-##### Error: Validation Failed (`400 Bad Request`)
-The inputs do not match the validation schema.
-- **Example Response**:
-  ```json
-  {
-    "message": "Validation failed",
-    "errors": [
-      {
-        "field": "code",
-        "message": "Code must contain only numbers"
-      }
-    ]
-  }
-  ```
-
-##### Error: Invalid or Expired Code (`400 Bad Request`)
-The OTP code is either incorrect, or expired in Redis storage.
+##### Error: Code Expired or Invalid (`400 Bad Request`)
 - **Possible Message List**:
   - `"Verification code expired or invalid"`
   - `"Invalid verification code"`
@@ -263,7 +272,7 @@ The OTP code is either incorrect, or expired in Redis storage.
 ---
 
 ### 5. Merchant Login
-Logs in an already verified merchant by checking credentials against the stored password hash. Upon success, returns the merchant data and a signed access token.
+Authenticates merchant credentials and issues fresh access & refresh tokens.
 
 - **HTTP Method**: `POST`
 - **Path**: `/auth/login`
@@ -272,61 +281,38 @@ Logs in an already verified merchant by checking credentials against the stored 
   - `Content-Type: application/json`
 
 #### Request Parameters
-- **URL Params**: None
-- **Query Params**: None
 - **Body Payload** (`application/json`):
   | Field | Type | Required | Description / Validation Rules |
   | :--- | :--- | :--- | :--- |
   | `email` | string | Yes | Must be a valid email format. |
-  | `password` | string | Yes | Plain-text password. |
+  | `password` | string | Yes | Min 8 characters, must contain at least one number. |
 
 #### Responses
 ##### Success (`200 OK`)
-Credentials are correct. A JWT token and matching merchant information are returned.
 - **Response Body Structure**:
   - `message` (string): `"Login successful"`
-  - `accessToken` (string): Signed JWT accessToken for subsequent authenticated requests.
-  - `merchant` (object): Authenticated merchant information.
-    - `id` (string): Unique identifier (CUID) of the merchant.
-    - `email` (string): The merchant email.
-    - `shop` (object): Relational shop details.
-      - `id` (string): Unique identifier (CUID) of the shop.
-      - `merchantId` (string): The associated merchant's ID.
-      - `shopName` (string): The name of the shop.
+  - `accessToken` (string): Generated JWT Access Token.
+  - `refreshToken` (string): Generated UUID Refresh Token.
+  - `merchant` (object): Relational merchant info.
 - **Example Response**:
   ```json
   {
     "message": "Login successful",
-    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiY2x5Z2k4eXJyMDAwMHNkd3c4NjBrMm16ZSIsImVtYWlsIjoic2hvcEBlbXBlcm9yLmNvbSIsImlhdCI6MTcxODUxNjg2MCwiZXhwIjoxNzE4NjAzMjYwfQ.abcdef...",
+    "accessToken": "eyJhbGciOiJIUzI1Ni...",
+    "refreshToken": "6b26fb51-37d4-4bbd-ae84-60145c20c02c",
     "merchant": {
       "id": "clygi8yrr0000sdww860k2mze",
       "email": "shop@emperor.com",
       "shop": {
         "id": "clygi8yrs0001sdww990k8zpe",
         "merchantId": "clygi8yrr0000sdww860k2mze",
-        "shopName": "My Emperor Shop"
+        "shopName": "My Shop"
       }
     }
   }
   ```
 
-##### Error: Validation Failed (`400 Bad Request`)
-The inputs do not match the validation schema.
-- **Example Response**:
-  ```json
-  {
-    "message": "Validation failed",
-    "errors": [
-      {
-        "field": "email",
-        "message": "Invalid email address"
-      }
-    ]
-  }
-  ```
-
-##### Error: Invalid Credentials (`401 Unauthorized`)
-Login details mismatch or merchant is not verified.
+##### Error: Unauthorized (`401 Unauthorized`)
 - **Possible Message List**:
   - `"Invalid Email"`
   - `"Email address not yet registered"`
@@ -335,5 +321,183 @@ Login details mismatch or merchant is not verified.
   ```json
   {
     "message": "Password Incorrect"
+  }
+  ```
+
+---
+
+### 6. Refresh Token
+Exchanges a valid refresh token for a fresh access token and rotates the refresh token (deletes the old refresh token and issues a new one).
+
+- **HTTP Method**: `POST`
+- **Path**: `/auth/refresh`
+- **Authentication**: Public
+- **Headers**:
+  - `Content-Type: application/json`
+
+#### Request Parameters
+- **Body Payload** (`application/json`):
+  | Field | Type | Required | Description / Validation Rules |
+  | :--- | :--- | :--- | :--- |
+  | `merchantId` | string | Yes | Must be a valid CUID string. |
+  | `refreshToken` | string | Yes | Must be a valid UUID string. |
+
+#### Responses
+##### Success (`200 OK`)
+- **Response Body Structure**:
+  - `accessToken` (string): New JWT Access Token.
+  - `refreshToken` (string): New rotated UUID Refresh Token.
+- **Example Response**:
+  ```json
+  {
+    "accessToken": "eyJhbGciOiJIUzI1Ni...",
+    "refreshToken": "fb2d87ee-6997-4ca2-8db8-cb48b26090e9"
+  }
+  ```
+
+##### Error: Token Expired or Invalid (`401 Unauthorized`)
+- **Example Response**:
+  ```json
+  {
+    "message": "Refresh token expired or invalid"
+  }
+  ```
+
+##### Error: Account Issues (`403 Forbidden`)
+- **Example Response**:
+  ```json
+  {
+    "message": "Merchant not found or account unverified"
+  }
+  ```
+
+---
+
+### 7. Forgot Password
+Requests a password reset code. Sends a 6-digit OTP code to the merchant email.
+
+- **HTTP Method**: `POST`
+- **Path**: `/auth/forgot-password`
+- **Authentication**: Public
+- **Headers**:
+  - `Content-Type: application/json`
+
+#### Request Parameters
+- **Body Payload** (`application/json`):
+  | Field | Type | Required | Description / Validation Rules |
+  | :--- | :--- | :--- | :--- |
+  | `email` | string | Yes | Must be a valid email format. |
+
+#### Responses
+##### Success (`200 OK`)
+- **Response Body Structure**:
+  - `message` (string): Confirmation message.
+- **Example Response**:
+  ```json
+  {
+    "message": "Password reset code sent successfully"
+  }
+  ```
+
+##### Error: Account Not Found (`404 Not Found`)
+- **Example Response**:
+  ```json
+  {
+    "message": "Merchant not found or email not verified"
+  }
+  ```
+
+---
+
+### 8. Reset Password
+Resets the password with the 6-digit OTP code and sets the new password.
+
+- **HTTP Method**: `POST`
+- **Path**: `/auth/reset-password`
+- **Authentication**: Public
+- **Headers**:
+  - `Content-Type: application/json`
+
+#### Request Parameters
+- **Body Payload** (`application/json`):
+  | Field | Type | Required | Description / Validation Rules |
+  | :--- | :--- | :--- | :--- |
+  | `email` | string | Yes | Must be a valid email format. |
+  | `code` | string | Yes | Exactly 6 digits, must contain only numbers. |
+  | `newPassword` | string | Yes | Min 8 characters, must contain at least one number. |
+
+#### Responses
+##### Success (`200 OK`)
+- **Response Body Structure**:
+  - `message` (string): Confirmation message.
+- **Example Response**:
+  ```json
+  {
+    "message": "Password updated successfully. You can now log in."
+  }
+  ```
+
+##### Error: Invalid or Expired Reset Code (`400 Bad Request`)
+- **Possible Message List**:
+  - `"Reset code expired or invalid"`
+  - `"Invalid reset code"`
+- **Example Response**:
+  ```json
+  {
+    "message": "Invalid reset code"
+  }
+  ```
+
+---
+
+### 9. Logout
+Revokes a specific refresh token.
+
+- **HTTP Method**: `POST`
+- **Path**: `/auth/logout`
+- **Authentication**: Protected (Requires `Authorization: Bearer <accessToken>`)
+- **Headers**:
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: application/json`
+
+#### Request Parameters
+- **Body Payload** (`application/json`):
+  | Field | Type | Required | Description / Validation Rules |
+  | :--- | :--- | :--- | :--- |
+  | `refreshToken` | string | Yes | The UUID refresh token to revoke. |
+
+#### Responses
+##### Success (`200 OK`)
+- **Response Body Structure**:
+  - `message` (string): Confirmation message.
+- **Example Response**:
+  ```json
+  {
+    "message": "Logged out successfully"
+  }
+  ```
+
+---
+
+### 10. Logout All Devices
+Revokes all refresh tokens registered to the authenticated merchant.
+
+- **HTTP Method**: `POST`
+- **Path**: `/auth/logout-all`
+- **Authentication**: Protected (Requires `Authorization: Bearer <accessToken>`)
+- **Headers**:
+  - `Authorization: Bearer <accessToken>`
+
+#### Request Parameters
+- **Body Payload**: None
+
+#### Responses
+##### Success (`200 OK`)
+- **Response Body Structure**:
+  - `message` (string): Confirmation message.
+- **Example Response**:
+  ```json
+  {
+    "message": "Logged out from all devices"
   }
   ```
