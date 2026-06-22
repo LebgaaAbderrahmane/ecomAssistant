@@ -17,6 +17,8 @@
     "@ecomassistant/shared": "workspace:*",
     "@prisma/client": "^5.22.0",
     "@sendgrid/mail": "^8.1.6",
+    "@shopify/shopify-api": "^13.0.0",
+    "axios": "^1.18.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.78.1",
     "cookie-parser": "^1.4.7",

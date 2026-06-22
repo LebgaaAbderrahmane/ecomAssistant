@@ -18,7 +18,6 @@ model Merchant {
   isVerified   Boolean @default(false)
   verificationTokenHash String?
   verificationTokenExpiresAt  DateTime?
-  // One-to-One Relationships
   storeConnection StoreConnection?
   shop            Shop?
   agentConfig     AgentConfig?
@@ -39,19 +38,32 @@ model Shop {
 }
 
 model StoreConnection {
-  id          String    @id @default(cuid())
-  merchantId  String    @unique // Changed from many-to-one to unique for 1:1
-  platform    String    // shopify | woocommerce
-  storeName   String
-  storeUrl    String
-  accessToken String?   // encrypted OAuth token or API key
-  isConnected Boolean   @default(false)
-  lastSyncAt  DateTime?
-  createdAt   DateTime  @default(now())
+  id String @id @default(cuid())
+
+  merchantId String @unique
+
+  platform Platform
+
+  storeName String
+  storeUrl String
+
+  accessToken String?
+
+  shopifyDomain String?
+
+  scopes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@index([merchantId])
+}
+
+enum Platform {
+  SHOPIFY
+  WOOCOMMERCE
 }
 
 model AgentConfig {
