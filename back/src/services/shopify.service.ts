@@ -160,12 +160,25 @@ export const verifyWebhookHmac = (rawBody: Buffer, hmacHeader: string): boolean 
 export const exchangeCodeForToken = async (
   shop: string,
   code: string
-): Promise<{ access_token: string; scope: string }> => {
-  const response = await axios.post(`https://${shop}/admin/oauth/access_token`, {
-    client_id: SHOPIFY_API_KEY,
-    client_secret: SHOPIFY_API_SECRET,
+): Promise<{
+  access_token: string;
+  scope: string;
+  expires_in?: number;
+  refresh_token?: string;
+  refresh_token_expires_in?: number;
+}> => {
+  const params = new URLSearchParams({
+    client_id: SHOPIFY_API_KEY!,
+    client_secret: SHOPIFY_API_SECRET!,
     code,
+    expiring: "1",   // ← request expiring token
   });
+
+  const response = await axios.post(
+    `https://${shop}/admin/oauth/access_token`,
+    params.toString(),
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+  );
   return response.data;
 };
 
@@ -193,42 +206,53 @@ export const saveStoreConnection = async (
   merchantId: string,
   shop: string,
   accessToken: string,
-  scope: string
+  scope: string,
+  expiresIn?: number,
+  refreshToken?: string,
+  refreshTokenExpiresIn?: number
 ): Promise<void> => {
   const encryptedToken = encryptToken(accessToken);
+  const encryptedRefreshToken = refreshToken ? encryptToken(refreshToken) : null;
+
+  const now = new Date();
+  const tokenExpiresAt = expiresIn
+    ? new Date(now.getTime() + expiresIn * 1000)
+    : null;
+  const refreshTokenExpiresAt = refreshTokenExpiresIn
+    ? new Date(now.getTime() + refreshTokenExpiresIn * 1000)
+    : null;
 
   const existing = await prisma.storeConnection.findFirst({
     where: { merchantId },
   });
 
+  const tokenData = {
+    storeName: shop,
+    storeUrl: `https://${shop}`,
+    shopifyDomain: shop,
+    accessToken: encryptedToken,
+    scopes: scope,
+    platform: "SHOPIFY",
+    ...(encryptedRefreshToken && { refreshToken: encryptedRefreshToken }),
+    ...(tokenExpiresAt && { tokenExpiresAt }),
+    ...(refreshTokenExpiresAt && { refreshTokenExpiresAt }),
+    updatedAt: now,
+  };
+
   if (existing) {
     await prisma.storeConnection.update({
       where: { id: existing.id },
-      data: {
-        storeName: shop,
-        storeUrl: `https://${shop}`,
-        shopifyDomain: shop,
-        accessToken: encryptedToken,
-        scopes: scope,
-        platform: "SHOPIFY",
-        updatedAt: new Date(),
-      },
+      data: tokenData,
     });
   } else {
     await prisma.storeConnection.create({
       data: {
         merchantId,
-        platform: "SHOPIFY",
-        storeName: shop,
-        storeUrl: `https://${shop}`,
-        shopifyDomain: shop,
-        accessToken: encryptedToken,
-        scopes: scope,
+        ...tokenData,
       },
     });
   }
 };
-
 export const disconnectStore = async (merchantId: string): Promise<void> => {
   const connection = await prisma.storeConnection.findFirst({
     where: { merchantId },
@@ -389,12 +413,32 @@ const mapFinancialStatus = (status: string): string => {
 // Webhook registration
 // ─────────────────────────────────────────────
 
+// shopify.service.ts
+
 export const registerWebhook = async (
   shop: string,
   accessToken: string
 ): Promise<void> => {
+  const headers = { "X-Shopify-Access-Token": accessToken };
+  const base = `https://${shop}/admin/api/2025-07`; // ← fix version
+
+  // Check if already registered to avoid 422 duplicate error
+  const { data: existing } = await axios.get(
+    `${base}/webhooks.json?topic=orders/create`,
+    { headers }
+  );
+
+  const alreadyExists = existing.webhooks?.some(
+    (wh: any) => wh.address === `${APP_URL}/shopify/webhooks/orders`
+  );
+
+  if (alreadyExists) {
+    console.log("✅ Webhook already registered, skipping");
+    return;
+  }
+
   await axios.post(
-    `https://${shop}/admin/api/2024-01/webhooks.json`,
+    `${base}/webhooks.json`,
     {
       webhook: {
         topic: "orders/create",
@@ -402,8 +446,10 @@ export const registerWebhook = async (
         format: "json",
       },
     },
-    { headers: { "X-Shopify-Access-Token": accessToken } }
+    { headers }
   );
+
+  console.log("✅ Webhook registered");
 };
 
 const extractNextPageUrl = (linkHeader: string | undefined): string | null => {
@@ -422,3 +468,61 @@ export const getStoreConnectionByShop = async (shop: string) => {
   if (!connection) throw new Error(`No store connection found for domain ${shop}`);
   return connection;
 };
+
+// export const getValidToken = async (merchantId: string): Promise<string> => {
+//   const connection = await getStoreConnection(merchantId);
+
+//   const fiveMinutes = 5 * 60 * 1000;
+//   const isExpiringSoon =
+//     connection.tokenExpiresAt &&
+//     connection.tokenExpiresAt.getTime() < Date.now() + fiveMinutes;
+
+//   if (isExpiringSoon && connection.refreshToken) {
+//     const params = new URLSearchParams({
+//       client_id: SHOPIFY_API_KEY!,
+//       client_secret: SHOPIFY_API_SECRET!,
+//       grant_type: "refresh_token",
+//       refresh_token: decryptToken(connection.refreshToken),
+//     });
+
+//     const { data } = await axios.post(
+//       `https://${connection.shopifyDomain}/admin/oauth/access_token`,
+//       params.toString(),
+//       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+//     );
+
+//     await saveStoreConnection(
+//       merchantId,
+//       connection.shopifyDomain,
+//       data.access_token,
+//       connection.scopes,
+//       data.expires_in,
+//       data.refresh_token,
+//       data.refresh_token_expires_in
+//     );
+
+//     return data.access_token;
+//   }
+
+//   return decryptToken(connection.accessToken);
+// };
+
+// export const syncShopData = async (
+//   merchantId: string,
+//   shop: string,
+//   accessToken: string
+// ): Promise<void> => {
+//   const headers = { "X-Shopify-Access-Token": accessToken };
+//   const base = `https://${shop}/admin/api/2026-04`;
+
+//   // Sync products only (orders require Protected Customer Data approval)
+//   let productUrl: string | null = `${base}/products.json?limit=250`;
+//   while (productUrl) {
+//     const { data, headers: resHeaders } = await axios.get(productUrl, { headers });
+//     await upsertProducts(merchantId, data.products);
+//     productUrl = extractNextPageUrl(resHeaders["link"]);
+//   }
+
+//   console.log(`✅ Product sync complete for ${shop}`);
+//   console.log(`⚠️  Order sync skipped — requires Protected Customer Data approval`);
+// };

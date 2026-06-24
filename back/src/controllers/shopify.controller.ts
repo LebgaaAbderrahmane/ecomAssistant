@@ -14,10 +14,9 @@ export async function authenticateShopify(req: Request, res: Response): Promise<
 }
 
 export async function callBack(req: Request, res: Response): Promise<void> {
-   const { code, hmac, shop, state } = req.query as Record<string, string>;
+    const { code, hmac, shop, state } = req.query as Record<string, string>;
     const frontUrl = process.env.FRONTEND_URL!;
 
-    // ✅ Log to confirm what you're receiving
     console.log("Callback query params:", req.query);
     console.log("HMAC received:", hmac);
 
@@ -28,24 +27,36 @@ export async function callBack(req: Request, res: Response): Promise<void> {
     }
 
     try {
-        // 2. Consume nonce (validates state & returns metadata saved in Redis)
         const { merchantId } = await shopifyService.consumeNonce(state, shop);
 
-        // 3. Exchange authorization code for clean access token
-        const { access_token, scope } = await shopifyService.exchangeCodeForToken(shop, code);
+        const {
+            access_token,
+            scope,
+            expires_in,
+            refresh_token,
+            refresh_token_expires_in,
+        } = await shopifyService.exchangeCodeForToken(shop, code);
 
-        // 4. Save/Encrypt connection metadata
-        await shopifyService.saveStoreConnection(merchantId, shop, access_token, scope);
+        await shopifyService.saveStoreConnection(
+            merchantId,
+            shop,
+            access_token,
+            scope,
+            expires_in,
+            refresh_token,
+            refresh_token_expires_in
+        );
 
-        // 5. Fire background processes safely
+        // Fire-and-forget — neither blocks the response nor fails auth if they error
         shopifyService.syncShopData(merchantId, shop, access_token).catch(console.error);
-        await shopifyService.registerWebhook(shop, access_token);
+        shopifyService.registerWebhook(shop, access_token).catch((err) =>
+            console.error("Webhook registration failed (non-fatal):", err)
+        );
 
-        // Success redirect
-        res.redirect(`${frontUrl}/dashboard?shopify=success`);
+        res.status(200).json({ message: "auth and syncing succeeded" });
     } catch (err) {
         console.error("Shopify OAuth error:", err);
-        res.redirect(`${frontUrl}/dashboard?shopify=error`);
+        res.status(400).json({ message: "auth and syncing failed", err });
     }
 }
 
@@ -60,7 +71,6 @@ export async function handleOrderWebhook(req: Request, res: Response): Promise<v
     }
 
     try {
-        // Fetch connection dynamically from DB to retrieve matching merchantId
         const connection = await shopifyService.getStoreConnectionByShop(shop);
         const order = JSON.parse((req.body as Buffer).toString());
         

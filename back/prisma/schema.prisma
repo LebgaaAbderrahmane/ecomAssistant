@@ -48,6 +48,9 @@ model StoreConnection {
   storeUrl String
 
   accessToken String?
+  refreshToken          String?
+  tokenExpiresAt        DateTime?
+  refreshTokenExpiresAt DateTime?
 
   shopifyDomain String?
 
