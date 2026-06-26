@@ -22,6 +22,7 @@ model Merchant {
   storeConnection StoreConnection?
   shop            Shop?
   agentConfig     AgentConfig?
+  whatsAppSession WhatsAppSession?
 
   // One-to-Many Relationships
   conversations Conversation[]
@@ -150,6 +151,18 @@ model Message {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
+}
+
+model WhatsAppSession {
+  id          String   @id @default(cuid())
+  merchantId  String   @unique
+  sessionId   String
+  status      String   @default("disconnected")
+  phoneNumber String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 }
 
 model WilayaDeliveryCost {

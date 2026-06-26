@@ -15,7 +15,11 @@ export const config = {
   redisUrl: env('REDIS_URL', 'redis://redis:6379'),
   isDev: env('NODE_ENV', 'development') === 'development',
   JWT_SECRET: env('JWT_SECRET'),
-  JWT_EXPIRES_IN: env('JWT_EXPIRES_IN')
+  JWT_EXPIRES_IN: env('JWT_EXPIRES_IN'),
+  openwaUrl: env('OPENWA_URL', 'http://openwa:2785'),
+  openwaApiKey: env('OPENWA_API_KEY', 'dev-admin-key'),
+  openwaWebhookSecret: env('OPENWA_WEBHOOK_SECRET', 'whsec_dev'),
+  appUrl: env('APP_URL', 'http://localhost:3000'),
 }
 
 export const redisConnection: ConnectionOptions = {

@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Save, RotateCcw, Smartphone, Store, Phone, MapPin } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Save, RotateCcw, Smartphone, Store, Phone, MapPin, Loader2 } from 'lucide-react'
 import { Button } from '../../components/ui/Button.js'
 import { Badge } from '../../components/ui/Badge.js'
+import { api } from '../../lib/api.js'
 
 type SettingsTab = 'agent' | 'store' | 'whatsapp' | 'wilaya'
 
@@ -153,18 +154,107 @@ function StoreConnectionTab() {
 }
 
 function WhatsAppTab() {
+  const [status, setStatus] = useState<string | null>(null)
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [qrBase64, setQrBase64] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [error, setError] = useState('')
+
+  const fetchStatus = async () => {
+    try {
+      const data = await api.get<{ status: string; phoneNumber: string | null }>('/whatsapp/session/status')
+      setStatus(data.status)
+      setPhoneNumber(data.phoneNumber)
+    } catch {
+      setStatus('disconnected')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchStatus() }, [])
+
+  const connect = async () => {
+    setConnecting(true)
+    setError('')
+    try {
+      const { qrBase64 } = await api.post<{ qrBase64: string }>('/whatsapp/session', {})
+      setQrBase64(qrBase64)
+
+      const poll = setInterval(async () => {
+        try {
+          const data = await api.get<{ status: string; phoneNumber: string | null }>('/whatsapp/session/status')
+          if (data.status === 'connected') {
+            clearInterval(poll)
+            setQrBase64(null)
+            setStatus('connected')
+            setPhoneNumber(data.phoneNumber)
+          }
+        } catch { /* keep polling */ }
+      }, 3000)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur')
+      setConnecting(false)
+    }
+  }
+
+  const disconnect = async () => {
+    try {
+      await api.delete('/whatsapp/session')
+      setStatus('disconnected')
+      setPhoneNumber(null)
+    } catch { /* ignore */ }
+  }
+
+  if (loading) return <div className="text-sm text-gray-500 py-4">Chargement...</div>
+
+  if (qrBase64) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-lg font-semibold text-gray-900">Connecter WhatsApp</h2>
+        <div className="flex flex-col items-center gap-4 rounded-md border border-gray-200 p-6">
+          <p className="text-sm font-medium text-gray-700">Scannez ce code QR avec WhatsApp</p>
+          <img src={`data:image/png;base64,${qrBase64}`} alt="QR" className="h-64 w-64" />
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            En attente de scan...
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => { setQrBase64(null); setConnecting(false) }}>
+            Annuler
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-gray-900">WhatsApp</h2>
       <div className="rounded-md border border-gray-200 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-900">+213 555 12 34 56</p>
-            <p className="text-[13px] text-gray-500">Boutique Al Manar</p>
+            <p className="text-sm font-medium text-gray-900">
+              {phoneNumber || 'Aucun numéro connecté'}
+            </p>
+            {phoneNumber && (
+              <p className="text-[13px] text-gray-500">WhatsApp Business</p>
+            )}
           </div>
-          <Badge variant="danger">Déconnecté</Badge>
+          <Badge variant={status === 'connected' ? 'success' : 'danger'}>
+            {status === 'connected' ? 'Connecté' : 'Déconnecté'}
+          </Badge>
         </div>
-        <Button variant="secondary" className="mt-4">Reconnecter avec Meta</Button>
+        {status === 'connected' ? (
+          <Button variant="secondary" className="mt-4" onClick={disconnect}>
+            Déconnecter
+          </Button>
+        ) : (
+          <Button variant="secondary" className="mt-4" onClick={connect} loading={connecting}>
+            Connecter WhatsApp
+          </Button>
+        )}
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </div>
 
       <div>
