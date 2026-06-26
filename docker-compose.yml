@@ -43,22 +43,6 @@ services:
       redis:
         condition: service_healthy
 
-  openwa:
-    image: rmyndharis/openwa:latest
-    restart: unless-stopped
-    ports:
-      - "2785:2785"
-    environment:
-      ALLOW_DEV_API_KEY: "true"
-      WA_API_KEY: "${OPENWA_API_KEY}"
-      ENGINE_TYPE: "baileys"
-      QUEUE_ENABLED: "true"
-      REDIS_URL: "${REDIS_URL}"
-    volumes:
-      - openwa_data:/app/data
-    depends_on:
-      - redis
-
   front:
     build:
       context: .
@@ -75,4 +59,3 @@ services:
 
 volumes:
   postgres_data:
-  openwa_data:
