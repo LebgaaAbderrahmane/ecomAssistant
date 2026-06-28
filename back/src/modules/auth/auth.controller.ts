@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction, type CookieOptions } from "express";
-import * as authService from "../services/auth.service";
-import { AuthenticatedRequest } from "../middlewares/auth.middlware";
+import * as authService from "./auth.service";
+import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import crypto from "crypto";
 
 const COOKIE_OPTIONS: CookieOptions = {

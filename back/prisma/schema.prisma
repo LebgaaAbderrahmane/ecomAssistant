@@ -9,62 +9,59 @@ datasource db {
 }
 
 model Merchant {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  isVerified   Boolean @default(false)
-  verificationTokenHash String?
-  verificationTokenExpiresAt  DateTime?
-  storeConnection StoreConnection?
-  shop            Shop?
-  agentConfig     AgentConfig?
+  id                         String    @id @default(cuid())
+  email                      String    @unique
+  passwordHash               String
+  name                       String
+  shopName                   String
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  isVerified                 Boolean   @default(false)
+  verificationTokenHash      String?
+  verificationTokenExpiresAt DateTime?
 
-  // One-to-Many Relationships
-  conversations Conversation[]
-  products      Product[]
-  orders        Order[]
-  wilayaCosts   WilayaDeliveryCost[]
-}
-
-model Shop {
-  id         String   @id @default(cuid())
-  merchantId String   @unique // Ensures 1:1 relationship
-  shopName   String
-
-  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  storeConnections StoreConnection[]
+  agentConfig      AgentConfig?
+  conversations    Conversation[]
+  products         Product[]
+  orders           Order[]
+  wilayaCosts      WilayaDeliveryCost[]
 }
 
 model StoreConnection {
-  id String @id @default(cuid())
+  id         String   @id @default(cuid())
+  merchantId String
+  source     Source
+  storeName  String
+  storeUrl   String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  merchantId String @unique
-
-  platform Platform
-
-  storeName String
-  storeUrl String
-
-  accessToken String?
-  refreshToken          String?
-  tokenExpiresAt        DateTime?
-  refreshTokenExpiresAt DateTime?
-
-  shopifyDomain String?
-
-  scopes String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant          Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  shopifyConnection ShopifyConnection?
 
   @@index([merchantId])
 }
 
-enum Platform {
+model ShopifyConnection {
+  id                    String    @id @default(cuid())
+  storeConnectionId     String    @unique
+  shopDomain            String
+  accessToken           String
+  refreshToken          String?
+  tokenExpiresAt        DateTime?
+  refreshTokenExpiresAt DateTime?
+  scopes                String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  storeConnection StoreConnection @relation(fields: [storeConnectionId], references: [id], onDelete: Cascade)
+
+  @@index([shopDomain])
+}
+
+enum Source {
   SHOPIFY
   WOOCOMMERCE
 }
@@ -74,7 +71,7 @@ model AgentConfig {
   merchantId       String   @unique
   defaultLanguage  String   @default("auto")
   tone             String   @default("friendly")
-  followUpDelays   Int[]    @default([2, 24, 48])
+  followUpDelays   Json
   maxFollowUps     Int      @default(3)
   deliveryProvider String?
   isActive         Boolean  @default(false)
@@ -91,8 +88,8 @@ model Product {
   description       String   @default("")
   price             Float
   currency          String   @default("DZD")
-  images            String[] @default([])
-  variants          Json     @default("[]")
+  images            Json
+  variants          Json
   stockStatus       String   @default("in_stock")
   category          String?
   createdAt         DateTime @default(now())
@@ -102,6 +99,7 @@ model Product {
 
   @@unique([merchantId, platformProductId])
   @@index([merchantId])
+  @@index([merchantId, createdAt, id]) 
 }
 
 model Order {
@@ -157,7 +155,7 @@ model Conversation {
 model Message {
   id             String   @id @default(cuid())
   conversationId String
-  role           String   // agent | customer | system
+  role           String
   content        String
   contentType    String   @default("text")
   createdAt      DateTime @default(now())

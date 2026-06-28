@@ -1,8 +1,8 @@
 import express, { Router } from "express";
-import * as controller from "../controllers/auth.controller";
-import { validate } from "../middlewares/validation.middleware";
-import { authenticate } from "../middlewares/auth.middlware";
-import { signupLimiter, loginLimiter, otpLimiter } from "../middlewares/rateLimiter";
+import * as controller from "./auth.controller";
+import { validate } from "../../middlwares/validation.middleware";
+import { authenticate } from "../../middlwares/auth.middlware";
+import { signupLimiter, loginLimiter, otpLimiter } from "../../middlwares/rateLimiter";
 import {
   signupSchema,
   verifyEmailSchema,
@@ -10,7 +10,7 @@ import {
   forgetPasswordSchema,
   resetPasswordSchema,
   refreshTokenSchema,
-} from "../validators/auth.validator";
+} from "../../validators/auth.validator";
 
 const router: Router = express.Router();
 
