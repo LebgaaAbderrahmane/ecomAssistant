@@ -3,11 +3,12 @@ import { Request, Response } from "express";
 import * as shopifyService from "./shopify.service";
 import { StoreConnectionFactory } from "../../../connections/StoreConnectionFactory";
 import { AuthenticatedRequest } from "../../../middlwares/auth.middlware"
+import { getMerchantIdFromToken } from "../../../lib/jwt";
 const { APP_URL } = process.env;
 
 export async function authenticateShopify(req: Request, res: Response): Promise<void> {
-  const { shop, merchantId } = req.query as Record<string, string>;
-
+  const { shop } = req.query as Record<string, string>;
+  const merchantId = getMerchantIdFromToken(req.headers.authorization!)
   try {
     // ShopifyConnection.connect() generates the install URL
     // We instantiate with empty storeConnectionId since it doesn't exist yet

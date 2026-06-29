@@ -50,3 +50,9 @@ export const verifyToken = (token: string): TokenPayload & { iat: number } => {
     iat: decoded.iat as number,
   };
 };
+
+
+export const getMerchantIdFromToken = (authorization: string): string => {
+  const token = authorization.replace(/^Bearer\s+/i, "");
+  return verifyToken(token).merchantId;
+};

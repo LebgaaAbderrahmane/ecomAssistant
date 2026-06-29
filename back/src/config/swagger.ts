@@ -9,4 +9,4 @@ const __dirname = path.dirname(__filename);
 
 export const swaggerSpec = yaml.load(
   fs.readFileSync(path.join(__dirname, 'swagger.yaml'), 'utf8')
-) as JsonObject;
+) as JsonObject
