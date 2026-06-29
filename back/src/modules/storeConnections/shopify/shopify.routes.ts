@@ -7,7 +7,7 @@ import { shopifyAuthSchema } from "../../../validators/shopify.validator"
 
 const router:Router = express.Router();
 
-router.get("/authenticate", authenticate, validate(shopifyAuthSchema,"query"), controller.authenticateShopify)
+router.get("/authenticate",authenticate, validate(shopifyAuthSchema,"query"), controller.authenticateShopify)
 router.get("/callback", controller.callBack); // called by shopify
 router.post("/webhooks/orders", controller.handleOrderWebhook); // called by shopify 
 router.post("/disconnect", authenticate, controller.disconnect);
