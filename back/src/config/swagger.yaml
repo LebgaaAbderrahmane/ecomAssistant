@@ -1,0 +1,270 @@
+openapi: 3.0.0
+info:
+  title: BrainForge API
+  version: 1.0.0
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Merchant:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        shopName:
+          type: string
+
+paths:
+  /auth/me:
+    get:
+      summary: Get current merchant
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Current merchant info
+        401:
+          description: Unauthorized
+
+  /auth/signup:
+    post:
+      summary: Register a new merchant
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, shopName]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                shopName:
+                  type: string
+      responses:
+        201:
+          description: Merchant created, OTP sent
+        400:
+          description: Validation error
+
+  /auth/verify-email:
+    post:
+      summary: Verify email with OTP
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp]
+              properties:
+                email:
+                  type: string
+                otp:
+                  type: string
+      responses:
+        200:
+          description: Email verified
+        400:
+          description: Invalid or expired OTP
+
+  /auth/login:
+    post:
+      summary: Merchant login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: Returns access + refresh tokens
+        401:
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        200:
+          description: New access token
+        401:
+          description: Invalid refresh token
+
+  /auth/forgot-password:
+    post:
+      summary: Send password reset OTP
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        200:
+          description: OTP sent
+        404:
+          description: Merchant not found
+
+  /auth/reset-password:
+    post:
+      summary: Reset password with OTP
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp, newPassword]
+              properties:
+                email:
+                  type: string
+                otp:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        200:
+          description: Password reset successful
+        400:
+          description: Invalid or expired OTP
+
+  /auth/logout:
+    post:
+      summary: Logout current session
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Logged out
+        401:
+          description: Unauthorized
+
+  /auth/logout-all:
+    post:
+      summary: Logout all sessions
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: All sessions terminated
+        401:
+          description: Unauthorized
+
+  /shopify/authenticate:
+    get:
+      summary: Initiate Shopify OAuth
+      tags: [Shopify]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: shop
+          required: true
+          schema:
+            type: string
+          description: Shopify store domain
+      responses:
+        302:
+          description: Redirect to Shopify OAuth
+        400:
+          description: Validation error
+
+  /shopify/callback:
+    get:
+      summary: Shopify OAuth callback (called by Shopify)
+      tags: [Shopify]
+      responses:
+        200:
+          description: OAuth complete
+
+  /shopify/webhooks/orders:
+    post:
+      summary: Shopify order webhook (called by Shopify)
+      tags: [Shopify]
+      responses:
+        200:
+          description: Webhook received
+
+  /shopify/disconnect:
+    post:
+      summary: Disconnect Shopify integration
+      tags: [Shopify]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Disconnected
+        401:
+          description: Unauthorized
+
+  /shopify/sync-orders:
+    get:
+      summary: Manually sync orders from Shopify
+      tags: [Shopify]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Orders synced
+        401:
+          description: Unauthorized
+
+  /orders:
+    get:
+      summary: List orders
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Paginated order list
+        401:
+          description: Unauthorized
