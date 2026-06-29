@@ -5,4 +5,5 @@
 
 */
 -- AlterTable
-ALTER TABLE "Merchant" ADD COLUMN     "shopName" TEXT NOT NULL;
+ALTER TABLE "Merchant" ADD COLUMN "shopName" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Merchant" ALTER COLUMN "shopName" DROP DEFAULT;

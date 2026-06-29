@@ -1,9 +1,15 @@
 const BASE_URL = ''
 
-export interface ApiError {
-  message: string
+export class ApiError extends Error {
   status: number
   errors?: { field: string; message: string }[]
+
+  constructor(message: string, status: number, errors?: { field: string; message: string }[]) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.errors = errors
+  }
 }
 
 // CSRF token
@@ -77,24 +83,22 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
           return retryRes.json()
         }
         const body = await retryRes.json().catch(() => ({}))
-        const error: ApiError = {
-          message: body.message || `Erreur ${retryRes.status}`,
-          status: retryRes.status,
-          errors: body.errors,
-        }
-        throw error
+        throw new ApiError(
+          body.message || `Erreur ${retryRes.status}`,
+          retryRes.status,
+          body.errors,
+        )
       }
 
       clearSession()
     }
 
     const body = await res.json().catch(() => ({}))
-    const error: ApiError = {
-      message: body.message || `Erreur ${res.status}`,
-      status: res.status,
-      errors: body.errors,
-    }
-    throw error
+    throw new ApiError(
+      body.message || `Erreur ${res.status}`,
+      res.status,
+      body.errors,
+    )
   }
 
   return res.json()
