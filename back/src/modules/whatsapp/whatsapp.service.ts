@@ -66,7 +66,7 @@ export interface Session {
 }
 
 export interface SessionQR {
-  qr: string;
+  qrCode: string;
 }
 
 export interface Webhook {
@@ -88,9 +88,17 @@ export const openwaService = {
     await request("POST", `/sessions/${sessionId}/start`);
   },
 
+  stopSession: async (sessionId: string): Promise<void> => {
+    await request("POST", `/sessions/${sessionId}/stop`);
+  },
+
+  logoutSession: async (sessionId: string): Promise<void> => {
+    await request("POST", `/sessions/${sessionId}/logout`);
+  },
+
   getQR: async (sessionId: string): Promise<string> => {
     const result = await request<SessionQR>("GET", `/sessions/${sessionId}/qr`);
-    return result.qr;
+    return result.qrCode;
   },
 
   getSession: async (sessionId: string): Promise<Session> => {
@@ -133,6 +141,11 @@ export const openwaService = {
       "GET",
       `/sessions/${sessionId}/webhooks`,
     );
+    return Array.isArray(result) ? result : [];
+  },
+
+  listSessions: async (): Promise<Session[]> => {
+    const result = await request<Session[]>("GET", "/sessions");
     return Array.isArray(result) ? result : [];
   },
 

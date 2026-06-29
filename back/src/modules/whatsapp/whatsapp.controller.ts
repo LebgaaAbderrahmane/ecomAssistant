@@ -75,7 +75,8 @@ export async function handleWebhook(
       }
 
       case "session.status": {
-        const status = data.status as string;
+        const rawStatus = data.status as string;
+        const status = rawStatus === "ready" ? "connected" : rawStatus;
 
         await prisma.whatsAppSession.updateMany({
           where: { sessionId },
@@ -125,8 +126,36 @@ export async function createSession(
       return res.status(409).json({ message: "Session already exists" });
     }
 
+    try {
+      const all = await openwaService.listSessions();
+      const stale = all.find(s => s.name === merchantId);
+      if (stale) {
+        try { await openwaService.stopSession(stale.id); } catch {}
+        try { await openwaService.logoutSession(stale.id); } catch {}
+        await openwaService.deleteSession(stale.id);
+      }
+    } catch {
+      // best-effort cleanup
+    }
+
     const session = await openwaService.createSession(merchantId);
-    const qr = await openwaService.getQR(session.id);
+    await openwaService.startSession(session.id);
+
+    let qr: string | null = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        qr = await openwaService.getQR(session.id);
+        if (qr) break;
+      } catch {
+        // QR not ready yet, retry
+      }
+    }
+    if (!qr) {
+      return res.status(502).json({ message: "QR code generation timeout" });
+    }
+
+    const rawQr = qr.replace(/^data:image\/png;base64,/, "");
 
     const webhookUrl = `${config.appUrl.replace(/\/+$/, "")}/whatsapp/webhook`;
     await openwaService.registerWebhook(
@@ -137,7 +166,7 @@ export async function createSession(
     );
 
     const qrKey = `whatsapp:qr:${merchantId}`;
-    await redis.set(qrKey, qr, { EX: 300 });
+    await redis.set(qrKey, rawQr, { EX: 300 });
 
     await prisma.whatsAppSession.create({
       data: {
@@ -147,7 +176,7 @@ export async function createSession(
       },
     });
 
-    return res.status(201).json({ qrBase64: qr });
+    return res.status(201).json({ qrBase64: rawQr });
   } catch (err) {
     next(err);
   }
@@ -188,7 +217,7 @@ export async function getSessionStatus(
     }
 
     return res.json({
-      status: currentStatus,
+      status: currentStatus === "ready" ? "connected" : currentStatus,
       phoneNumber: waSession.phoneNumber,
     });
   } catch (err) {
