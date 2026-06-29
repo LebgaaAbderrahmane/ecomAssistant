@@ -26,6 +26,7 @@ model Merchant {
   products         Product[]
   orders           Order[]
   wilayaCosts      WilayaDeliveryCost[]
+  whatsAppSession  WhatsAppSession?
 }
 
 model StoreConnection {
@@ -176,4 +177,16 @@ model WilayaDeliveryCost {
 
   @@unique([merchantId, wilayaCode])
   @@index([merchantId])
+}
+
+model WhatsAppSession {
+  id          String   @id @default(cuid())
+  merchantId  String   @unique
+  sessionId   String
+  status      String   @default("disconnected")
+  phoneNumber String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 }
