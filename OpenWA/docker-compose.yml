@@ -1,0 +1,264 @@
+# OpenWA - Docker Compose Configuration
+# Smart Orchestration with Profiles
+
+services:
+  # ===== CORE: Docker Socket Proxy (sole container with /var/run/docker.sock access) =====
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: openwa-docker-proxy
+    restart: unless-stopped
+    # Only on the isolated internal network — reachable solely by openwa-api, NOT the
+    # dashboard or any other peer (finding H6). `internal: true` also denies the proxy
+    # outbound access; it only needs the locally-mounted docker socket.
+    networks:
+      - internal-docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      VOLUMES: 1
+      INFO: 1
+      PING: 1
+      POST: 1
+      DELETE: 1
+      # Everything else is denied by default (AUTH, SECRETS, NETWORKS, PLUGINS, SWARM, TASKS, SERVICES, CONFIGS, NODES, DISTRIBUTIONS)
+    labels:
+      - 'com.openwa.service=docker-proxy'
+      - 'com.openwa.core=true'
+
+  # ===== CORE: OpenWA Backend API =====
+  openwa-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openwa-api
+    restart: unless-stopped
+    # App network for datastores + the isolated network to reach
+    # docker-proxy (DOCKER_HOST). createService() in docker.service.ts attaches
+    # orchestrated containers to the literal `openwa-network`, so its name is fixed.
+    networks:
+      - openwa-network
+      - internal-docker
+    # Container hardening (finding H7): Chromium runs with --no-sandbox, so the
+    # container itself is the confinement boundary. cap_drop ALL + a minimal re-add
+    # ONLY for the root entrypoint's chown + gosu privilege-drop; once gosu setuids to
+    # the openwa user the node/Chromium process keeps NO effective capabilities.
+    # read_only rootfs (Chromium's profile lives on the writable /app/data volume;
+    # HOME=/tmp + tmpfs absorb stray writes). no-new-privileges blocks setuid escalation.
+    # NOTE: requires a live single-session smoke (Chromium must launch) before merge.
+    security_opt:
+      - 'no-new-privileges:true'
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN # entrypoint: chown -R openwa /app/data on the named volume
+      - DAC_OVERRIDE # entrypoint: chown across pre-existing files
+      - FOWNER
+      - SETGID # gosu: drop to the openwa group
+      - SETUID # gosu: drop to the openwa user
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 512
+    mem_limit: ${OPENWA_MEM_LIMIT:-2g} # tune up for many concurrent sessions
+    ports:
+      - '127.0.0.1:${API_PORT:-2785}:2785'
+    expose:
+      - '2785'
+    environment:
+      # Core
+      - NODE_ENV=${NODE_ENV:-production}
+      # Writable HOME on tmpfs so Chromium's HOME-relative writes don't hit the read_only rootfs
+      - HOME=/tmp
+      # Chromium resolves its home from the passwd entry (no /home/openwa), ignoring $HOME, so without
+      # writable, existing config/cache dirs it hard-crashes at launch on the read_only rootfs. Pin XDG
+      # to the tmpfs; the entrypoint pre-creates these owned by openwa. (#254)
+      - XDG_CONFIG_HOME=/tmp/.config
+      - XDG_CACHE_HOME=/tmp/.cache
+      - PORT=2785
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Database
+      - DATABASE_TYPE=${DATABASE_TYPE:-sqlite}
+      - DATABASE_NAME=${DATABASE_NAME:-/app/data/openwa.sqlite}
+      - DATABASE_HOST=${DATABASE_HOST:-postgres}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-openwa}
+      # No committed default secret (M16). Empty for the default sqlite setup; the
+      # postgres service requires it (:?) when that profile is active.
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
+      - DATABASE_SYNCHRONIZE=${DATABASE_SYNCHRONIZE:-false}
+      # Engine. Forwarded empty by default so the dashboard (Infrastructure > Engine) selects the
+      # active engine via data/.env.generated (defaults to whatsapp-web.js); main.ts treats a blank
+      # ENGINE_TYPE as unset, so .env.generated wins. Set ENGINE_TYPE in your .env/host to pin an
+      # engine (e.g. baileys) — a real value flows through here and keeps top precedence.
+      - ENGINE_TYPE=${ENGINE_TYPE:-}
+      - SESSION_DATA_PATH=${SESSION_DATA_PATH:-/app/data/sessions}
+      - PUPPETEER_HEADLESS=${PUPPETEER_HEADLESS:-true}
+      - PUPPETEER_ARGS=${PUPPETEER_ARGS:---no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu}
+      # Optional WhatsApp Web version override. Leave empty for whatsapp-web.js auto-selection.
+      # If a session hangs at "authenticating", set WWEBJS_WEB_VERSION to a known-good cached build
+      # from wppconnect-team/wa-version; latest|auto|off also forces auto-selection.
+      - WWEBJS_WEB_VERSION=${WWEBJS_WEB_VERSION:-}
+      - WWEBJS_WEB_VERSION_REMOTE_PATH=${WWEBJS_WEB_VERSION_REMOTE_PATH:-}
+      # Raise whatsapp-web.js's first-boot init wait (default 30000ms) on slow boots — e.g. WSL2 or
+      # low-resource hosts where the QR can time out before WA Web loads. Empty = default; see
+      # docs/12-troubleshooting-faq.md. (Without this line the var in .env never reaches the container.)
+      - WWEBJS_AUTH_TIMEOUT_MS=${WWEBJS_AUTH_TIMEOUT_MS:-}
+      # Storage
+      - STORAGE_TYPE=${STORAGE_TYPE:-local}
+      - STORAGE_LOCAL_PATH=${STORAGE_LOCAL_PATH:-/app/data/media}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-}
+      - S3_BUCKET=${S3_BUCKET:-openwa}
+      # Redis
+      - REDIS_ENABLED=${REDIS_ENABLED:-false}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      # Webhook
+      - WEBHOOK_TIMEOUT=${WEBHOOK_TIMEOUT:-10000}
+      - WEBHOOK_MAX_RETRIES=${WEBHOOK_MAX_RETRIES:-3}
+      - WEBHOOK_RETRY_DELAY=${WEBHOOK_RETRY_DELAY:-5000}
+      # Rate Limit
+      - RATE_LIMIT_TTL=${RATE_LIMIT_TTL:-60}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+      # Plugins
+      - PLUGINS_ENABLED=${PLUGINS_ENABLED:-true}
+      - PLUGINS_DIR=${PLUGINS_DIR:-/app/data/plugins}
+      # Security
+      - API_MASTER_KEY=${API_MASTER_KEY:-}
+      # Docker socket proxy (openwa-api never touches /var/run/docker.sock directly)
+      - DOCKER_HOST=tcp://docker-proxy:2375
+    volumes:
+      - openwa-data:/app/data
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+    depends_on:
+      docker-proxy:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:2785/api/health/ready', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - 'com.openwa.service=api'
+      - 'com.openwa.core=true'
+
+  # The dashboard SPA is now bundled into the openwa-api image and served by NestJS on the
+  # same port (2785) — there is no separate dashboard container. Reach it at the openwa-api
+  # port directly; put your own TLS reverse proxy (nginx/Caddy/cloud LB) in front if needed.
+
+  # ===== OPTIONAL: Built-in PostgreSQL =====
+  postgres:
+    image: postgres:16-alpine
+    container_name: openwa-postgres
+    profiles: ['postgres', 'full']
+    restart: unless-stopped
+    networks:
+      - openwa-network
+    security_opt:
+      - 'no-new-privileges:true'
+    environment:
+      POSTGRES_USER: ${DATABASE_USERNAME:-openwa}
+      # M16: no committed default secret. Empty unless the operator sets it; the postgres
+      # image refuses to initialize with an empty password (clear fail-fast), and the app's
+      # production boot guard rejects empty/placeholder secrets before startup.
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-}
+      POSTGRES_DB: ${DATABASE_NAME:-openwa}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DATABASE_USERNAME:-openwa}']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    labels:
+      - 'com.openwa.service=database'
+      - 'com.openwa.builtin=true'
+
+  # ===== OPTIONAL: Built-in Redis =====
+  redis:
+    image: redis:7-alpine
+    container_name: openwa-redis
+    profiles: ['redis', 'full']
+    restart: unless-stopped
+    networks:
+      - openwa-network
+    security_opt:
+      - 'no-new-privileges:true'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    labels:
+      - 'com.openwa.service=cache'
+      - 'com.openwa.builtin=true'
+
+  # ===== OPTIONAL: Built-in MinIO (S3-compatible) =====
+  minio:
+    image: minio/minio
+    container_name: openwa-minio
+    profiles: ['minio', 'full']
+    restart: unless-stopped
+    networks:
+      - openwa-network
+    security_opt:
+      - 'no-new-privileges:true'
+    command: server /data --console-address ":9001"
+    environment:
+      # M16: no committed default creds. MinIO refuses to start with empty root creds
+      # (clear fail-fast); the app's production boot guard rejects empty/placeholder secrets.
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-}
+    volumes:
+      - minio-data:/data
+    ports:
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      - 'com.openwa.service=storage'
+      - 'com.openwa.builtin=true'
+
+volumes:
+  openwa-data:
+    driver: local
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+
+networks:
+  # Application network — datastores and openwa-api. Keep the name `openwa-network`:
+  # docker.service.ts attaches orchestrated containers to it by literal name.
+  openwa-network:
+    name: openwa-network
+  # Isolated network for the Docker socket proxy. `internal: true` means no external
+  # connectivity; only openwa-api joins it, so nothing else can reach docker-proxy:2375.
+  internal-docker:
+    name: openwa-internal-docker
+    internal: true

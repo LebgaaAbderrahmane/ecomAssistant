@@ -9,3 +9,8 @@ coverage/
 .pnpm-store/
 *.tsbuildinfo
 
+# OpenWA
+OpenWA/data/
+OpenWA/.api-key
+OpenWA/.env.generated
+OpenWA/.wwebjs_cache/

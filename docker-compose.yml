@@ -58,5 +58,27 @@ services:
     depends_on:
       - back
 
+  openwa:
+    build:
+      context: ./OpenWA
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "2785:2785"
+    environment:
+      - QUEUE_ENABLED=false
+      - ALLOW_DEV_API_KEY=true
+      - ENGINE_TYPE=baileys
+      - SSRF_ALLOWED_HOSTS=back
+    volumes:
+      - openwa_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2785/api/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 volumes:
   postgres_data:
+  openwa_data:
