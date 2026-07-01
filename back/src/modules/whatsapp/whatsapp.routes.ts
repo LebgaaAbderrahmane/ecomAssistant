@@ -1,8 +1,8 @@
-import { Router } from "express";
+import express,{ Router } from "express";
 import * as controller from "./whatsapp.controller";
 import { authenticate } from "../../middlwares/auth.middlware";
 
-const router = Router();
+const router:Router = express.Router();
 
 router.post("/webhook", controller.handleWebhook);
 router.post("/session", authenticate, controller.createSession);
