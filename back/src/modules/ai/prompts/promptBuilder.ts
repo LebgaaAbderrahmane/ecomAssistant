@@ -1,11 +1,12 @@
 import { INTENT_EXTRACTION_RULES, REPLY_GENERATION_RULES } from './systemPrompts';
+import { ConversationMemory } from '../agent.service';
 
 // unchanged — LLM #1's context
 export interface AgentContext {
   state: string;
   allowedIntents: string[];
   allowedTools: string[];
-  memory: Record<string, unknown>;
+  memory: ConversationMemory;
 }
 
 export function buildIntentPrompt(ctx: AgentContext): string {
@@ -27,7 +28,7 @@ export interface ReplyContext {
   conversationAct: string;
   entities: Record<string, unknown>;
   toolResult: Record<string, unknown> | null; // null = no tool ran / not available yet
-  memory: Record<string, unknown>;
+  memory:ConversationMemory;
 }
 
 export function buildReplyPrompt(ctx: ReplyContext): string {

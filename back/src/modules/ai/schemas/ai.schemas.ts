@@ -17,4 +17,9 @@ export const LLMResponseSchema = z.object({
   toolSuggestion: ToolNameSchema.nullable().default(null),
 });
 
+export const ReplyResponseSchema = z.object({
+  response: z.string().min(1),
+});
+
+export type ReplyResponse = z.infer<typeof ReplyResponseSchema>;
 export type LLMResponse = z.infer<typeof LLMResponseSchema>;
