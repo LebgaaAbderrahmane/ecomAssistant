@@ -13,7 +13,6 @@ export const LLMResponseSchema = z.object({
   conversationAct: ConversationActSchema,
   entities: EntitiesSchema,
   confidence: z.number().min(0).max(1),
-  reply: z.string().min(1),
   // null when the turn doesn't need a tool (e.g. small talk, clarification)
   toolSuggestion: ToolNameSchema.nullable().default(null),
 });

@@ -1,4 +1,4 @@
-import { PERSONA_RULES } from './systemPrompts';
+import { INTENT_EXTRACTION_RULES } from './systemPrompts';
 
 // Kept as plain strings for now rather than importing from stateMachine/states.ts,
 // since that file isn't built yet — swap these for the real enums once
@@ -13,7 +13,7 @@ export interface AgentContext {
 
 export function buildSystemPrompt(ctx: AgentContext): string {
   return [
-    PERSONA_RULES,
+    INTENT_EXTRACTION_RULES,
     '',
     `Current conversation state: ${ctx.state}`,
     `Allowed intents right now: ${ctx.allowedIntents.join(', ')}`,
