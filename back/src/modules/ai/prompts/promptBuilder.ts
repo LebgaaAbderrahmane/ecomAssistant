@@ -1,23 +1,47 @@
-import { INTENT_EXTRACTION_RULES } from './systemPrompts';
+import { INTENT_EXTRACTION_RULES, REPLY_GENERATION_RULES } from './systemPrompts';
 
-// Kept as plain strings for now rather than importing from stateMachine/states.ts,
-// since that file isn't built yet — swap these for the real enums once
-// stateMachine/states.ts and tools/registry.ts exist, so this stays a single
-// source of truth instead of drifting.
+// unchanged — LLM #1's context
 export interface AgentContext {
-  state: string; // ConversationState, once states.ts exists
-  allowedIntents: string[]; // from stateMachine/transitions.ts, §4.1
-  allowedTools: string[]; // from tools/registry.ts, filtered by state
-  memory: Record<string, unknown>; // short-term memory object, §5.1
+  state: string;
+  allowedIntents: string[];
+  allowedTools: string[];
+  memory: Record<string, unknown>;
 }
 
-export function buildSystemPrompt(ctx: AgentContext): string {
+export function buildIntentPrompt(ctx: AgentContext): string {
   return [
     INTENT_EXTRACTION_RULES,
     '',
     `Current conversation state: ${ctx.state}`,
     `Allowed intents right now: ${ctx.allowedIntents.join(', ')}`,
     `Allowed tools right now: ${ctx.allowedTools.length ? ctx.allowedTools.join(', ') : 'none'}`,
+    '',
+    'Context (memory):',
+    JSON.stringify(ctx.memory, null, 2),
+  ].join('\n');
+}
+
+// LLM #2's context — what happened, not what's allowed to happen
+export interface ReplyContext {
+  intent: string;
+  conversationAct: string;
+  entities: Record<string, unknown>;
+  toolResult: Record<string, unknown> | null; // null = no tool ran / not available yet
+  memory: Record<string, unknown>;
+}
+
+export function buildReplyPrompt(ctx: ReplyContext): string {
+  return [
+    REPLY_GENERATION_RULES,
+    '',
+    `Customer intent: ${ctx.intent}`,
+    `Conversation tone: ${ctx.conversationAct}`,
+    'Extracted entities:',
+    JSON.stringify(ctx.entities, null, 2),
+    '',
+    ctx.toolResult
+      ? `Tool result:\n${JSON.stringify(ctx.toolResult, null, 2)}`
+      : 'No tool result available — do not state facts you do not have.',
     '',
     'Context (memory):',
     JSON.stringify(ctx.memory, null, 2),
