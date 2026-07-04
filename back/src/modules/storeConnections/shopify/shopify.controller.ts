@@ -2,23 +2,28 @@
 import { Request, Response } from "express";
 import * as shopifyService from "./shopify.service";
 import { StoreConnectionFactory } from "../../../connections/StoreConnectionFactory";
-import { AuthenticatedRequest } from "../../../middlwares/auth.middlware"
-import { getMerchantIdFromToken } from "../../../lib/jwt";
+import { AuthenticatedRequest } from "../../../middlwares/auth.middlware";
 const { APP_URL } = process.env;
 
-export async function authenticateShopify(req: Request, res: Response): Promise<void> {
+export async function authenticateShopify(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
   const { shop } = req.query as Record<string, string>;
-  const merchantId = getMerchantIdFromToken(req.headers.authorization!)
+  const merchantId = req.merchant!.merchantId;
   try {
     // ShopifyConnection.connect() generates the install URL
     // We instantiate with empty storeConnectionId since it doesn't exist yet
-    const connection = new (await import("../../../connections/ShopifyConnection")).ShopifyConnection(
+    const connection = new (
+      await import("../../../connections/ShopifyConnection")
+    ).ShopifyConnection(
       merchantId,
       "", // no storeConnectionId yet — connect() only needs merchantId + shop
-      shop
+      shop,
     );
 
     const installUrl = await connection.connect(shop);
+    console.log("Install URL:", installUrl);
     res.redirect(installUrl);
   } catch (err) {
     console.error("Installation initiation error:", err);
@@ -26,7 +31,10 @@ export async function authenticateShopify(req: Request, res: Response): Promise<
   }
 }
 
-export async function handleOrderWebhook(req: Request, res: Response): Promise<void> {
+export async function handleOrderWebhook(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const hmac = req.headers["x-shopify-hmac-sha256"] as string;
   const shop = req.headers["x-shopify-shop-domain"] as string;
   console.log("the order webhooks was called");
@@ -59,9 +67,11 @@ export async function handleOrderWebhook(req: Request, res: Response): Promise<v
   }
 }
 
-
-export async function disconnect(req: Request, res: Response): Promise<void> {
-  const { merchantId } = req.body;
+export async function disconnect(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const merchantId = req.merchant!.merchantId;
 
   try {
     await shopifyService.disconnectStore(merchantId);
@@ -71,7 +81,6 @@ export async function disconnect(req: Request, res: Response): Promise<void> {
     res.status(500).json({ error: "Failed to disconnect store." });
   }
 }
-
 
 export async function callBack(req: Request, res: Response): Promise<void> {
   const { code, shop, state } = req.query as Record<string, string>;
@@ -102,24 +111,30 @@ export async function callBack(req: Request, res: Response): Promise<void> {
       scope,
       expires_in,
       refresh_token,
-      refresh_token_expires_in
+      refresh_token_expires_in,
     );
 
     const connection = await StoreConnectionFactory.create(storeConnectionId);
 
     // Register webhooks before considering the connection ready
-    await connection.registerWebhooks().catch((err) =>
-      console.error("[Shopify] Webhook registration failed:", err)
-    );
+    await connection
+      .registerWebhooks()
+      .catch((err) =>
+        console.error("[Shopify] Webhook registration failed:", err),
+      );
 
     // Run syncs in the background
-    connection.syncProducts().catch((err) =>
-      console.error("[Shopify] Background product sync failed:", err)
-    );
+    connection
+      .syncProducts()
+      .catch((err) =>
+        console.error("[Shopify] Background product sync failed:", err),
+      );
 
-    connection.syncOrders().catch((err) =>
-      console.error("[Shopify] Background order sync failed:", err)
-    );
+    connection
+      .syncOrders()
+      .catch((err) =>
+        console.error("[Shopify] Background order sync failed:", err),
+      );
 
     res.status(200).json({
       success: true,
@@ -142,7 +157,8 @@ export async function syncStore(req: Request, res: Response): Promise<void> {
   const { merchantId } = req.body;
 
   try {
-    const connection = await StoreConnectionFactory.createForMerchant(merchantId);
+    const connection =
+      await StoreConnectionFactory.createForMerchant(merchantId);
 
     // ✅ Run in parallel, collect individual results
     const [productsResult, ordersResult] = await Promise.allSettled([
@@ -151,18 +167,21 @@ export async function syncStore(req: Request, res: Response): Promise<void> {
     ]);
 
     const response = {
-      products: productsResult.status === "fulfilled"
-        ? { success: true }
-        : { success: false, error: (productsResult.reason as Error).message },
-      orders: ordersResult.status === "fulfilled"
-        ? { success: true }
-        : { success: false, error: (ordersResult.reason as Error).message },
+      products:
+        productsResult.status === "fulfilled"
+          ? { success: true }
+          : { success: false, error: (productsResult.reason as Error).message },
+      orders:
+        ordersResult.status === "fulfilled"
+          ? { success: true }
+          : { success: false, error: (ordersResult.reason as Error).message },
     };
 
     // 200 even if one failed — partial success is still success
-    const statusCode = productsResult.status === "rejected" && ordersResult.status === "rejected"
-      ? 500
-      : 200;
+    const statusCode =
+      productsResult.status === "rejected" && ordersResult.status === "rejected"
+        ? 500
+        : 200;
 
     res.status(statusCode).json(response);
   } catch (err) {
@@ -171,7 +190,10 @@ export async function syncStore(req: Request, res: Response): Promise<void> {
   }
 }
 
-export const syncOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+export const syncOrders = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
   const merchantId = req.merchant!.merchantId;
 
   try {

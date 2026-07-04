@@ -10,12 +10,8 @@ import {
   TokenResult,
 } from "./AbstractStoreConnection";
 
-const {
-  SHOPIFY_API_KEY,
-  SHOPIFY_API_SECRET,
-  SHOPIFY_SCOPES,
-  APP_URL,
-} = process.env;
+const { SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SHOPIFY_SCOPES, APP_URL } =
+  process.env;
 
 const NONCE_TTL = 600;
 const API_VERSION = "2025-07";
@@ -23,7 +19,11 @@ const API_VERSION = "2025-07";
 export class ShopifyConnection extends AbstractStoreConnection {
   private shopDomain: string;
 
-  constructor(merchantId: string, storeConnectionId: string, shopDomain: string) {
+  constructor(
+    merchantId: string,
+    storeConnectionId: string,
+    shopDomain: string,
+  ) {
     super(merchantId, storeConnectionId);
     this.shopDomain = shopDomain;
   }
@@ -33,12 +33,11 @@ export class ShopifyConnection extends AbstractStoreConnection {
   // ─────────────────────────────────────────────
 
   async connect(shop: string): Promise<string> {
-
     const nonce = crypto.randomBytes(16).toString("hex");
     await redis.set(
       `shopify-nonce:${nonce}`,
       JSON.stringify({ merchantId: this.merchantId, shop }),
-      { EX: NONCE_TTL }
+      { EX: NONCE_TTL },
     );
 
     const redirectUri = `${APP_URL}/store-connection/shopify/callback`;
@@ -47,7 +46,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
       `https://${shop}/admin/oauth/authorize` +
       `?client_id=${SHOPIFY_API_KEY}` +
       `&scope=${SHOPIFY_SCOPES}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&redirect_uri=${redirectUri}` +
       `&state=${nonce}`
     );
   }
@@ -83,7 +82,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
         client_secret: SHOPIFY_API_SECRET,
         grant_type: "refresh_token",
         refresh_token: decryptedRefreshToken,
-      }
+      },
     );
 
     const { access_token, refresh_token, expires_in } = response.data;
@@ -118,8 +117,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
     if (!shopifyConn) throw new Error("Shopify connection not found");
 
     const isExpired =
-      shopifyConn.tokenExpiresAt &&
-      shopifyConn.tokenExpiresAt <= new Date();
+      shopifyConn.tokenExpiresAt && shopifyConn.tokenExpiresAt <= new Date();
 
     if (isExpired) {
       const refreshed = await this.refreshAccessToken();
@@ -142,7 +140,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
 
     while (url) {
       const { data, headers: resHeaders } = await axios.get(url, { headers });
-      console.log("the products are: ", JSON.stringify(data.products, null, 2))
+      console.log("the products are: ", JSON.stringify(data.products, null, 2));
       await this.upsertProducts(data.products);
       url = this.extractNextPageUrl(resHeaders["link"]);
     }
@@ -158,7 +156,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
     while (url) {
       const { data, headers: resHeaders } = await axios.get(url, { headers });
 
-      console.log("the orders are: ", JSON.stringify(data.orders, null, 2))
+      console.log("the orders are: ", JSON.stringify(data.orders, null, 2));
       await this.upsertOrders(data.orders);
       url = this.extractNextPageUrl(resHeaders["link"]);
     }
@@ -175,12 +173,15 @@ export class ShopifyConnection extends AbstractStoreConnection {
     const address = `${APP_URL}/store-connection/shopify/webhooks/orders`;
 
     // Check if already registered
-    const { data } = await axios.get(`${base}/webhooks.json?topic=orders/create`, {
-      headers,
-    });
+    const { data } = await axios.get(
+      `${base}/webhooks.json?topic=orders/create`,
+      {
+        headers,
+      },
+    );
 
     const alreadyRegistered = data.webhooks.some(
-      (w: { address: string }) => w.address === address
+      (w: { address: string }) => w.address === address,
     );
 
     if (alreadyRegistered) {
@@ -197,9 +198,8 @@ export class ShopifyConnection extends AbstractStoreConnection {
           format: "json",
         },
       },
-      { headers }
+      { headers },
     );
-   
   }
 
   verifyWebhookSignature(payload: Buffer, signature: string): boolean {
@@ -211,7 +211,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
     try {
       return crypto.timingSafeEqual(
         Buffer.from(generated),
-        Buffer.from(signature)
+        Buffer.from(signature),
       );
     } catch {
       return false;
@@ -227,7 +227,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
 
     const { data } = await axios.get(
       `https://${this.shopDomain}/admin/api/${API_VERSION}/orders/${platformOrderId}.json`,
-      { headers: { "X-Shopify-Access-Token": accessToken } }
+      { headers: { "X-Shopify-Access-Token": accessToken } },
     );
 
     const o = data.order;
@@ -242,21 +242,26 @@ export class ShopifyConnection extends AbstractStoreConnection {
       wilaya: o.shipping_address?.province ?? "",
       commune: o.shipping_address?.city ?? undefined,
       totalAmount: parseFloat(o.total_price),
-      lineItems: o.line_items.map((item: { title: string; quantity: number; price: string }) => ({
-        title: item.title,
-        quantity: item.quantity,
-        price: item.price,
-      })),
+      lineItems: o.line_items.map(
+        (item: { title: string; quantity: number; price: string }) => ({
+          title: item.title,
+          quantity: item.quantity,
+          price: item.price,
+        }),
+      ),
     };
   }
 
-  async updateOrderStatus(platformOrderId: string, status: string): Promise<void> {
+  async updateOrderStatus(
+    platformOrderId: string,
+    status: string,
+  ): Promise<void> {
     const accessToken = await this.getValidAccessToken();
 
     await axios.post(
       `https://${this.shopDomain}/admin/api/${API_VERSION}/orders/${platformOrderId}/fulfillments.json`,
       { fulfillment: { status } },
-      { headers: { "X-Shopify-Access-Token": accessToken } }
+      { headers: { "X-Shopify-Access-Token": accessToken } },
     );
   }
 
@@ -269,7 +274,9 @@ export class ShopifyConnection extends AbstractStoreConnection {
       const price = parseFloat(p.variants?.[0]?.price ?? "0");
       const images = p.images.map((img: { src: string }) => img.src);
       const stockStatus =
-        (p.variants?.[0]?.inventory_quantity ?? 0) > 0 ? "in_stock" : "out_of_stock";
+        (p.variants?.[0]?.inventory_quantity ?? 0) > 0
+          ? "in_stock"
+          : "out_of_stock";
 
       await prisma.product.upsert({
         where: {

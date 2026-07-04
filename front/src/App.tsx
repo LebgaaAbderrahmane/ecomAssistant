@@ -12,6 +12,7 @@ import { Activation } from './pages/onboarding/Activation.js'
 import { DashboardHome } from './pages/dashboard/DashboardHome.js'
 import { Conversations } from './pages/dashboard/Conversations.js'
 import { Catalog } from './pages/dashboard/Catalog.js'
+import { Orders } from './pages/dashboard/Orders.js'
 import { Escalations } from './pages/dashboard/Escalations.js'
 import { Settings } from './pages/dashboard/Settings.js'
 import { Billing } from './pages/dashboard/Billing.js'
@@ -34,6 +35,7 @@ export function App() {
             <Route path="/dashboard" element={<AppLayout />}>
               <Route index element={<DashboardHome />} />
               <Route path="conversations" element={<Conversations />} />
+              <Route path="orders" element={<Orders />} />
               <Route path="catalog" element={<Catalog />} />
               <Route path="escalations" element={<Escalations />} />
               <Route path="settings" element={<Settings />} />

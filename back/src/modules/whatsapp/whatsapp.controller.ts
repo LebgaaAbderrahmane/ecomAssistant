@@ -65,11 +65,7 @@ export async function handleWebhook(
           return res.status(200).json({ status: "ignored" });
         }
 
-        await conversationService.addMessage(
-          conversation.id,
-          "customer",
-          body,
-        );
+        await conversationService.addMessage(conversation.id, "customer", body);
 
         return res.status(200).json({ status: "received" });
       }
@@ -123,15 +119,28 @@ export async function createSession(
       where: { merchantId },
     });
     if (existing) {
-      return res.status(409).json({ message: "Session already exists" });
+      try {
+        await openwaService.stopSession(existing.sessionId);
+      } catch {}
+      try {
+        await openwaService.logoutSession(existing.sessionId);
+      } catch {}
+      try {
+        await openwaService.deleteSession(existing.sessionId);
+      } catch {}
+      await prisma.whatsAppSession.delete({ where: { id: existing.id } });
     }
 
     try {
       const all = await openwaService.listSessions();
-      const stale = all.find(s => s.name === merchantId);
+      const stale = all.find((s) => s.name === merchantId);
       if (stale) {
-        try { await openwaService.stopSession(stale.id); } catch {}
-        try { await openwaService.logoutSession(stale.id); } catch {}
+        try {
+          await openwaService.stopSession(stale.id);
+        } catch {}
+        try {
+          await openwaService.logoutSession(stale.id);
+        } catch {}
         await openwaService.deleteSession(stale.id);
       }
     } catch {
@@ -143,7 +152,7 @@ export async function createSession(
 
     let qr: string | null = null;
     for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
       try {
         qr = await openwaService.getQR(session.id);
         if (qr) break;
@@ -276,7 +285,9 @@ export async function sendMessage(
     };
 
     if (!conversationId || !text) {
-      return res.status(400).json({ message: "conversationId and text required" });
+      return res
+        .status(400)
+        .json({ message: "conversationId and text required" });
     }
 
     const conversation = await conversationService.getById(conversationId);

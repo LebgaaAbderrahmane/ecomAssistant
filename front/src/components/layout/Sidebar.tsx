@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { Home, MessageSquare, AlertTriangle, Package, Settings, CreditCard, ExternalLink } from 'lucide-react'
+import { Home, MessageSquare, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, ExternalLink } from 'lucide-react'
 
 const navItems = [
   { to: '/dashboard', label: 'Accueil', icon: Home },
   { to: '/dashboard/conversations', label: 'Conversations', icon: MessageSquare },
   { to: '/dashboard/escalations', label: 'Escalades', icon: AlertTriangle, badge: 3 },
+  { to: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
   { to: '/dashboard/catalog', label: 'Catalogue', icon: Package },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings },
   { to: '/dashboard/billing', label: 'Facturation', icon: CreditCard },
