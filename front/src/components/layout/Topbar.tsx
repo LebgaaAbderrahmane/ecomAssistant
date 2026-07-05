@@ -30,7 +30,7 @@ export function Topbar() {
     <header className="sticky top-0 z-50 flex h-14  ml-[250px] items-center justify-between border-b border-gray-200 bg-white px-8">
       <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
         <Store className="h-[18px] w-[18px]" />
-        <span>Boutique Al Manar</span>
+        <span>{user?.shopName || user?.name || 'Mon Espace'}</span>
       </div>
 
       <div ref={ref} className="relative">

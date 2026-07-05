@@ -1,6 +1,7 @@
 import express, { type Express } from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
+import path from 'path'
 import apiRouter from './routes/index.js'
 import { csrfProtection } from './middlwares/csrf.js'
 import swaggerUi from 'swagger-ui-express';
@@ -29,6 +30,7 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok man', timestamp: new Date().toISOString() })
 })
 
+app.use('/uploads', express.static(path.resolve('/app/uploads')));
 app.use('/', apiRouter)
 
 

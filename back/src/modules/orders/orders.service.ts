@@ -51,6 +51,7 @@ export const getOrders = async (
 
   const orders = await prisma.order.findMany({
     where: { ...where, ...cursorWhere },
+    include: { customer: true },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
   });

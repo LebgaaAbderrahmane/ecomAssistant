@@ -15,7 +15,12 @@ export interface ProductDetails {
   description: string;
   price: number;
   images: string[];
-  variants: { id: number; price: string; title: string; inventory_quantity: number }[];
+  variants: {
+    id: number;
+    price: string;
+    title: string;
+    inventory_quantity: number;
+  }[];
   stockStatus: "in_stock" | "out_of_stock";
   category?: string;
 }
@@ -78,5 +83,10 @@ export abstract class AbstractStoreConnection {
   abstract getOrder(platformOrderId: string): Promise<OrderDetails>;
 
   /** Update the status of an order on the platform */
-  abstract updateOrderStatus(platformOrderId: string, status: string): Promise<void>;
+  abstract updateOrderStatus(
+    platformOrderId: string,
+    status: string,
+  ): Promise<void>;
+
+  abstract upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]>;
 }

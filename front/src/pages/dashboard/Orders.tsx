@@ -9,6 +9,7 @@ interface Order {
   platformOrderId: string
   customerName: string
   customerPhone: string
+  customer: { id: string; name: string | null; phone: string }
   wilaya: string
   commune: string | null
   address: string

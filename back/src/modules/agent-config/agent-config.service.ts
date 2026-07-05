@@ -17,7 +17,11 @@ export const agentConfigService = {
   ) => {
     return prisma.agentConfig.upsert({
       where: { merchantId },
-      create: { merchantId, ...data, followUpDelays: data.followUpDelays ?? [2, 24, 48] },
+      create: {
+        merchantId,
+        ...data,
+        followUpDelays: data.followUpDelays ?? [2, 24, 48],
+      },
       update: data,
     });
   },
@@ -25,7 +29,7 @@ export const agentConfigService = {
   activate: async (merchantId: string) => {
     return prisma.agentConfig.upsert({
       where: { merchantId },
-      create: { merchantId, isActive: true },
+      create: { merchantId, isActive: true, followUpDelays: [2, 24, 48] },
       update: { isActive: true },
     });
   },

@@ -25,6 +25,7 @@ model Merchant {
   conversations    Conversation[]
   products         Product[]
   orders           Order[]
+  customers        Customer[]
   wilayaCosts      WilayaDeliveryCost[]
   whatsAppSession  WhatsAppSession?
 }
@@ -100,12 +101,29 @@ model Product {
 
   @@unique([merchantId, platformProductId])
   @@index([merchantId])
-  @@index([merchantId, createdAt, id]) 
+  @@index([merchantId, createdAt, id])
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  merchantId String
+  phone      String
+  name       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  merchant      Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  conversations Conversation[]
+
+  @@unique([merchantId, phone])
+  @@index([merchantId])
 }
 
 model Order {
   id               String   @id @default(cuid())
   merchantId       String
+  customerId       String
   platformOrderId  String
   customerName     String
   customerPhone    String
@@ -124,32 +142,38 @@ model Order {
   updatedAt        DateTime @updatedAt
 
   merchant     Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
   product      Product       @relation(fields: [productId], references: [id])
   conversation Conversation?
 
+  @@unique([merchantId, platformOrderId])
   @@index([merchantId])
-  @@index([customerPhone])
+  @@index([customerId])
 }
 
 model Conversation {
-  id               String    @id @default(cuid())
+  id               String            @id @default(cuid())
   merchantId       String
-  orderId          String    @unique
+  customerId       String
+  currentOrderId   String?   @unique
   customerPhone    String
-  status           String    @default("active")
-  language         String    @default("auto")
-  followUpStep     Int       @default(0)
-  lastMessageAt    DateTime?
-  escalatedAt      DateTime?
-  takenOverByHuman Boolean   @default(false)
-  createdAt        DateTime  @default(now())
+  status           String            @default("active")
+  language         String            @default("auto")
+  followUpStep     Int               @default(0)
+  lastMessageAt     DateTime?
+  lastReadMessageAt DateTime?
+  escalatedAt       DateTime?
+  takenOverByHuman  Boolean           @default(false)
+  createdAt        DateTime          @default(now())
 
-  merchant Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  messages Message[]
+  merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  currentOrder Order?    @relation(fields: [currentOrderId], references: [id])
+  messages     Message[]
 
+  @@unique([merchantId, customerId])
   @@index([merchantId])
-  @@index([customerPhone])
+  @@index([customerId])
   @@index([status])
 }
 
@@ -159,6 +183,8 @@ model Message {
   role           String
   content        String
   contentType    String   @default("text")
+  mediaUrl       String?
+  mimeType       String?
   createdAt      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -182,7 +208,7 @@ model WilayaDeliveryCost {
 model WhatsAppSession {
   id          String   @id @default(cuid())
   merchantId  String   @unique
-  sessionId   String
+  sessionId   String   @unique
   status      String   @default("disconnected")
   phoneNumber String?
   createdAt   DateTime @default(now())

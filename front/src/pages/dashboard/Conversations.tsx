@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Search,
   Phone,
@@ -20,31 +20,29 @@ type FilterTab =
   | "escalated"
   | "expired";
 
-interface OrderSummary {
-  customerName: string;
-  customerPhone: string;
-  productName: string;
-  totalAmount: number;
-  status: string;
-}
-
 interface MessageItem {
   id: string;
   role: string;
   content: string;
   contentType: string;
+  mediaUrl?: string;
+  mimeType?: string;
   createdAt: string;
 }
 
 interface ConversationItem {
   id: string;
-  customerPhone: string;
   status: string;
   language: string;
   lastMessageAt: string | null;
   createdAt: string;
-  order: OrderSummary;
+  customer: {
+    id: string;
+    name: string;
+    phone: string;
+  };
   messages: MessageItem[];
+  unreadCount?: number;
 }
 
 interface ConversationDetail extends ConversationItem {
@@ -127,6 +125,82 @@ function LangBadge({ lang }: { lang: string }) {
   );
 }
 
+function MessageBubble({ msg }: { msg: MessageItem }) {
+  const isAgent = msg.role === "agent";
+
+  const renderContent = () => {
+    switch (msg.contentType) {
+      case "image":
+        return msg.mediaUrl ? (
+          <img
+            src={msg.mediaUrl}
+            alt="Image"
+            className="max-w-[280px] max-h-[300px] rounded-md object-cover"
+          />
+        ) : (
+          <p className="italic text-gray-400">[Image]</p>
+        );
+      case "audio":
+        return msg.mediaUrl ? (
+          <audio controls src={msg.mediaUrl} className="w-[260px] h-9" />
+        ) : (
+          <p className="italic text-gray-400">[Audio]</p>
+        );
+      case "video":
+        return msg.mediaUrl ? (
+          <video
+            controls
+            src={msg.mediaUrl}
+            className="max-w-[300px] max-h-[300px] rounded-md"
+          />
+        ) : (
+          <p className="italic text-gray-400">[Video]</p>
+        );
+      case "document":
+        return msg.mediaUrl ? (
+          <a
+            href={msg.mediaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline text-brand-200 hover:text-white"
+          >
+            {msg.content || "Document"}
+          </a>
+        ) : (
+          <p className="italic text-gray-400">[Document]</p>
+        );
+      default:
+        return (
+          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+        );
+    }
+  };
+
+  return (
+    <div className={`flex ${isAgent ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm leading-relaxed ${
+          isAgent
+            ? "bg-brand-600 text-white rounded-br-sm"
+            : "bg-gray-100 text-gray-900 rounded-bl-sm"
+        }`}
+      >
+        {renderContent()}
+        <p
+          className={`text-[10px] mt-1 ${
+            isAgent ? "text-brand-200" : "text-gray-400"
+          }`}
+        >
+          {new Date(msg.createdAt).toLocaleTimeString("fr-FR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ConversationList({
   conversations,
   selectedId,
@@ -166,6 +240,7 @@ function ConversationList({
           conversations.map((conv) => {
             const isSelected = conv.id === selectedId;
             const lastMsg = conv.messages[0];
+            const unread = conv.unreadCount ?? 0;
             return (
               <button
                 key={conv.id}
@@ -177,12 +252,25 @@ function ConversationList({
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <Avatar name={conv.order.customerName} />
+                  <Avatar name={conv.customer.name} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {conv.order.customerName}
-                      </span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`text-sm truncate ${
+                            unread > 0
+                              ? "font-bold text-gray-900"
+                              : "font-medium text-gray-900"
+                          }`}
+                        >
+                          {conv.customer.name}
+                        </span>
+                        {unread > 0 && (
+                          <span className="shrink-0 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[11px] text-gray-400 shrink-0">
                         {timeAgo(conv.lastMessageAt || conv.createdAt)}
                       </span>
@@ -190,12 +278,20 @@ function ConversationList({
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <Phone className="h-3 w-3 text-gray-400" />
                       <span className="text-xs text-gray-500">
-                        {conv.customerPhone}
+                        {conv.customer.phone}
                       </span>
                     </div>
                     {lastMsg && (
-                      <p className="text-xs text-gray-400 truncate mt-1">
-                        {lastMsg.content}
+                      <p
+                        className={`text-xs truncate mt-1 ${
+                          unread > 0
+                            ? "text-gray-700 font-medium"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {lastMsg.contentType !== "text"
+                          ? `[${lastMsg.contentType}]`
+                          : lastMsg.content}
                       </p>
                     )}
                     <div className="flex items-center gap-2 mt-1.5">
@@ -243,7 +339,7 @@ function ChatView({
 
   useEffect(() => {
     setMessages(conversation.messages);
-  }, [conversation.id]);
+  }, [conversation.id, conversation.messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -286,14 +382,13 @@ function ChatView({
         <button onClick={onBack} className="lg:hidden mr-1">
           <ArrowLeft className="h-5 w-5 text-gray-500" />
         </button>
-        <Avatar name={conversation.order.customerName} />
+        <Avatar name={conversation.customer.name} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-900 truncate">
-            {conversation.order.customerName}
+            {conversation.customer.name}
           </p>
           <p className="text-xs text-gray-500 truncate">
-            {conversation.order.productName} ·{" "}
-            {conversation.order.totalAmount.toLocaleString("fr-FR")} DA
+            {conversation.customer.phone}
           </p>
         </div>
         <Badge variant={statusVariant[conversation.status] || "neutral"}>
@@ -302,35 +397,9 @@ function ChatView({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-        {messages.map((msg) => {
-          const isAgent = msg.role === "agent";
-          return (
-            <div
-              key={msg.id}
-              className={`flex ${isAgent ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm leading-relaxed ${
-                  isAgent
-                    ? "bg-brand-600 text-white rounded-br-sm"
-                    : "bg-gray-100 text-gray-900 rounded-bl-sm"
-                }`}
-              >
-                <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                <p
-                  className={`text-[10px] mt-1 ${
-                    isAgent ? "text-brand-200" : "text-gray-400"
-                  }`}
-                >
-                  {new Date(msg.createdAt).toLocaleTimeString("fr-FR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              </div>
-            </div>
-          );
-        })}
+        {messages.map((msg) => (
+          <MessageBubble key={msg.id} msg={msg} />
+        ))}
         <div ref={bottomRef} />
       </div>
 
@@ -371,32 +440,47 @@ export function Conversations() {
     hasMore: false,
     nextOffset: null as number | null,
   });
+  const autoOpenedRef = useRef(false);
 
-  const fetchList = async (append = false) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (activeFilter !== "all") params.set("status", activeFilter);
-      if (search) params.set("search", search);
-      if (append && pagination.nextOffset !== null)
-        params.set("offset", String(pagination.nextOffset));
-      params.set("limit", "20");
+  const fetchList = useCallback(
+    async (append = false) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (activeFilter !== "all") params.set("status", activeFilter);
+        if (search) params.set("search", search);
+        if (append && pagination.nextOffset !== null)
+          params.set("offset", String(pagination.nextOffset));
+        params.set("limit", "20");
 
-      const res = await api.get<ListResponse>(
-        `/whatsapp/conversations?${params}`,
-      );
-      if (append) {
-        setConversations((prev) => [...prev, ...res.data]);
-      } else {
-        setConversations(res.data);
+        const res = await api.get<ListResponse>(
+          `/whatsapp/conversations?${params}`,
+        );
+        if (append) {
+          setConversations((prev) => [...prev, ...res.data]);
+        } else {
+          setConversations(res.data);
+        }
+        setPagination(res.pagination);
+      } catch {
+        setConversations([]);
+      } finally {
+        setLoading(false);
       }
-      setPagination(res.pagination);
+    },
+    [activeFilter, search, pagination.nextOffset],
+  );
+
+  const fetchDetail = useCallback(async (id: string) => {
+    try {
+      const detail = await api.get<ConversationDetail>(
+        `/whatsapp/conversations/${id}`,
+      );
+      setSelected(detail);
     } catch {
-      setConversations([]);
-    } finally {
-      setLoading(false);
+      // ignore
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchList();
@@ -410,6 +494,32 @@ export function Conversations() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Auto-open most recent conversation on first load
+  useEffect(() => {
+    if (conversations.length > 0 && !selected && !loading && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      handleSelect(conversations[0]);
+    }
+  }, [conversations, loading]);
+
+  // Poll conversation list (15s) when no chat is open
+  useEffect(() => {
+    if (selected) return;
+    const interval = setInterval(() => {
+      fetchList();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [selected, fetchList]);
+
+  // Poll active conversation messages (5s)
+  useEffect(() => {
+    if (!selected) return;
+    const interval = setInterval(() => {
+      fetchDetail(selected.id);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [selected?.id, fetchDetail]);
+
   const handleSelect = async (conv: ConversationItem) => {
     setLoadingDetail(true);
     try {
@@ -417,6 +527,14 @@ export function Conversations() {
         `/whatsapp/conversations/${conv.id}`,
       );
       setSelected(detail);
+      // Mark as read
+      api.post(`/whatsapp/conversations/${conv.id}/read`, {});
+      // Clear unread count locally
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conv.id ? { ...c, unreadCount: 0 } : c,
+        ),
+      );
     } catch {
       setSelected(null);
     } finally {

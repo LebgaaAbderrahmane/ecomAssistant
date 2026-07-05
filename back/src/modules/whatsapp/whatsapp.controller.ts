@@ -1,11 +1,49 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import prisma from "../../config/db.config";
 import { redis } from "../../config";
 import { config } from "../../config";
 import { openwaService } from "./whatsapp.service";
 import { conversationService } from "./conversation.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
+
+const MEDIA_DIR = path.resolve("/app/uploads/media");
+
+function ensureMediaDir() {
+  if (!fs.existsSync(MEDIA_DIR)) {
+    fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  }
+}
+
+function mimeToExt(mime: string): string {
+  const map: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "video/mp4": ".mp4",
+    "video/3gpp": ".3gp",
+    "application/pdf": ".pdf",
+  };
+  return map[mime] || ".bin";
+}
+
+function mapWaType(type: string): string {
+  const map: Record<string, string> = {
+    text: "text",
+    image: "image",
+    video: "video",
+    audio: "audio",
+    document: "document",
+    sticker: "image",
+  };
+  return map[type] || "text";
+}
 
 const WEBHOOK_EVENTS = ["message.received", "session.status"];
 
@@ -47,8 +85,13 @@ export async function handleWebhook(
     switch (event) {
       case "message.received": {
         const from = data.from as string;
-        const body = data.body as string;
+        const body = (data.body as string) || "";
         const phone = extractPhone(from);
+        const msgType = mapWaType((data.type as string) || "text");
+        const timestamp = data.timestamp as number | undefined;
+        const createdAt = timestamp
+          ? new Date(timestamp * 1000)
+          : new Date();
 
         const waSession = await prisma.whatsAppSession.findUnique({
           where: { sessionId },
@@ -65,7 +108,31 @@ export async function handleWebhook(
           return res.status(200).json({ status: "ignored" });
         }
 
-        await conversationService.addMessage(conversation.id, "customer", body);
+        let mediaUrl: string | undefined;
+        let mimeType: string | undefined;
+
+        const media = data.media as
+          | { mimetype?: string; data?: string; omitted?: boolean }
+          | undefined;
+
+        if (media?.data && media.mimetype && !media.omitted) {
+          ensureMediaDir();
+          const ext = mimeToExt(media.mimetype);
+          const filename = `${conversation.id}-${Date.now()}${ext}`;
+          const filePath = path.join(MEDIA_DIR, filename);
+          fs.writeFileSync(filePath, Buffer.from(media.data, "base64"));
+          mediaUrl = `/uploads/media/${filename}`;
+          mimeType = media.mimetype;
+        }
+
+        const content = body || (msgType === "text" ? "" : msgType);
+
+        await conversationService.addMessage(conversation.id, "customer", content, {
+          contentType: msgType,
+          mediaUrl,
+          mimeType,
+          createdAt,
+        });
 
         return res.status(200).json({ status: "received" });
       }
@@ -151,6 +218,8 @@ export async function createSession(
     await openwaService.startSession(session.id);
 
     let qr: string | null = null;
+    let sessionReady = false;
+
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       try {
@@ -159,14 +228,22 @@ export async function createSession(
       } catch {
         // QR not ready yet, retry
       }
+      try {
+        const status = await openwaService.getSession(session.id);
+        if (status.status === "ready" || status.status === "connected") {
+          sessionReady = true;
+          break;
+        }
+      } catch {
+        // session not ready yet
+      }
     }
-    if (!qr) {
+
+    if (!qr && !sessionReady) {
       return res.status(502).json({ message: "QR code generation timeout" });
     }
 
-    const rawQr = qr.replace(/^data:image\/png;base64,/, "");
-
-    const webhookUrl = `${config.appUrl.replace(/\/+$/, "")}/whatsapp/webhook`;
+    const webhookUrl = `${config.internalUrl.replace(/\/+$/, "")}/whatsapp/webhook`;
     await openwaService.registerWebhook(
       session.id,
       webhookUrl,
@@ -174,18 +251,23 @@ export async function createSession(
       config.openwaWebhookSecret,
     );
 
-    const qrKey = `whatsapp:qr:${merchantId}`;
-    await redis.set(qrKey, rawQr, { EX: 300 });
-
+    const sessionStatus = sessionReady ? "connected" : "connecting";
     await prisma.whatsAppSession.create({
       data: {
         merchantId,
         sessionId: session.id,
-        status: "connecting",
+        status: sessionStatus,
       },
     });
 
-    return res.status(201).json({ qrBase64: rawQr });
+    if (qr) {
+      const rawQr = qr.replace(/^data:image\/png;base64,/, "");
+      const qrKey = `whatsapp:qr:${merchantId}`;
+      await redis.set(qrKey, rawQr, { EX: 300 });
+      return res.status(201).json({ qrBase64: rawQr });
+    }
+
+    return res.status(201).json({ connected: true });
   } catch (err) {
     next(err);
   }
@@ -272,6 +354,27 @@ export async function deleteSession(
   }
 }
 
+export async function markAsRead(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const merchantId = req.merchant!.merchantId;
+    const { id } = req.params;
+
+    const conversation = await conversationService.getById(id);
+    if (!conversation || conversation.merchantId !== merchantId) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    await conversationService.markAsRead(id);
+    return res.json({ message: "Marked as read" });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function sendMessage(
   req: AuthenticatedRequest,
   res: Response,
@@ -298,7 +401,10 @@ export async function sendMessage(
     const waSession = await prisma.whatsAppSession.findUnique({
       where: { merchantId },
     });
-    if (!waSession || waSession.status !== "connected") {
+    if (
+      !waSession ||
+      (waSession.status !== "connected" && waSession.status !== "ready")
+    ) {
       return res.status(400).json({ message: "WhatsApp not connected" });
     }
 
@@ -313,5 +419,80 @@ export async function sendMessage(
     return res.json({ message: "Sent" });
   } catch (err) {
     next(err);
+  }
+}
+
+export async function sendOrderNotification(order: {
+  id: string;
+  merchantId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  productName: string;
+  platformOrderId: string;
+  totalAmount: number;
+  wilaya: string;
+}): Promise<void> {
+  const {
+    merchantId,
+    customerPhone,
+    customerName,
+    customerId,
+    productName,
+    platformOrderId,
+    totalAmount,
+    wilaya,
+    id: orderId,
+  } = order;
+
+  if (!customerPhone) {
+    console.log(
+      `[WhatsApp] Skipping notification — no phone for order ${platformOrderId}`,
+    );
+    return;
+  }
+
+  const waSession = await prisma.whatsAppSession.findUnique({
+    where: { merchantId },
+  });
+  if (
+    !waSession ||
+    (waSession.status !== "connected" && waSession.status !== "ready")
+  ) {
+    console.log(
+      `[WhatsApp] Skipping notification — WhatsApp not connected for merchant ${merchantId}`,
+    );
+    return;
+  }
+
+  const conversation = await conversationService.createFromOrder(
+    merchantId,
+    orderId,
+    customerId,
+    customerPhone,
+  );
+
+  const text = [
+    `Bonjour ${customerName},`,
+    "",
+    `Votre commande #${platformOrderId} pour "${productName}" a bien été reçue.`,
+    "",
+    `Montant: ${totalAmount.toLocaleString("fr-FR")} DA`,
+    `Wilaya: ${wilaya}`,
+    "",
+    "Merci pour votre confiance !",
+  ].join("\n");
+
+  try {
+    await openwaService.sendText(waSession.sessionId, customerPhone, text);
+    await conversationService.addMessage(conversation.id, "agent", text);
+    console.log(
+      `[WhatsApp] Order confirmation sent for order ${platformOrderId}`,
+    );
+  } catch (err) {
+    console.error(
+      `[WhatsApp] Failed to send order confirmation for ${platformOrderId}:`,
+      err,
+    );
   }
 }

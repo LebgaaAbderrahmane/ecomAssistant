@@ -13,6 +13,7 @@ export default defineConfig({
       "/whatsapp": { target: "http://back:3000", changeOrigin: true },
       "/store-connection": { target: "http://back:3000", changeOrigin: true },
       "/agent-config": { target: "http://back:3000", changeOrigin: true },
+      "/uploads": { target: "http://back:3000", changeOrigin: true },
     },
   },
 });

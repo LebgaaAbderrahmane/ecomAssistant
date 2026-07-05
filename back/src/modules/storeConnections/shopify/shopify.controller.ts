@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import * as shopifyService from "./shopify.service";
 import { StoreConnectionFactory } from "../../../connections/StoreConnectionFactory";
 import { AuthenticatedRequest } from "../../../middlwares/auth.middlware";
+import { sendOrderNotification } from "../../whatsapp/whatsapp.controller";
 const { APP_URL } = process.env;
 
 export async function authenticateShopify(
@@ -56,10 +57,16 @@ export async function handleOrderWebhook(
       return;
     }
 
-    const order = JSON.parse(rawBody.toString()); // ✅ parse from raw buffer
-    const orderDetails = await connection.getOrder(String(order.id));
+    const order = JSON.parse(rawBody.toString());
+    const savedOrders = await connection.upsertOrders([order]);
+    console.log("New order saved:", order.id);
 
-    console.log("New order received:", orderDetails);
+    for (const saved of savedOrders) {
+      sendOrderNotification(saved).catch((err) => {
+        console.error("[Shopify] Order notification failed:", err);
+      });
+    }
+
     res.status(200).send("OK");
   } catch (err) {
     console.error("Webhook processing error:", err);
@@ -132,6 +139,9 @@ export async function callBack(req: Request, res: Response): Promise<void> {
 
     connection
       .syncOrders()
+      .then((result) => {
+        console.log("[Shopify] Background order sync completed");
+      })
       .catch((err) =>
         console.error("[Shopify] Background order sync failed:", err),
       );

@@ -12,7 +12,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  shop?: { shopName: string };
+  shopName?: string;
 }
 
 interface LoginResponse {
@@ -20,13 +20,13 @@ interface LoginResponse {
   merchant: {
     id: string;
     email: string;
-    shop?: { shopName: string };
+    shopName?: string;
   };
 }
 
 interface VerifyEmailResponse {
   message: string;
-  merchant: User & { isVerified: boolean; shop?: { shopName: string } };
+  merchant: User & { isVerified: boolean };
 }
 
 interface AuthContextType {
@@ -89,8 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const user: User = {
           id: data.merchant.id,
           email: data.merchant.email,
-          name: email.split("@")[0],
-          shop: data.merchant.shop,
+          name: data.merchant.shopName || email.split("@")[0],
+          shopName: data.merchant.shopName,
         };
         persistUser(user);
         setUser(user);
@@ -152,8 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const user: User = {
         id: data.merchant.id,
         email: data.merchant.email,
-        name: data.merchant.name,
-        shop: data.merchant.shop,
+        name: data.merchant.shopName || data.merchant.name,
+        shopName: data.merchant.shopName,
       };
       persistUser(user);
       setUser(user);

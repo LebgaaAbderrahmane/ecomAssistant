@@ -39,7 +39,7 @@ async function request<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const json = await res.json().catch(() => ({})) as OpenwaResponse<T>;
+  const json = (await res.json().catch(() => ({}))) as OpenwaResponse<T>;
 
   if (!res.ok) {
     throw new OpenwaError(
@@ -56,7 +56,8 @@ function stripSuffix(phone: string): string {
 }
 
 function addSuffix(phone: string): string {
-  return phone.includes("@") ? phone : `${phone}@c.us`;
+  const clean = phone.replace(/^\+/, "").replace(/@[a-z.]+$/g, "");
+  return `${clean}@c.us`;
 }
 
 export interface Session {
@@ -110,10 +111,14 @@ export const openwaService = {
     to: string,
     text: string,
   ): Promise<SendResult> => {
-    return request<SendResult>("POST", `/sessions/${sessionId}/messages/send-text`, {
-      chatId: addSuffix(to),
-      text,
-    });
+    return request<SendResult>(
+      "POST",
+      `/sessions/${sessionId}/messages/send-text`,
+      {
+        chatId: addSuffix(to),
+        text,
+      },
+    );
   },
 
   registerWebhook: async (
@@ -153,10 +158,7 @@ export const openwaService = {
     await request("DELETE", `/sessions/${sessionId}`);
   },
 
-  checkPhone: async (
-    sessionId: string,
-    phone: string,
-  ): Promise<boolean> => {
+  checkPhone: async (sessionId: string, phone: string): Promise<boolean> => {
     try {
       const result = await request<{ exists: boolean }>(
         "GET",

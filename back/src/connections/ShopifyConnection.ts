@@ -153,13 +153,16 @@ export class ShopifyConnection extends AbstractStoreConnection {
     let url: string | null =
       `https://${this.shopDomain}/admin/api/${API_VERSION}/orders.json?limit=250&status=any`;
 
+    let totalCount = 0;
     while (url) {
       const { data, headers: resHeaders } = await axios.get(url, { headers });
-
-      console.log("the orders are: ", JSON.stringify(data.orders, null, 2));
-      await this.upsertOrders(data.orders);
+      const orders = data.orders || [];
+      totalCount += orders.length;
+      console.log(`[Shopify] Fetched ${orders.length} orders from Shopify`);
+      await this.upsertOrders(orders);
       url = this.extractNextPageUrl(resHeaders["link"]);
     }
+    console.log(`[Shopify] syncOrders completed — total fetched: ${totalCount}`);
   }
 
   // ─────────────────────────────────────────────
@@ -310,7 +313,9 @@ export class ShopifyConnection extends AbstractStoreConnection {
     }
   }
 
-  private async upsertOrders(orders: any[]): Promise<void> {
+  async upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]> {
+    const saved: { id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[] = [];
+
     for (const o of orders) {
       const existing = await prisma.order.findFirst({
         where: { merchantId: this.merchantId, platformOrderId: String(o.id) },
@@ -325,22 +330,50 @@ export class ShopifyConnection extends AbstractStoreConnection {
       }
 
       const firstItem = o.line_items[0];
-      if (!firstItem) continue;
+      if (!firstItem) {
+        console.log(`[Shopify] Skipping order ${o.id} — no line items`);
+        continue;
+      }
 
-      const product = await prisma.product.findFirst({
-        where: { merchantId: this.merchantId, name: firstItem.title },
-      });
+      let product = firstItem.product_id
+        ? await prisma.product.findFirst({
+            where: { merchantId: this.merchantId, platformProductId: String(firstItem.product_id) },
+          })
+        : null;
 
-      if (!product) continue;
+      if (!product) {
+        product = await prisma.product.findFirst({
+          where: { merchantId: this.merchantId, name: firstItem.title },
+        });
+      }
 
-      await prisma.order.create({
+      if (!product) {
+        console.log(`[Shopify] Skipping order ${o.id} — no matching product for "${firstItem.title}" (product_id: ${firstItem.product_id})`);
+        continue;
+      }
+
+      const phone = o.customer?.phone ?? "";
+      const customerName = o.customer
+        ? `${o.customer.first_name} ${o.customer.last_name}`.trim()
+        : "Unknown";
+
+      const customer = phone
+        ? await prisma.customer.upsert({
+            where: { merchantId_phone: { merchantId: this.merchantId, phone } },
+            update: { name: customerName },
+            create: { merchantId: this.merchantId, phone, name: customerName },
+          })
+        : await prisma.customer.create({
+            data: { merchantId: this.merchantId, phone: "", name: customerName },
+          });
+
+      const created = await prisma.order.create({
         data: {
           merchantId: this.merchantId,
+          customerId: customer.id,
           platformOrderId: String(o.id),
-          customerName: o.customer
-            ? `${o.customer.first_name} ${o.customer.last_name}`.trim()
-            : "Unknown",
-          customerPhone: o.customer?.phone ?? "",
+          customerName,
+          customerPhone: phone,
           wilaya: o.shipping_address?.province ?? "",
           commune: o.shipping_address?.city ?? null,
           address: o.shipping_address?.address1 ?? "",
@@ -351,7 +384,21 @@ export class ShopifyConnection extends AbstractStoreConnection {
           status: this.mapFinancialStatus(o.financial_status),
         },
       });
+
+      saved.push({
+        id: created.id,
+        merchantId: created.merchantId,
+        customerId: customer.id,
+        customerName: created.customerName,
+        customerPhone: created.customerPhone,
+        productName: created.productName,
+        platformOrderId: created.platformOrderId,
+        totalAmount: created.totalAmount,
+        wilaya: created.wilaya,
+      });
     }
+
+    return saved;
   }
 
   private mapFinancialStatus(status: string): string {
