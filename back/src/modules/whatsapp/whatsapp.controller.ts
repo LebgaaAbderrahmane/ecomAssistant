@@ -82,6 +82,8 @@ export async function handleWebhook(
       data: Record<string, unknown>;
     };
 
+    console.log(`[WhatsApp] Webhook received: event=${event} sessionId=${sessionId}`);
+
     switch (event) {
       case "message.received": {
         const from = data.from as string;
@@ -93,19 +95,37 @@ export async function handleWebhook(
           ? new Date(timestamp * 1000)
           : new Date();
 
+        console.log(`[WhatsApp] Message from=${phone} type=${msgType} body="${body.substring(0, 80)}"`);
+
         const waSession = await prisma.whatsAppSession.findUnique({
           where: { sessionId },
         });
         if (!waSession) {
+          console.log(`[WhatsApp] No WhatsAppSession for sessionId=${sessionId}, ignoring`);
           return res.status(200).json({ status: "ignored" });
         }
 
-        const conversation = await conversationService.getByPhone(
+        let conversation = await conversationService.getByPhone(
           waSession.merchantId,
           phone,
         );
         if (!conversation) {
-          return res.status(200).json({ status: "ignored" });
+          const customer = await prisma.customer.findFirst({
+            where: {
+              merchantId: waSession.merchantId,
+              phone: { in: [`+${phone}`, phone] },
+            },
+          });
+          if (!customer) {
+            console.log(`[WhatsApp] No customer found for phone=${phone}, ignoring`);
+            return res.status(200).json({ status: "ignored" });
+          }
+          conversation = await conversationService.findOrCreateByCustomer(
+            waSession.merchantId,
+            customer.id,
+            customer.phone,
+          );
+          console.log(`[WhatsApp] Auto-created conversation ${conversation.id} for customer ${customer.name}`);
         }
 
         let mediaUrl: string | undefined;
@@ -134,6 +154,7 @@ export async function handleWebhook(
           createdAt,
         });
 
+        console.log(`[WhatsApp] Message saved to conversation ${conversation.id}`);
         return res.status(200).json({ status: "received" });
       }
 
