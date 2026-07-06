@@ -101,7 +101,9 @@ export function Topbar() {
           </button>
 
           {dropdownOpen && (
-            <div className="absolute right-0 top-full mt-1 w-[calc(100vw-32px)] max-w-[360px] rounded-lg border border-gray-200 bg-white shadow-lg">
+            <>
+              <div className="fixed inset-0 z-40 sm:hidden" onClick={() => setDropdownOpen(false)} />
+              <div className="fixed left-0 right-0 top-14 z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-[360px] sm:z-50 rounded-b-lg sm:rounded-lg border border-gray-200 bg-white shadow-lg">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                 <h3 className="text-sm font-semibold text-gray-900">
                   Notifications
@@ -168,6 +170,7 @@ export function Topbar() {
                 </button>
               </div>
             </div>
+            </>
           )}
         </div>
 
@@ -180,7 +183,9 @@ export function Topbar() {
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 top-full mt-1 w-[220px] rounded-lg border border-gray-200 bg-white shadow-md">
+            <>
+              <div className="fixed inset-0 z-40 sm:hidden" onClick={() => setProfileOpen(false)} />
+              <div className="fixed left-4 right-4 top-14 z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-[220px] sm:z-50 rounded-lg border border-gray-200 bg-white shadow-md">
               <div className="px-4 py-3 border-b border-gray-100">
                 <p className="text-sm font-medium text-gray-900">
                   {user?.name || "Marchand"}
@@ -234,6 +239,7 @@ export function Topbar() {
                 </button>
               </div>
             </div>
+            </>
           )}
         </div>
       </div>

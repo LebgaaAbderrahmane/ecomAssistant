@@ -6,6 +6,7 @@ interface GetCustomersParams {
   cursor?: string;
   limit?: number | string;
   search?: string;
+  orderFilter?: string;
 }
 
 const encodeCursor = (createdAt: Date, id: string): string =>
@@ -19,7 +20,7 @@ const decodeCursor = (cursor: string): { createdAt: Date; id: string } => {
 export const getCustomers = async (
   params: GetCustomersParams,
 ): Promise<PaginatedResult<any>> => {
-  const { merchantId, cursor, search } = params;
+  const { merchantId, cursor, search, orderFilter } = params;
   const limit = Math.min(Number(params.limit) || 20, 100);
 
   const where: any = { merchantId };
@@ -28,6 +29,11 @@ export const getCustomers = async (
       { name: { contains: search, mode: "insensitive" } },
       { phone: { contains: search } },
     ];
+  }
+  if (orderFilter === "with_orders") {
+    where.orders = { _count: { gt: 0 } };
+  } else if (orderFilter === "without_orders") {
+    where.orders = { _count: 0 };
   }
 
   let cursorWhere = {};
