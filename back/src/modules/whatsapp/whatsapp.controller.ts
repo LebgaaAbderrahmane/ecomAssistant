@@ -167,6 +167,8 @@ export async function handleWebhook(
           where: { sessionId },
         });
 
+        const previousStatus = waSession?.status;
+
         await prisma.whatsAppSession.updateMany({
           where: { sessionId },
           data: { status },
@@ -192,6 +194,23 @@ export async function handleWebhook(
             status,
             phoneNumber: waSession.phoneNumber ?? undefined,
           });
+
+          if (previousStatus !== "disconnected" && status === "disconnected") {
+            await notificationService.createNotification(
+              waSession.merchantId,
+              "whatsapp_disconnected",
+              "WhatsApp Déconnecté",
+              "Votre session WhatsApp a été déconnectée. Reconnectez-la pour continuer à recevoir des messages.",
+              "/dashboard/settings?tab=whatsapp",
+            );
+          } else if (previousStatus === "disconnected" && status === "connected") {
+            await notificationService.createNotification(
+              waSession.merchantId,
+              "whatsapp_reconnected",
+              "WhatsApp Reconnecté",
+              "Votre session WhatsApp est de nouveau connectée.",
+            );
+          }
         }
 
         return res.status(200).json({ status: "ok" });

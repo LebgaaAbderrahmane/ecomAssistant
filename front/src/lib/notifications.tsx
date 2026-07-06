@@ -8,10 +8,16 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "./auth.js";
+import { api } from "./api.js";
 
-interface SessionStatusEvent {
-  status: string;
-  phoneNumber?: string;
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  link: string | null;
+  read: boolean;
+  createdAt: string;
 }
 
 interface NotificationContextType {
@@ -20,6 +26,11 @@ interface NotificationContextType {
   whatsappPhoneNumber: string | null;
   showDisconnectModal: boolean;
   dismissDisconnectModal: () => void;
+  notifications: Notification[];
+  unreadCount: number;
+  fetchNotifications: (unreadOnly?: boolean) => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | null>(null);
@@ -29,10 +40,47 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [whatsappStatus, setWhatsappStatus] = useState<string>("unknown");
   const [whatsappPhoneNumber, setWhatsappPhoneNumber] = useState<string | null>(null);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
-  const previousStatus = useRef<string>("unknown");
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
+
+  const fetchNotifications = useCallback(async (unreadOnly = true) => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await api.get<{
+        data: Notification[];
+        unreadCount: number;
+      }>(`/whatsapp/notifications?unread=${unreadOnly}&limit=10`);
+      setNotifications(res.data);
+      setUnreadCount(res.unreadCount);
+    } catch {
+      /* ignore */
+    }
+  }, [isAuthenticated]);
+
+  const markAsRead = useCallback(async (id: string) => {
+    try {
+      await api.post(`/whatsapp/notifications/${id}/read`, {});
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const markAllAsRead = useCallback(async () => {
+    try {
+      await api.post("/whatsapp/notifications/read-all", {});
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const connectSSE = useCallback(() => {
     if (!isAuthenticated) return;
@@ -45,20 +93,30 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     es.onmessage = (event) => {
       try {
-        const data: SessionStatusEvent = JSON.parse(event.data);
-        const newStatus = data.status === "ready" ? "connected" : data.status;
+        const data = JSON.parse(event.data);
 
-        setWhatsappStatus((prev) => {
-          if (prev !== "unknown" && prev !== newStatus) {
-            if (newStatus === "disconnected" || newStatus === "logout") {
-              setShowDisconnectModal(true);
+        if (data.type === "session.status") {
+          const newStatus = data.status === "ready" ? "connected" : data.status;
+          setWhatsappStatus((prev) => {
+            if (prev !== "unknown" && prev !== newStatus) {
+              if (newStatus === "disconnected" || newStatus === "logout") {
+                setShowDisconnectModal(true);
+              }
             }
+            return newStatus;
+          });
+          if (data.phoneNumber) {
+            setWhatsappPhoneNumber(data.phoneNumber);
           }
-          return newStatus;
-        });
+        }
 
-        if (data.phoneNumber) {
-          setWhatsappPhoneNumber(data.phoneNumber);
+        if (data.type === "notification" && data.notification) {
+          const notif: Notification = {
+            ...data.notification,
+            createdAt: data.notification.createdAt,
+          };
+          setNotifications((prev) => [notif, ...prev]);
+          setUnreadCount((prev) => prev + 1);
         }
 
         reconnectDelay.current = 1000;
@@ -77,6 +135,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isAuthenticated) {
       connectSSE();
+      fetchNotifications();
     }
     return () => {
       if (eventSourceRef.current) {
@@ -87,7 +146,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         clearTimeout(reconnectTimeout.current);
       }
     };
-  }, [isAuthenticated, connectSSE]);
+  }, [isAuthenticated, connectSSE, fetchNotifications]);
 
   useEffect(() => {
     const handleExpired = () => {
@@ -112,6 +171,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         whatsappPhoneNumber,
         showDisconnectModal,
         dismissDisconnectModal,
+        notifications,
+        unreadCount,
+        fetchNotifications,
+        markAsRead,
+        markAllAsRead,
       }}
     >
       {children}

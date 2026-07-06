@@ -398,11 +398,15 @@ function WhatsAppTab() {
     setConnecting(true);
     setError("");
     try {
-      const { qrBase64 } = await api.post<{ qrBase64: string }>(
+      const res = await api.post<{ qrBase64?: string; connected?: boolean }>(
         "/whatsapp/session",
         {},
       );
-      setQrBase64(qrBase64);
+      if (res.connected) {
+        setConnecting(false);
+        return;
+      }
+      setQrBase64(res.qrBase64 ?? null);
 
       const poll = setInterval(async () => {
         try {
@@ -413,6 +417,7 @@ function WhatsAppTab() {
           if (data.status === "connected") {
             clearInterval(poll);
             setQrBase64(null);
+            setConnecting(false);
           }
         } catch {
           /* keep polling */

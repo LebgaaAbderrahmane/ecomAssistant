@@ -1,16 +1,20 @@
 import { NavLink } from 'react-router-dom'
-import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, ExternalLink } from 'lucide-react'
-
-const navItems = [
-  { to: '/dashboard', label: 'Accueil', icon: Home },
-  { to: '/dashboard/escalations', label: 'Escalades', icon: AlertTriangle, badge: 3 },
-  { to: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
-  { to: '/dashboard/catalog', label: 'Catalogue', icon: Package },
-  { to: '/dashboard/settings', label: 'Paramètres', icon: Settings },
-  { to: '/dashboard/billing', label: 'Facturation', icon: CreditCard },
-]
+import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink } from 'lucide-react'
+import { useNotifications } from '../../lib/notifications.js'
 
 export function Sidebar() {
+  const { unreadCount } = useNotifications()
+
+  const navItems = [
+    { to: '/dashboard', label: 'Accueil', icon: Home },
+    { to: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
+    { to: '/dashboard/catalog', label: 'Catalogue', icon: Package },
+    { to: '/dashboard/escalations', label: 'Escalades', icon: AlertTriangle },
+    { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
+    { to: '/dashboard/settings', label: 'Paramètres', icon: Settings },
+    { to: '/dashboard/billing', label: 'Facturation', icon: CreditCard },
+  ]
+
   return (
     <aside className="fixed left-0 top-0 flex h-screen w-[250px] flex-col border-r border-gray-200 bg-white">
       <div className="flex items-center gap-3 px-6 pt-5 pb-6">
@@ -34,9 +38,9 @@ export function Sidebar() {
           >
             <item.icon className="h-[18px] w-[18px]" />
             <span>{item.label}</span>
-            {item.badge !== undefined && item.badge > 0 && (
+            {'badge' in item && item.badge !== undefined && item.badge > 0 && (
               <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
-                {item.badge}
+                {item.badge > 9 ? '9+' : item.badge}
               </span>
             )}
           </NavLink>
