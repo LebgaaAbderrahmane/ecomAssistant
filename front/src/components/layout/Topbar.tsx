@@ -6,11 +6,14 @@ import {
   Settings as SettingsIcon,
   CreditCard,
   LogOut,
+  Bell,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth.js";
+import { useNotifications } from "../../lib/notifications.js";
 
 export function Topbar() {
   const { user, logout } = useAuth();
+  const { whatsappConnected } = useNotifications();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -33,7 +36,18 @@ export function Topbar() {
         <span>{user?.shopName || user?.name || 'Mon Espace'}</span>
       </div>
 
-      <div ref={ref} className="relative">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => navigate("/dashboard/settings", { state: { tab: "whatsapp" } })}
+          className="relative rounded-md p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+        >
+          <Bell className="h-5 w-5" />
+          {!whatsappConnected && (
+            <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+          )}
+        </button>
+
+        <div ref={ref} className="relative">
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
           className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-gray-50 transition-colors"
@@ -82,6 +96,7 @@ export function Topbar() {
             </button>
           </div>
         )}
+        </div>
       </div>
     </header>
   );

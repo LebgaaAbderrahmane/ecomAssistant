@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Save,
   Smartphone,
@@ -12,6 +13,7 @@ import { Button } from "../../components/ui/Button.js";
 import { Badge } from "../../components/ui/Badge.js";
 import { api } from "../../lib/api.js";
 import { Input } from "../../components/ui/Input.js";
+import { useNotifications } from "../../lib/notifications.js";
 
 type SettingsTab = "agent" | "store" | "whatsapp" | "wilaya";
 
@@ -386,31 +388,11 @@ function ConnectButton({
 }
 
 function WhatsAppTab() {
-  const [status, setStatus] = useState<string | null>(null);
-  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { whatsappConnected, whatsappPhoneNumber } = useNotifications();
+  const [loading, setLoading] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
-
-  const fetchStatus = async () => {
-    try {
-      const data = await api.get<{
-        status: string;
-        phoneNumber: string | null;
-      }>("/whatsapp/session/status");
-      setStatus(data.status);
-      setPhoneNumber(data.phoneNumber);
-    } catch {
-      setStatus("disconnected");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStatus();
-  }, []);
 
   const connect = async () => {
     setConnecting(true);
@@ -431,8 +413,6 @@ function WhatsAppTab() {
           if (data.status === "connected") {
             clearInterval(poll);
             setQrBase64(null);
-            setStatus("connected");
-            setPhoneNumber(data.phoneNumber);
           }
         } catch {
           /* keep polling */
@@ -447,8 +427,6 @@ function WhatsAppTab() {
   const disconnect = async () => {
     try {
       await api.delete("/whatsapp/session");
-      setStatus("disconnected");
-      setPhoneNumber(null);
     } catch {
       /* ignore */
     }
@@ -498,17 +476,17 @@ function WhatsAppTab() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-900">
-              {phoneNumber || "Aucun numéro connecté"}
+              {whatsappPhoneNumber || "Aucun numéro connecté"}
             </p>
-            {phoneNumber && (
+            {whatsappPhoneNumber && (
               <p className="text-[13px] text-gray-500">WhatsApp Business</p>
             )}
           </div>
-          <Badge variant={status === "connected" ? "success" : "danger"}>
-            {status === "connected" ? "Connecté" : "Déconnecté"}
+          <Badge variant={whatsappConnected ? "success" : "danger"}>
+            {whatsappConnected ? "Connecté" : "Déconnecté"}
           </Badge>
         </div>
-        {status === "connected" ? (
+        {whatsappConnected ? (
           <Button variant="secondary" className="mt-4" onClick={disconnect}>
             Déconnecter
           </Button>
@@ -565,7 +543,9 @@ function WilayaPricingTab() {
 }
 
 export function Settings() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("agent");
+  const location = useLocation();
+  const initialTab = (location.state as { tab?: SettingsTab })?.tab || "agent";
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
   const content: Record<SettingsTab, React.ReactNode> = {
     agent: <AgentConfigTab />,

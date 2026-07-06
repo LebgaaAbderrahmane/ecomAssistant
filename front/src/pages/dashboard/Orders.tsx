@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Loader2, Package } from 'lucide-react'
+import { Search, Loader2, Package, MessageCircle } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge.js'
 import { Button } from '../../components/ui/Button.js'
 import { api } from '../../lib/api.js'
@@ -50,6 +50,11 @@ const statusLabels: Record<string, string> = {
   processing: 'En cours',
   shipped: 'Expédiée',
   delivered: 'Livrée',
+}
+
+function formatWhatsAppUrl(phone: string): string {
+  const clean = phone.replace(/[^0-9]/g, '')
+  return `https://wa.me/${clean}`
 }
 
 export function Orders() {
@@ -147,19 +152,20 @@ export function Orders() {
               <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Wilaya</th>
               <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Statut</th>
               <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Date</th>
+              <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Action</th>
             </tr>
           </thead>
           <tbody>
             {loading && orders.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
                   <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                   Chargement...
                 </td>
               </tr>
             ) : orders.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
                   <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                   Aucune commande trouvée.
                 </td>
@@ -187,6 +193,17 @@ export function Orders() {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {new Date(order.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <a
+                      href={formatWhatsAppUrl(order.customerPhone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600 transition-colors"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      WhatsApp
+                    </a>
                   </td>
                 </tr>
               ))

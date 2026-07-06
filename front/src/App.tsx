@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { AuthProvider } from './lib/auth.js'
+import { NotificationProvider } from './lib/notifications.js'
+import { DisconnectModal } from './components/ui/DisconnectModal.js'
 import { ProtectedRoute } from './components/auth/ProtectedRoute.js'
 import { AppLayout } from './components/layout/AppLayout.js'
 import { Login } from './pages/auth/Login.js'
@@ -10,7 +13,6 @@ import { WhatsAppSetup } from './pages/onboarding/WhatsAppSetup.js'
 import { AgentConfig } from './pages/onboarding/AgentConfig.js'
 import { Activation } from './pages/onboarding/Activation.js'
 import { DashboardHome } from './pages/dashboard/DashboardHome.js'
-import { Conversations } from './pages/dashboard/Conversations.js'
 import { Catalog } from './pages/dashboard/Catalog.js'
 import { Orders } from './pages/dashboard/Orders.js'
 import { Escalations } from './pages/dashboard/Escalations.js'
@@ -20,31 +22,34 @@ import { Billing } from './pages/dashboard/Billing.js'
 export function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route element={<ProtectedRoute />}>
-            <Route path="/onboarding" element={<OnboardingLayout />}>
-              <Route index element={<Navigate to="store" replace />} />
-              <Route path="store" element={<StoreConnection />} />
-              <Route path="whatsapp" element={<WhatsAppSetup />} />
-              <Route path="agent" element={<AgentConfig />} />
-              <Route path="activate" element={<Activation />} />
+      <NotificationProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/onboarding" element={<OnboardingLayout />}>
+                <Route index element={<Navigate to="store" replace />} />
+                <Route path="store" element={<StoreConnection />} />
+                <Route path="whatsapp" element={<WhatsAppSetup />} />
+                <Route path="agent" element={<AgentConfig />} />
+                <Route path="activate" element={<Activation />} />
+              </Route>
+              <Route path="/dashboard" element={<AppLayout />}>
+                <Route index element={<DashboardHome />} />
+                <Route path="orders" element={<Orders />} />
+                <Route path="catalog" element={<Catalog />} />
+                <Route path="escalations" element={<Escalations />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="billing" element={<Billing />} />
+              </Route>
             </Route>
-            <Route path="/dashboard" element={<AppLayout />}>
-              <Route index element={<DashboardHome />} />
-              <Route path="conversations" element={<Conversations />} />
-              <Route path="orders" element={<Orders />} />
-              <Route path="catalog" element={<Catalog />} />
-              <Route path="escalations" element={<Escalations />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="billing" element={<Billing />} />
-            </Route>
-          </Route>
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </BrowserRouter>
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </BrowserRouter>
+        <DisconnectModal />
+        <Toaster position="top-right" richColors />
+      </NotificationProvider>
     </AuthProvider>
   )
 }

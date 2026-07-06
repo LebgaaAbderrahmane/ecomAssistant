@@ -7,6 +7,7 @@ import { redis } from "../../config";
 import { config } from "../../config";
 import { openwaService } from "./whatsapp.service";
 import { conversationService } from "./conversation.service";
+import { notificationService } from "./notification.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
 
 const MEDIA_DIR = path.resolve("/app/uploads/media");
@@ -162,6 +163,10 @@ export async function handleWebhook(
         const rawStatus = data.status as string;
         const status = rawStatus === "ready" ? "connected" : rawStatus;
 
+        const waSession = await prisma.whatsAppSession.findUnique({
+          where: { sessionId },
+        });
+
         await prisma.whatsAppSession.updateMany({
           where: { sessionId },
           data: { status },
@@ -170,9 +175,6 @@ export async function handleWebhook(
         if (status === "connected") {
           try {
             const session = await openwaService.getSession(sessionId);
-            const waSession = await prisma.whatsAppSession.findUnique({
-              where: { sessionId },
-            });
             if (waSession?.phoneNumber !== session.name) {
               await prisma.whatsAppSession.update({
                 where: { sessionId },
@@ -182,6 +184,14 @@ export async function handleWebhook(
           } catch {
             // phone number is optional, ignore failures
           }
+        }
+
+        if (waSession) {
+          notificationService.emitSessionStatus({
+            merchantId: waSession.merchantId,
+            status,
+            phoneNumber: waSession.phoneNumber ?? undefined,
+          });
         }
 
         return res.status(200).json({ status: "ok" });
@@ -370,74 +380,6 @@ export async function deleteSession(
     await prisma.whatsAppSession.delete({ where: { id: waSession.id } });
 
     return res.json({ message: "Session deleted" });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function markAsRead(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    const merchantId = req.merchant!.merchantId;
-    const { id } = req.params;
-
-    const conversation = await conversationService.getById(id);
-    if (!conversation || conversation.merchantId !== merchantId) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    await conversationService.markAsRead(id);
-    return res.json({ message: "Marked as read" });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function sendMessage(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    const merchantId = req.merchant!.merchantId;
-    const { conversationId, text } = req.body as {
-      conversationId: string;
-      text: string;
-    };
-
-    if (!conversationId || !text) {
-      return res
-        .status(400)
-        .json({ message: "conversationId and text required" });
-    }
-
-    const conversation = await conversationService.getById(conversationId);
-    if (!conversation || conversation.merchantId !== merchantId) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    const waSession = await prisma.whatsAppSession.findUnique({
-      where: { merchantId },
-    });
-    if (
-      !waSession ||
-      (waSession.status !== "connected" && waSession.status !== "ready")
-    ) {
-      return res.status(400).json({ message: "WhatsApp not connected" });
-    }
-
-    await openwaService.sendText(
-      waSession.sessionId,
-      conversation.customerPhone,
-      text,
-    );
-
-    await conversationService.addMessage(conversationId, "agent", text);
-
-    return res.json({ message: "Sent" });
   } catch (err) {
     next(err);
   }
