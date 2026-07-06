@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Search, RefreshCw, ImageOff, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Search, RefreshCw, ImageOff, Loader2, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '../../components/ui/Badge.js'
 import { Button } from '../../components/ui/Button.js'
@@ -48,6 +48,8 @@ export function Catalog() {
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [resyncing, setResyncing] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
 
   const fetchProducts = async (cursor?: string) => {
     setLoading(true)
@@ -77,6 +79,15 @@ export function Catalog() {
     fetchProducts()
   }, [search, stockFilter])
 
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node))
+        setFilterOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
   const handleResync = async () => {
     setResyncing(true)
     try {
@@ -96,20 +107,55 @@ export function Catalog() {
           <h1 className="text-2xl font-bold text-gray-900">Catalogue</h1>
           <p className="mt-1 text-sm text-gray-500">{products.length} produits synchronisés depuis votre boutique</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative max-w-xs flex-1">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
-              placeholder="Rechercher des produits..."
+              placeholder="Rechercher..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             />
           </div>
+          <div ref={filterRef} className="relative sm:hidden">
+            <button
+              onClick={() => setFilterOpen(!filterOpen)}
+              className={`flex h-10 w-10 items-center justify-center rounded-md border transition-colors ${
+                stockFilter
+                  ? 'border-brand-600 bg-brand-50 text-brand-600'
+                  : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg z-10 py-1">
+                <button
+                  onClick={() => { setStockFilter(''); setFilterOpen(false) }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${!stockFilter ? 'text-brand-600 font-medium' : 'text-gray-700'}`}
+                >
+                  Tous les stocks
+                </button>
+                {[
+                  { value: 'in_stock', label: 'En stock' },
+                  { value: 'low_stock', label: 'Stock faible' },
+                  { value: 'out_of_stock', label: 'Rupture' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setStockFilter(opt.value); setFilterOpen(false) }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${stockFilter === opt.value ? 'text-brand-600 font-medium' : 'text-gray-700'}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <select
             value={stockFilter}
             onChange={(e) => setStockFilter(e.target.value)}
-            className="h-10 w-full sm:w-40 rounded-md border border-gray-300 px-3 text-sm text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-600"
+            className="hidden sm:block h-10 w-40 rounded-md border border-gray-300 px-3 text-sm text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-600"
           >
             <option value="">Tous les stocks</option>
             <option value="in_stock">En stock</option>
@@ -118,7 +164,7 @@ export function Catalog() {
           </select>
           <Button variant="secondary" className="gap-2" onClick={handleResync} loading={resyncing}>
             <RefreshCw className="h-4 w-4" />
-            Resynchroniser
+            <span className="hidden sm:inline">Resynchroniser</span>
           </Button>
         </div>
       </div>
