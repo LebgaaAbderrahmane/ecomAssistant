@@ -5,6 +5,8 @@ import ordersRoutes from "../modules/orders/orders.routes"
 import whatsappRoutes from "../modules/whatsapp/whatsapp.routes"
 import agentConfigRoutes from "../modules/agent-config/agent-config.routes"
 import productsRoutes from "../modules/products/products.routes"
+import customersRoutes from "../modules/customers/customers.routes"
+import escalationsRoutes from "../modules/escalations/escalations.routes"
 
 const router: Router = express.Router()
 
@@ -14,5 +16,7 @@ router.use('/store-connection', storeConnectionRoutes)
 router.use('/whatsapp', whatsappRoutes)
 router.use('/agent-config', agentConfigRoutes)
 router.use('/products', productsRoutes)
+router.use('/customers', customersRoutes)
+router.use('/escalations', escalationsRoutes)
 
 export default router;

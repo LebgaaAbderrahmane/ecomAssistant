@@ -91,37 +91,36 @@ export function Catalog() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="shrink-0">
           <h1 className="text-2xl font-bold text-gray-900">Catalogue</h1>
           <p className="mt-1 text-sm text-gray-500">{products.length} produits synchronisés depuis votre boutique</p>
         </div>
-        <Button variant="secondary" className="gap-2" onClick={handleResync} loading={resyncing}>
-          <RefreshCw className="h-4 w-4" />
-          Resynchroniser
-        </Button>
-      </div>
-
-      <div className="mt-6 flex gap-3">
-        <div className="relative max-w-xs flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            placeholder="Rechercher des produits..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative max-w-xs flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              placeholder="Rechercher des produits..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
+            />
+          </div>
+          <select
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value)}
+            className="h-10 w-40 rounded-md border border-gray-300 px-3 text-sm text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-600"
+          >
+            <option value="">Tous les stocks</option>
+            <option value="in_stock">En stock</option>
+            <option value="low_stock">Stock faible</option>
+            <option value="out_of_stock">Rupture</option>
+          </select>
+          <Button variant="secondary" className="gap-2" onClick={handleResync} loading={resyncing}>
+            <RefreshCw className="h-4 w-4" />
+            Resynchroniser
+          </Button>
         </div>
-        <select
-          value={stockFilter}
-          onChange={(e) => setStockFilter(e.target.value)}
-          className="h-10 w-40 rounded-md border border-gray-300 px-3 text-sm text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-600"
-        >
-          <option value="">Tous les stocks</option>
-          <option value="in_stock">En stock</option>
-          <option value="low_stock">Stock faible</option>
-          <option value="out_of_stock">Rupture</option>
-        </select>
       </div>
 
       <div className="mt-6 rounded-lg border border-gray-200 bg-white">

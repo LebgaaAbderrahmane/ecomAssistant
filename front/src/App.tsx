@@ -20,6 +20,7 @@ import { Settings } from "./pages/dashboard/Settings.js";
 import { Billing } from "./pages/dashboard/Billing.js";
 import { Notifications } from "./pages/dashboard/Notifications.js";
 import { Profile } from "./pages/dashboard/Profile.js";
+import { Customers } from "./pages/dashboard/Customers.js";
 
 export function App() {
   return (
@@ -40,6 +41,7 @@ export function App() {
               <Route path="/dashboard" element={<AppLayout />}>
                 <Route index element={<DashboardHome />} />
                 <Route path="orders" element={<Orders />} />
+                <Route path="customers" element={<Customers />} />
                 <Route path="catalog" element={<Catalog />} />
                 <Route path="escalations" element={<Escalations />} />
                 <Route path="settings" element={<Settings />} />

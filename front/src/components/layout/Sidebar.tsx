@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User } from 'lucide-react'
+import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User, Users } from 'lucide-react'
 import { useNotifications } from '../../lib/notifications.js'
 
 export function Sidebar() {
@@ -8,6 +8,7 @@ export function Sidebar() {
   const mainItems = [
     { to: '/dashboard', label: 'Accueil', icon: Home },
     { to: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
+    { to: '/dashboard/customers', label: 'Clients', icon: Users },
     { to: '/dashboard/catalog', label: 'Catalogue', icon: Package },
     { to: '/dashboard/escalations', label: 'Escalades', icon: AlertTriangle },
   ]
@@ -27,6 +28,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
+        <p className="px-3 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Menu</p>
         {mainItems.map((item) => (
           <NavLink
             key={item.to}
@@ -46,6 +48,7 @@ export function Sidebar() {
         ))}
 
         <div className="my-3 border-t border-gray-100" />
+        <p className="px-3 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Utilitaires</p>
 
         {utilityItems.map((item) => (
           <NavLink

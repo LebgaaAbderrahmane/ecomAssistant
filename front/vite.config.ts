@@ -14,6 +14,8 @@ export default defineConfig({
       "/store-connection": { target: "http://back:3000", changeOrigin: true },
       "/agent-config": { target: "http://back:3000", changeOrigin: true },
       "/uploads": { target: "http://back:3000", changeOrigin: true },
+      "/customers": { target: "http://back:3000", changeOrigin: true },
+      "/escalations": { target: "http://back:3000", changeOrigin: true },
     },
   },
 });
