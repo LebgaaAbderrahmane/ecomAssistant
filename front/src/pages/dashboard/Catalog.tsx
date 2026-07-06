@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Search, RefreshCw, ImageOff, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '../../components/ui/Badge.js'
 import { Button } from '../../components/ui/Button.js'
 import { api } from '../../lib/api.js'
@@ -81,7 +82,10 @@ export function Catalog() {
     try {
       await api.get('/store-connection/shopify/sync-orders')
       await fetchProducts()
-    } catch { /* ignore */ }
+      toast.success('Produits resynchronisés')
+    } catch {
+      toast.error('Erreur lors de la resynchronisation')
+    }
     setResyncing(false)
   }
 

@@ -9,6 +9,7 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../../components/ui/Button.js";
 import { Badge } from "../../components/ui/Badge.js";
 import { api } from "../../lib/api.js";
@@ -93,7 +94,10 @@ function AgentConfigTab() {
           parseInt(delay3, 10),
         ],
       });
-    } catch {}
+      toast.success("Configuration sauvegardée");
+    } catch {
+      toast.error("Erreur de sauvegarde");
+    }
     setSaving(false);
   };
 
@@ -406,6 +410,7 @@ function WhatsAppTab() {
       );
       if (res.connected) {
         setConnecting(false);
+        toast.success("WhatsApp connecté");
         return;
       }
       setQrBase64(res.qrBase64 ?? null);
@@ -420,6 +425,7 @@ function WhatsAppTab() {
             clearInterval(poll);
             setQrBase64(null);
             setConnecting(false);
+            toast.success("WhatsApp connecté");
           }
         } catch {
           /* keep polling */
@@ -427,6 +433,7 @@ function WhatsAppTab() {
       }, 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur");
+      toast.error("Erreur de connexion WhatsApp");
       setConnecting(false);
     }
   };
@@ -437,8 +444,9 @@ function WhatsAppTab() {
     suppressDisconnectModal();
     try {
       await api.delete("/whatsapp/session");
+      toast.success("WhatsApp déconnecté");
     } catch {
-      /* ignore */
+      toast.error("Erreur lors de la déconnexion");
     }
     setDisconnecting(false);
   };

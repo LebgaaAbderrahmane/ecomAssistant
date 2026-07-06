@@ -51,7 +51,7 @@ export function App() {
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
           <DisconnectModal />
-          <Toaster position="top-right" richColors />
+          <Toaster position="bottom-right" richColors />
         </BrowserRouter>
       </NotificationProvider>
     </AuthProvider>
