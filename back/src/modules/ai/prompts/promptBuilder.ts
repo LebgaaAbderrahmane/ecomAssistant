@@ -1,7 +1,7 @@
 import { INTENT_EXTRACTION_RULES, REPLY_GENERATION_RULES } from './systemPrompts';
-import { ConversationMemory } from '../agent.service';
+import type { ConversationMemory } from '../memory.types';
+import type { ToolResult } from '../tools/registry';
 
-// unchanged — LLM #1's context
 export interface AgentContext {
   state: string;
   allowedIntents: string[];
@@ -22,16 +22,24 @@ export function buildIntentPrompt(ctx: AgentContext): string {
   ].join('\n');
 }
 
-// LLM #2's context — what happened, not what's allowed to happen
 export interface ReplyContext {
   intent: string;
   conversationAct: string;
-  entities: Record<string, unknown>;
-  toolResult: Record<string, unknown> | null; // null = no tool ran / not available yet
-  memory:ConversationMemory;
+  entities: Record<string, string | number | boolean | null>;
+  toolResult: ToolResult | null;
+  memory: ConversationMemory; // was Record<string, unknown> — same bug as AgentContext had
 }
 
 export function buildReplyPrompt(ctx: ReplyContext): string {
+  let toolSection: string;
+  if (!ctx.toolResult) {
+    toolSection = 'No tool result available — do not state facts you do not have.';
+  } else if (ctx.toolResult.success) {
+    toolSection = `Tool result:\n${JSON.stringify(ctx.toolResult.data, null, 2)}`;
+  } else {
+    toolSection = `Tool lookup failed: ${ctx.toolResult.error}. Do not guess — tell the customer you're checking, or ask a clarifying question.`;
+  }
+
   return [
     REPLY_GENERATION_RULES,
     '',
@@ -40,9 +48,7 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     'Extracted entities:',
     JSON.stringify(ctx.entities, null, 2),
     '',
-    ctx.toolResult
-      ? `Tool result:\n${JSON.stringify(ctx.toolResult, null, 2)}`
-      : 'No tool result available — do not state facts you do not have.',
+    toolSection,
     '',
     'Context (memory):',
     JSON.stringify(ctx.memory, null, 2),

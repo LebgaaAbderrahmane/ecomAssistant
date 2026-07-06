@@ -52,3 +52,16 @@ export const ToolNameSchema = z.enum([
   'createSupportTicket',
 ]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
+
+
+export const SearchProductsArgsSchema = z.object({
+  product: z.string().min(1),
+});
+
+export const GetOrderStatusArgsSchema = z.object({
+  orderId: z.string().min(1).optional(), // falls back to conversation.currentOrderId if absent
+});
+
+export const CalculateShippingArgsSchema = z.object({
+  wilaya: z.string().min(1),
+});

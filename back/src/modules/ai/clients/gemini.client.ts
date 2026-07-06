@@ -12,30 +12,25 @@ const MODEL_NAME = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash';
 // Instantiates with an options object. Falls back to process.env.GEMINI_API_KEY naturally if left empty.
 const ai = new GoogleGenAI({ apiKey });
 
-export async function callLLM({ systemPrompt, userMessage }: CallLLMParams): Promise<string> {
+export async function callLLM({ systemPrompt, userMessage, responseSchema }: CallLLMParams): Promise<string> {
   const startedAt = Date.now();
-
-  // The modern SDK calls the model directly from the client instance
   const response = await ai.models.generateContent({
     model: MODEL_NAME,
     contents: userMessage,
     config: {
       systemInstruction: systemPrompt,
       responseMimeType: 'application/json',
+      ...(responseSchema ? { responseSchema } : {}),
       temperature: 0.4,
     },
   });
-
   const latencyMs = Date.now() - startedAt;
   const usage = response.usageMetadata;
-
   console.log('[llm.call]', {
     model: MODEL_NAME,
     latencyMs,
     promptTokens: usage?.promptTokenCount,
     completionTokens: usage?.candidatesTokenCount,
   });
-
-  // Safe fallback if text comes back empty/undefined
   return response.text ?? '';
 }

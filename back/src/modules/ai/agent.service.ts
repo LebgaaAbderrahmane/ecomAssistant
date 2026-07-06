@@ -3,19 +3,13 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema } from './schemas/intents.schemas';
+import { IntentSchema, ToolNameSchema } from './schemas/intents.schemas';
+import { executeTool, ToolResult } from './tools/registry';
+import type { ConversationMemory } from './memory.types';
+import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
-
-// Typed shape for what we actually read/write in Conversation.memory (a Json
-// column). Kept here rather than in promptBuilder.ts since this file owns
-// reading/writing it — promptBuilder just consumes whatever shape it's given.
-export interface ConversationMemory {
-  lastIntent?: string;
-  lastConversationAct?: string;
-  entities?: Record<string, string | number | boolean | null>;
-  updatedAt?: string;
-}
+const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
 
 export const processMessage = async (messageId: string) => {
   const message = await prisma.message.findUniqueOrThrow({
@@ -29,17 +23,19 @@ export const processMessage = async (messageId: string) => {
   const intentContext: AgentContext = {
     state: conversation.state,
     allowedIntents: ALL_INTENTS,
-    allowedTools: [],
+    allowedTools: ALL_TOOLS,
     memory,
   };
   const rawIntent = await callLLM({
-    systemPrompt: buildIntentPrompt(intentContext),
-    userMessage: message.text,
-  });
+  systemPrompt: buildIntentPrompt(intentContext),
+  userMessage: message.text,
+  responseSchema: INTENT_RESPONSE_SCHEMA,
+});
 
   let parsed;
   try {
     parsed = parseResponse(rawIntent);
+    console.log(`[agent] ${messageId} -> raw intent response:`, parsed);
   } catch (err) {
     if (err instanceof LLMParseError) {
       console.error('[agent] failed to parse intent response', { messageId, raw: err.raw });
@@ -56,12 +52,16 @@ export const processMessage = async (messageId: string) => {
     },
   });
 
-  // --- Tool step: stubbed until tools/registry.ts exists ---
-  // toolSuggestion is intentionally not persisted — it's transient input to
-  // this decision, not conversation state.
-  let toolResult: Record<string, unknown> | null = null;
+  // --- Tool execution ---
+  let toolResult: ToolResult | null = null;
   if (parsed.toolSuggestion) {
-    console.log(`[agent] LLM suggested tool "${parsed.toolSuggestion}" — no registry yet, skipping`);
+    toolResult = await executeTool(parsed.toolSuggestion, parsed.entities, {
+      merchantId: conversation.merchantId,
+      customerId: conversation.customerId,
+      conversationId: conversation.id,
+      currentOrderId: conversation.currentOrderId,
+    });
+    console.log(`[agent] tool "${parsed.toolSuggestion}" ->`, toolResult);
   }
 
   // --- LLM #2: reply generation ---
@@ -72,10 +72,12 @@ export const processMessage = async (messageId: string) => {
     toolResult,
     memory,
   };
-  const rawReply = await callLLM({
-    systemPrompt: buildReplyPrompt(replyContext),
-    userMessage: message.text,
-  }); 
+  
+const rawReply = await callLLM({
+  systemPrompt: buildReplyPrompt(replyContext),
+  userMessage: message.text,
+  responseSchema: REPLY_RESPONSE_SCHEMA,
+});
 
   let replyParsed;
   try {
@@ -97,9 +99,6 @@ export const processMessage = async (messageId: string) => {
   });
 
   // --- Update conversation memory ---
-  // Placeholder shape: last intent/tone overwritten each turn, entities
-  // shallow-merged so info from earlier turns (e.g. product mentioned two
-  // messages ago) survives until the state machine defines something better.
   const updatedMemory: ConversationMemory = {
     ...memory,
     lastIntent: parsed.intent,
