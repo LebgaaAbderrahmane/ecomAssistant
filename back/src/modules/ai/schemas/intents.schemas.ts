@@ -58,6 +58,10 @@ export const SearchProductsArgsSchema = z.object({
   product: z.string().min(1),
 });
 
+export const ConfirmOrderArgsSchema = z.object({
+  orderId: z.string().min(1),
+});
+
 export const GetOrderStatusArgsSchema = z.object({
   orderId: z.string().min(1).optional(), // falls back to conversation.currentOrderId if absent
 });

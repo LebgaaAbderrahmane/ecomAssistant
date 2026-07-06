@@ -4,6 +4,7 @@ import {
   SearchProductsArgsSchema,
   GetOrderStatusArgsSchema,
   CalculateShippingArgsSchema,
+  ConfirmOrderArgsSchema
 } from '../schemas/intents.schemas';
 
 export interface ToolExecutionContext {
@@ -98,11 +99,61 @@ const calculateShipping: ToolHandler = async (entities, ctx) => {
   return { success: true, data: { wilaya: cost.wilaya, cost: cost.cost } };
 };
 
+import { Prisma } from '@prisma/client';
+
+const confirmOrder: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = ConfirmOrderArgsSchema.safeParse(entities);
+
+  const orderId =
+    ctx.currentOrderId ??
+    (parsedArgs.success ? parsedArgs.data.orderId : undefined);
+
+  if (!orderId) {
+    return {
+      success: false,
+      error: 'No order in context to confirm',
+    };
+  }
+
+  try {
+    const order = await prisma.order.update({
+      where: {
+        id: orderId,
+        merchantId: ctx.merchantId,
+        customerId: ctx.customerId,
+      },
+      data: {
+        status: 'CONFIRMED',
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        orderId: order.id,
+        status: order.status,
+      },
+    };
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2025'
+    ) {
+      return {
+        success: false,
+        error: 'Order not found',
+      };
+    }
+
+    throw err;
+  }
+};
+
 export const toolRegistry: Record<ToolName, ToolHandler> = {
   searchProducts,
   getProductDetails: notImplemented,
   createOrder: notImplemented,
-  confirmOrder: notImplemented,
+  confirmOrder,
   cancelOrder: notImplemented,
   getOrderStatus,
   calculateShipping,

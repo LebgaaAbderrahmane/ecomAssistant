@@ -3,6 +3,7 @@ import { app } from './app.js'
 // and begins listening to the Redis queue
 import "./workers/email.worker";
 import "./workers/message.worker";
+import "./workers/order.worker";
 
 
 const PORT = process.env.PORT ?? 3000;
