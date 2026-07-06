@@ -1,16 +1,20 @@
 import { NavLink } from 'react-router-dom'
-import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink } from 'lucide-react'
+import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User } from 'lucide-react'
 import { useNotifications } from '../../lib/notifications.js'
 
 export function Sidebar() {
   const { unreadCount } = useNotifications()
 
-  const navItems = [
+  const mainItems = [
     { to: '/dashboard', label: 'Accueil', icon: Home },
     { to: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
     { to: '/dashboard/catalog', label: 'Catalogue', icon: Package },
     { to: '/dashboard/escalations', label: 'Escalades', icon: AlertTriangle },
+  ]
+
+  const utilityItems = [
     { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
+    { to: '/dashboard/profile', label: 'Profil', icon: User },
     { to: '/dashboard/settings', label: 'Paramètres', icon: Settings },
     { to: '/dashboard/billing', label: 'Facturation', icon: CreditCard },
   ]
@@ -23,11 +27,30 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
-        {navItems.map((item) => (
+        {mainItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/dashboard'}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-md px-3 py-[10px] text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-brand-50 text-brand-600'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              }`
+            }
+          >
+            <item.icon className="h-[18px] w-[18px]" />
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+
+        <div className="my-3 border-t border-gray-100" />
+
+        {utilityItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-md px-3 py-[10px] text-sm font-medium transition-colors ${
                 isActive

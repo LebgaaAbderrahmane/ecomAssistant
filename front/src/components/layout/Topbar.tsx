@@ -2,11 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Store,
-  ChevronDown,
   Settings as SettingsIcon,
   CreditCard,
   LogOut,
   Bell,
+  User,
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
@@ -166,50 +166,65 @@ export function Topbar() {
         <div ref={profileRef} className="relative">
           <button
             onClick={() => setProfileOpen(!profileOpen)}
-            className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-gray-50 transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white hover:ring-2 hover:ring-brand-300 transition-all"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
-              {initial}
-            </div>
-            <span className="text-sm text-gray-700">
-              {user?.email || "marchand@email.com"}
-            </span>
-            <ChevronDown className="h-4 w-4 text-gray-400" />
+            {initial}
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 top-full mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white shadow-md">
-              <button
-                onClick={() => {
-                  navigate("/dashboard/settings");
-                  setProfileOpen(false);
-                }}
-                className="flex h-10 w-full items-center gap-3 px-4 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                <SettingsIcon className="h-4 w-4" />
-                Paramètres
-              </button>
-              <button
-                onClick={() => {
-                  navigate("/dashboard/billing");
-                  setProfileOpen(false);
-                }}
-                className="flex h-10 w-full items-center gap-3 px-4 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                <CreditCard className="h-4 w-4" />
-                Facturation
-              </button>
-              <div className="border-t border-gray-200" />
-              <button
-                onClick={() => {
-                  logout();
-                  setProfileOpen(false);
-                }}
-                className="flex h-10 w-full items-center gap-3 px-4 text-sm text-red-600 hover:bg-gray-50"
-              >
-                <LogOut className="h-4 w-4" />
-                Déconnexion
-              </button>
+            <div className="absolute right-0 top-full mt-1 w-[220px] rounded-lg border border-gray-200 bg-white shadow-md">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <p className="text-sm font-medium text-gray-900">
+                  {user?.name || "Marchand"}
+                </p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user?.email || "marchand@email.com"}
+                </p>
+              </div>
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    navigate("/dashboard/profile");
+                    setProfileOpen(false);
+                  }}
+                  className="flex h-10 w-full items-center gap-3 px-4 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <User className="h-4 w-4" />
+                  Mon profil
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/dashboard/settings");
+                    setProfileOpen(false);
+                  }}
+                  className="flex h-10 w-full items-center gap-3 px-4 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <SettingsIcon className="h-4 w-4" />
+                  Paramètres
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/dashboard/billing");
+                    setProfileOpen(false);
+                  }}
+                  className="flex h-10 w-full items-center gap-3 px-4 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Facturation
+                </button>
+              </div>
+              <div className="border-t border-gray-100 py-1">
+                <button
+                  onClick={() => {
+                    logout();
+                    setProfileOpen(false);
+                  }}
+                  className="flex h-10 w-full items-center gap-3 px-4 text-sm text-red-600 hover:bg-gray-50"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Déconnexion
+                </button>
+              </div>
             </div>
           )}
         </div>

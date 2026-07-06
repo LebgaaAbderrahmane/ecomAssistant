@@ -26,6 +26,7 @@ interface NotificationContextType {
   whatsappPhoneNumber: string | null;
   showDisconnectModal: boolean;
   dismissDisconnectModal: () => void;
+  suppressDisconnectModal: () => void;
   notifications: Notification[];
   unreadCount: number;
   fetchNotifications: (unreadOnly?: boolean) => Promise<void>;
@@ -45,6 +46,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
+  const suppressDisconnectRef = useRef(false);
 
   const fetchNotifications = useCallback(async (unreadOnly = true) => {
     if (!isAuthenticated) return;
@@ -100,7 +102,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           setWhatsappStatus((prev) => {
             if (prev !== "unknown" && prev !== newStatus) {
               if (newStatus === "disconnected" || newStatus === "logout") {
-                setShowDisconnectModal(true);
+                if (!suppressDisconnectRef.current) {
+                  setShowDisconnectModal(true);
+                }
               }
             }
             return newStatus;
@@ -163,6 +167,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setShowDisconnectModal(false);
   }, []);
 
+  const suppressDisconnectModal = useCallback(() => {
+    suppressDisconnectRef.current = true;
+    setTimeout(() => {
+      suppressDisconnectRef.current = false;
+    }, 2000);
+  }, []);
+
   return (
     <NotificationContext.Provider
       value={{
@@ -171,6 +182,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         whatsappPhoneNumber,
         showDisconnectModal,
         dismissDisconnectModal,
+        suppressDisconnectModal,
         notifications,
         unreadCount,
         fetchNotifications,

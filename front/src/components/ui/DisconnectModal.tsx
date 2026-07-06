@@ -11,7 +11,7 @@ export function DisconnectModal() {
 
   const handleReconnect = () => {
     dismissDisconnectModal();
-    navigate("/dashboard/settings", { state: { tab: "whatsapp" } });
+    navigate("/dashboard/settings?tab=whatsapp");
   };
 
   return (

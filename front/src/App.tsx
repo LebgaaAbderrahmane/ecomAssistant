@@ -19,6 +19,7 @@ import { Escalations } from "./pages/dashboard/Escalations.js";
 import { Settings } from "./pages/dashboard/Settings.js";
 import { Billing } from "./pages/dashboard/Billing.js";
 import { Notifications } from "./pages/dashboard/Notifications.js";
+import { Profile } from "./pages/dashboard/Profile.js";
 
 export function App() {
   return (
@@ -42,6 +43,7 @@ export function App() {
                 <Route path="catalog" element={<Catalog />} />
                 <Route path="escalations" element={<Escalations />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="profile" element={<Profile />} />
                 <Route path="billing" element={<Billing />} />
                 <Route path="notifications" element={<Notifications />} />
               </Route>

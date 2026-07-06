@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import {
   Save,
   Smartphone,
@@ -388,11 +388,12 @@ function ConnectButton({
 }
 
 function WhatsAppTab() {
-  const { whatsappConnected, whatsappPhoneNumber } = useNotifications();
+  const { whatsappConnected, whatsappPhoneNumber, suppressDisconnectModal } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [error, setError] = useState("");
 
   const connect = async () => {
@@ -432,6 +433,8 @@ function WhatsAppTab() {
 
   const disconnect = async () => {
     setDisconnecting(true);
+    setShowDisconnectConfirm(false);
+    suppressDisconnectModal();
     try {
       await api.delete("/whatsapp/session");
     } catch {
@@ -478,6 +481,7 @@ function WhatsAppTab() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-gray-900">WhatsApp</h2>
       <div className="rounded-md border border-gray-200 p-4">
@@ -495,7 +499,7 @@ function WhatsAppTab() {
           </Badge>
         </div>
         {whatsappConnected ? (
-          <Button variant="secondary" className="mt-4" onClick={disconnect} loading={disconnecting}>
+          <Button variant="secondary" className="mt-4" onClick={() => setShowDisconnectConfirm(true)} loading={disconnecting}>
             Déconnecter
           </Button>
         ) : (
@@ -536,6 +540,36 @@ function WhatsAppTab() {
         </div>
       </div>
     </div>
+
+    {showDisconnectConfirm && (
+      <div className="fixed inset-0 z-[90] flex items-center justify-center">
+        <div className="fixed inset-0 bg-black/50" onClick={() => setShowDisconnectConfirm(false)} />
+        <div className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Déconnecter WhatsApp ?
+              </h2>
+              <p className="mt-2 text-sm text-gray-500">
+                Vous ne pourrez plus envoyer ni recevoir de messages tant que la session n'est pas reconnectée.
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button variant="secondary" size="sm" onClick={() => setShowDisconnectConfirm(false)}>
+              Annuler
+            </Button>
+            <Button size="sm" variant="danger" onClick={disconnect} loading={disconnecting}>
+              Déconnecter
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -551,9 +585,13 @@ function WilayaPricingTab() {
 }
 
 export function Settings() {
-  const location = useLocation();
-  const initialTab = (location.state as { tab?: SettingsTab })?.tab || "agent";
-  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = searchParams.get("tab") as SettingsTab | null;
+  const activeTab = urlTab && tabs.some((t) => t.id === urlTab) ? urlTab : "agent";
+
+  const setActiveTab = (tab: SettingsTab) => {
+    setSearchParams({ tab });
+  };
 
   const content: Record<SettingsTab, React.ReactNode> = {
     agent: <AgentConfigTab />,
