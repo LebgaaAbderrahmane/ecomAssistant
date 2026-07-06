@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Request, Response } from "express";
+import prisma from "../../config/db.config";
 import * as controller from "./whatsapp.controller";
 import { authenticate, AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import { notificationService } from "./notification.service";
@@ -36,6 +37,12 @@ router.get("/events", authenticate, (req: AuthenticatedRequest, res: Response) =
 
   notificationService.onSessionStatus(statusHandler);
   notificationService.onNotificationCreated(notifHandler);
+
+  prisma.whatsAppSession.findUnique({ where: { merchantId } }).then((waSession) => {
+    res.write(`data: ${JSON.stringify({ type: "session.status", status: waSession?.status === "ready" ? "connected" : (waSession?.status ?? "disconnected"), phoneNumber: waSession?.phoneNumber ?? null })}\n\n`);
+  }).catch(() => {
+    res.write(`data: ${JSON.stringify({ type: "session.status", status: "disconnected", phoneNumber: null })}\n\n`);
+  });
 
   req.on("close", () => {
     notificationService.offSessionStatus(statusHandler);

@@ -307,7 +307,14 @@ export async function createSession(
         merchantId,
         sessionId: session.id,
         status: sessionStatus,
+        phoneNumber: session.name,
       },
+    });
+
+    notificationService.emitSessionStatus({
+      merchantId,
+      status: sessionStatus,
+      phoneNumber: session.name,
     });
 
     if (qr) {
