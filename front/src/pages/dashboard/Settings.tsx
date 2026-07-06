@@ -392,6 +392,7 @@ function WhatsAppTab() {
   const [loading, setLoading] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState("");
 
   const connect = async () => {
@@ -430,11 +431,13 @@ function WhatsAppTab() {
   };
 
   const disconnect = async () => {
+    setDisconnecting(true);
     try {
       await api.delete("/whatsapp/session");
     } catch {
       /* ignore */
     }
+    setDisconnecting(false);
   };
 
   if (loading)
@@ -492,7 +495,7 @@ function WhatsAppTab() {
           </Badge>
         </div>
         {whatsappConnected ? (
-          <Button variant="secondary" className="mt-4" onClick={disconnect}>
+          <Button variant="secondary" className="mt-4" onClick={disconnect} loading={disconnecting}>
             Déconnecter
           </Button>
         ) : (

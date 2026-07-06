@@ -405,6 +405,11 @@ export async function deleteSession(
 
     await prisma.whatsAppSession.delete({ where: { id: waSession.id } });
 
+    notificationService.emitSessionStatus({
+      merchantId,
+      status: "disconnected",
+    });
+
     return res.json({ message: "Session deleted" });
   } catch (err) {
     next(err);
