@@ -35,12 +35,12 @@ function SegmentControl({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-gray-200">
+    <div className="inline-flex flex-wrap rounded-md border border-gray-200">
       {options.map((opt) => (
         <button
           key={opt}
           onClick={() => onChange(opt)}
-          className={`px-5 py-2 text-sm font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
+          className={`px-4 sm:px-5 py-2 text-sm font-medium transition-colors ${
             value === opt
               ? "border-2 border-brand-600 bg-white text-brand-600 -m-[1px] z-10"
               : "bg-white text-gray-700 hover:bg-gray-50"
@@ -155,7 +155,7 @@ function AgentConfigTab() {
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Délais de relance
         </label>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="number"
             value={delay1}
@@ -370,7 +370,7 @@ function ConnectButton({
   }
 
   return (
-    <div className="mt-4 flex items-end gap-2">
+    <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
       <div className="flex-1">
         <Input
           label="Nom de la boutique Shopify"
@@ -615,17 +615,17 @@ export function Settings() {
         Gérez votre boutique, votre agent et vos paramètres de livraison
       </p>
 
-      <div className="mt-6 flex gap-6">
-        <div className="w-[220px] shrink-0">
-          <div className="rounded-lg border border-gray-200 bg-white p-2 space-y-1">
+      <div className="mt-6 lg:flex lg:gap-6">
+        <div className="lg:w-[220px] lg:shrink-0 mb-4 lg:mb-0">
+          <div className="lg:rounded-lg lg:border lg:border-gray-200 lg:bg-white lg:p-2 flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1 lg:gap-1 -mx-4 px-4 lg:mx-0 lg:px-0">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex w-full items-center gap-3 rounded-md px-4 py-[10px] text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 rounded-md px-4 py-[10px] text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === tab.id
                     ? "bg-brand-600 text-white"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 lg:hover:bg-gray-50"
                 }`}
               >
                 <tab.icon className="h-[18px] w-[18px]" />
@@ -634,7 +634,7 @@ export function Settings() {
             ))}
           </div>
         </div>
-        <div className="flex-1 rounded-lg border border-gray-200 bg-white p-[20px_24px]">
+        <div className="flex-1 rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
           {content[activeTab]}
         </div>
       </div>

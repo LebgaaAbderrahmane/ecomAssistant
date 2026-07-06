@@ -39,27 +39,27 @@ export function DashboardHome() {
       <h1 className="text-2xl font-bold text-gray-900">Tableau de bord</h1>
       <p className="mt-1 text-sm text-gray-500">Aperçu des performances de votre agent WhatsApp IA</p>
 
-      <div className="mt-6 grid grid-cols-4 gap-4">
+      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="relative rounded-lg border border-gray-200 bg-white p-[20px_24px]">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 absolute top-5 right-5">
+          <div key={kpi.label} className="relative rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 absolute top-4 right-4">
               <kpi.icon className="h-[18px] w-[18px] text-brand-600" />
             </div>
             <p className="text-[13px] text-gray-500">{kpi.label}</p>
-            <p className="mt-1 text-[28px] font-bold text-gray-900">{kpi.value}</p>
+            <p className="mt-1 text-2xl sm:text-[28px] font-bold text-gray-900">{kpi.value}</p>
             <div className={`mt-1 flex items-center gap-1 text-xs font-medium ${
               kpi.deltaType === 'positive' ? 'text-green-600' : 'text-amber-600'
             }`}>
               {kpi.deltaType === 'positive' && <ArrowUp className="h-3 w-3" />}
               {kpi.deltaType === 'warning' && <AlertTriangle className="h-3 w-3" />}
-              {kpi.delta}
+              <span className="truncate">{kpi.delta}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-6 grid grid-cols-[1fr_380px] gap-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-[20px_24px]">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-gray-900">Confirmations vs Annulations</h3>
             <span className="text-xs text-gray-500">14 derniers jours</span>
@@ -84,7 +84,7 @@ export function DashboardHome() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-[20px_24px]">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-gray-900">Escalades récentes</h3>
             <button className="text-[13px] font-medium text-brand-600 hover:underline">Voir tout</button>
@@ -111,32 +111,49 @@ export function DashboardHome() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-[20px_24px]">
+      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
         <h3 className="text-base font-semibold text-gray-900 mb-4">Commandes récentes</h3>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Commande</th>
-              <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Client</th>
-              <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Produit</th>
-              <th className="pb-3 text-right text-[13px] font-medium text-gray-500">Total</th>
-              <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Statut</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recentOrders.map((order) => (
-              <tr key={order.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                <td className="py-3 text-sm text-gray-900">{order.id}</td>
-                <td className="py-3 text-sm text-gray-900">{order.customer}</td>
-                <td className="py-3 text-sm text-brand-600">{order.product}</td>
-                <td className="py-3 text-right text-sm text-gray-900">{order.total}</td>
-                <td className="py-3">
-                  <Badge variant={statusVariant[order.status]}>{statusLabels[order.status]}</Badge>
-                </td>
+
+        <div className="hidden lg:block">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Commande</th>
+                <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Client</th>
+                <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Produit</th>
+                <th className="pb-3 text-right text-[13px] font-medium text-gray-500">Total</th>
+                <th className="pb-3 text-left text-[13px] font-medium text-gray-500">Statut</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {recentOrders.map((order) => (
+                <tr key={order.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <td className="py-3 text-sm text-gray-900">{order.id}</td>
+                  <td className="py-3 text-sm text-gray-900">{order.customer}</td>
+                  <td className="py-3 text-sm text-brand-600">{order.product}</td>
+                  <td className="py-3 text-right text-sm text-gray-900">{order.total}</td>
+                  <td className="py-3">
+                    <Badge variant={statusVariant[order.status]}>{statusLabels[order.status]}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="lg:hidden space-y-3">
+          {recentOrders.map((order) => (
+            <div key={order.id} className="rounded-lg border border-gray-100 p-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-medium text-gray-900">{order.id}</p>
+                <Badge variant={statusVariant[order.status]}>{statusLabels[order.status]}</Badge>
+              </div>
+              <p className="text-sm text-gray-700">{order.customer}</p>
+              <p className="text-xs text-brand-600 mt-1 truncate">{order.product}</p>
+              <p className="text-sm font-medium text-gray-900 mt-1 text-right">{order.total}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

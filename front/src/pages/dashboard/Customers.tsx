@@ -58,7 +58,7 @@ export function Customers() {
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0">
           <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
           <p className="mt-1 text-sm text-gray-500">{customers.length} client{customers.length > 1 ? 's' : ''}</p>
@@ -77,50 +77,83 @@ export function Customers() {
       </div>
 
       <div className="mt-6 rounded-lg border border-gray-200 bg-white">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client</th>
-              <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Téléphone</th>
-              <th className="px-4 py-3 text-right text-[13px] font-medium text-gray-500">Commandes</th>
-              <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client depuis</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && customers.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500">
-                  <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                  Chargement...
-                </td>
+        <div className="hidden lg:block">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Téléphone</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium text-gray-500">Commandes</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client depuis</th>
               </tr>
-            ) : customers.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500">
-                  <Users className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                  Aucun client trouvé.
-                </td>
-              </tr>
-            ) : (
-              customers.map((customer) => (
-                <tr key={customer.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-gray-900">{customer.name || "—"}</p>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{customer.phone}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Badge variant={customer._count.orders > 0 ? "success" : "neutral"}>
-                      {customer._count.orders}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {new Date(customer.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </thead>
+            <tbody>
+              {loading && customers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500">
+                    <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                    Chargement...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : customers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500">
+                    <Users className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                    Aucun client trouvé.
+                  </td>
+                </tr>
+              ) : (
+                customers.map((customer) => (
+                  <tr key={customer.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <p className="text-sm font-medium text-gray-900">{customer.name || "—"}</p>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{customer.phone}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Badge variant={customer._count.orders > 0 ? "success" : "neutral"}>
+                        {customer._count.orders}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {new Date(customer.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="lg:hidden">
+          {loading && customers.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-gray-500">
+              <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+              Chargement...
+            </div>
+          ) : customers.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-gray-500">
+              <Users className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+              Aucun client trouvé.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {customers.map((customer) => (
+                <div key={customer.id} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{customer.name || "—"}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{customer.phone}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={customer._count.orders > 0 ? "success" : "neutral"}>
+                      {customer._count.orders} commande{customer._count.orders > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {hasMore && (
           <div className="p-3 text-center border-t border-gray-100">
             <Button variant="ghost" size="sm" onClick={() => fetchCustomers(nextCursor!)} loading={loading}>

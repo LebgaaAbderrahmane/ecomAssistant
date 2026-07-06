@@ -9,9 +9,11 @@ import {
   User,
   AlertTriangle,
   CheckCircle2,
+  Menu,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth.js";
 import { useNotifications, type Notification } from "../../lib/notifications.js";
+import { useMobileMenu } from "../../lib/mobileMenu.js";
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -42,6 +44,7 @@ export function Topbar() {
     markAllAsRead,
   } = useNotifications();
   const navigate = useNavigate();
+  const { open } = useMobileMenu();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
@@ -69,10 +72,15 @@ export function Topbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 flex h-14 ml-[250px] items-center justify-between border-b border-gray-200 bg-white px-8">
-      <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-        <Store className="h-[18px] w-[18px]" />
-        <span>{user?.shopName || user?.name || "Mon Espace"}</span>
+    <header className="sticky top-0 z-30 flex h-14 lg:ml-[250px] items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-8">
+      <div className="flex items-center gap-3">
+        <button onClick={open} className="lg:hidden rounded-md p-1.5 text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+          <Store className="h-[18px] w-[18px] hidden sm:block" />
+          <span className="truncate max-w-[160px] sm:max-w-none">{user?.shopName || user?.name || "Mon Espace"}</span>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -93,7 +101,7 @@ export function Topbar() {
           </button>
 
           {dropdownOpen && (
-            <div className="absolute right-0 top-full mt-1 w-[360px] rounded-lg border border-gray-200 bg-white shadow-lg">
+            <div className="absolute right-0 top-full mt-1 w-[calc(100vw-32px)] max-w-[360px] rounded-lg border border-gray-200 bg-white shadow-lg">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                 <h3 className="text-sm font-semibold text-gray-900">
                   Notifications
