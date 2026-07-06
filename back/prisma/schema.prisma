@@ -231,5 +231,5 @@ model Notification {
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@index([merchantId, read])
-  @@index([merchantId, createdAt(sort: desc)])
+  @@index([merchantId, createdAt(sort: Desc)])
 }
