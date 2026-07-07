@@ -20,6 +20,7 @@ export const config = {
   openwaApiKey: env('OPENWA_API_KEY', 'dev-admin-key'),
   openwaWebhookSecret: env('OPENWA_WEBHOOK_SECRET', 'whsec_dev'),
   appUrl: env('APP_URL', 'http://localhost:3000'),
+  internalUrl: env('INTERNAL_URL', 'http://back:3000'),
 };
 
 

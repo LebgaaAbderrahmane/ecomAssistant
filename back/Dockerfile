@@ -22,4 +22,4 @@ RUN ./back/node_modules/.bin/prisma generate --schema=back/prisma/schema.prisma
 EXPOSE 3000
 
 WORKDIR /app/back
-CMD sh -c "./node_modules/.bin/tsx watch src/index.ts"
+CMD sh -c "npx prisma generate --schema=prisma/schema.prisma && ./node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && ./node_modules/.bin/tsx watch src/index.ts"

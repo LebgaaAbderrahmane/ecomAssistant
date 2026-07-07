@@ -1,29 +1,47 @@
 import { NavLink } from 'react-router-dom'
-import { Home, MessageSquare, AlertTriangle, Package, Settings, CreditCard, ExternalLink } from 'lucide-react'
-
-const navItems = [
-  { to: '/dashboard', label: 'Accueil', icon: Home },
-  { to: '/dashboard/conversations', label: 'Conversations', icon: MessageSquare },
-  { to: '/dashboard/escalations', label: 'Escalades', icon: AlertTriangle, badge: 3 },
-  { to: '/dashboard/catalog', label: 'Catalogue', icon: Package },
-  { to: '/dashboard/settings', label: 'Paramètres', icon: Settings },
-  { to: '/dashboard/billing', label: 'Facturation', icon: CreditCard },
-]
+import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User, Users, X } from 'lucide-react'
+import { useNotifications } from '../../lib/notifications.js'
+import { useMobileMenu } from '../../lib/mobileMenu.js'
 
 export function Sidebar() {
-  return (
-    <aside className="fixed left-0 top-0 flex h-screen w-[250px] flex-col border-r border-gray-200 bg-white">
-      <div className="flex items-center gap-3 px-6 pt-5 pb-6">
-        <img src="/ecomAssistantLogo.svg" alt="EcomAssistant" className="h-8 w-8" />
-        <span className="text-lg font-semibold text-gray-900">EcomAssistant</span>
+  const { unreadCount } = useNotifications()
+  const { isOpen, close } = useMobileMenu()
+
+  const mainItems = [
+    { to: '/dashboard', label: 'Accueil', icon: Home },
+    { to: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
+    { to: '/dashboard/customers', label: 'Clients', icon: Users },
+    { to: '/dashboard/catalog', label: 'Catalogue', icon: Package },
+    { to: '/dashboard/escalations', label: 'Escalades', icon: AlertTriangle },
+  ]
+
+  const utilityItems = [
+    { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
+    { to: '/dashboard/profile', label: 'Profil', icon: User },
+    { to: '/dashboard/settings', label: 'Paramètres', icon: Settings },
+    { to: '/dashboard/billing', label: 'Facturation', icon: CreditCard },
+  ]
+
+  const sidebarContent = (
+    <>
+      <div className="flex items-center justify-between px-6 pt-5 pb-6">
+        <div className="flex items-center gap-3">
+          <img src="/ecomAssistantLogo.svg" alt="EcomAssistant" className="h-8 w-8" />
+          <span className="text-lg font-semibold text-gray-900">EcomAssistant</span>
+        </div>
+        <button onClick={close} className="lg:hidden rounded-md p-1 text-gray-400 hover:text-gray-600">
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
-        {navItems.map((item) => (
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto">
+        <p className="px-3 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Menu</p>
+        {mainItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/dashboard'}
+            onClick={close}
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-md px-3 py-[10px] text-sm font-medium transition-colors ${
                 isActive
@@ -34,9 +52,30 @@ export function Sidebar() {
           >
             <item.icon className="h-[18px] w-[18px]" />
             <span>{item.label}</span>
-            {item.badge !== undefined && item.badge > 0 && (
+          </NavLink>
+        ))}
+
+        <div className="my-3 border-t border-gray-100" />
+        <p className="px-3 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Utilitaires</p>
+
+        {utilityItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            onClick={close}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-md px-3 py-[10px] text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-brand-50 text-brand-600'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              }`
+            }
+          >
+            <item.icon className="h-[18px] w-[18px]" />
+            <span>{item.label}</span>
+            {'badge' in item && item.badge !== undefined && item.badge > 0 && (
               <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
-                {item.badge}
+                {item.badge > 9 ? '9+' : item.badge}
               </span>
             )}
           </NavLink>
@@ -53,6 +92,23 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-[250px] flex-col border-r border-gray-200 bg-white z-40">
+        {sidebarContent}
+      </aside>
+
+      {isOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={close} />
+          <aside className="absolute left-0 top-0 flex h-screen w-[280px] flex-col border-r border-gray-200 bg-white animate-in slide-in-from-left duration-200">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </>
   )
 }

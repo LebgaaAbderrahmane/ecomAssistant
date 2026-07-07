@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '../../components/ui/Button.js'
 import { Card } from '../../components/ui/Card.js'
 import { CheckCircle } from 'lucide-react'
+import { api } from '../../lib/api.js'
 
 const steps = [
   'Boutique connectée et synchronisée',
@@ -14,13 +15,19 @@ const steps = [
 export function Activation() {
   const navigate = useNavigate()
   const [activating, setActivating] = useState(false)
+  const [error, setError] = useState('')
 
   const handleActivate = async () => {
     setActivating(true)
-    setTimeout(() => {
-      setActivating(false)
+    setError('')
+    try {
+      await api.post('/agent-config/activate', {})
       navigate('/dashboard')
-    }, 1500)
+    } catch {
+      navigate('/dashboard')
+    } finally {
+      setActivating(false)
+    }
   }
 
   return (
@@ -45,6 +52,7 @@ export function Activation() {
         <Button size="lg" loading={activating} onClick={handleActivate}>
           Activer mon agent
         </Button>
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         <p className="mt-2 text-xs text-gray-400">
           Vous pourrez modifier ces réglages plus tard depuis les paramètres
         </p>

@@ -10,12 +10,8 @@ import {
   TokenResult,
 } from "./AbstractStoreConnection";
 
-const {
-  SHOPIFY_API_KEY,
-  SHOPIFY_API_SECRET,
-  SHOPIFY_SCOPES,
-  APP_URL,
-} = process.env;
+const { SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SHOPIFY_SCOPES, APP_URL } =
+  process.env;
 
 const NONCE_TTL = 600;
 const API_VERSION = "2025-07";
@@ -23,7 +19,11 @@ const API_VERSION = "2025-07";
 export class ShopifyConnection extends AbstractStoreConnection {
   private shopDomain: string;
 
-  constructor(merchantId: string, storeConnectionId: string, shopDomain: string) {
+  constructor(
+    merchantId: string,
+    storeConnectionId: string,
+    shopDomain: string,
+  ) {
     super(merchantId, storeConnectionId);
     this.shopDomain = shopDomain;
   }
@@ -33,12 +33,11 @@ export class ShopifyConnection extends AbstractStoreConnection {
   // ─────────────────────────────────────────────
 
   async connect(shop: string): Promise<string> {
-
     const nonce = crypto.randomBytes(16).toString("hex");
     await redis.set(
       `shopify-nonce:${nonce}`,
       JSON.stringify({ merchantId: this.merchantId, shop }),
-      { EX: NONCE_TTL }
+      { EX: NONCE_TTL },
     );
 
     const redirectUri = `${APP_URL}/store-connection/shopify/callback`;
@@ -47,7 +46,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
       `https://${shop}/admin/oauth/authorize` +
       `?client_id=${SHOPIFY_API_KEY}` +
       `&scope=${SHOPIFY_SCOPES}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&redirect_uri=${redirectUri}` +
       `&state=${nonce}`
     );
   }
@@ -83,7 +82,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
         client_secret: SHOPIFY_API_SECRET,
         grant_type: "refresh_token",
         refresh_token: decryptedRefreshToken,
-      }
+      },
     );
 
     const { access_token, refresh_token, expires_in } = response.data;
@@ -118,8 +117,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
     if (!shopifyConn) throw new Error("Shopify connection not found");
 
     const isExpired =
-      shopifyConn.tokenExpiresAt &&
-      shopifyConn.tokenExpiresAt <= new Date();
+      shopifyConn.tokenExpiresAt && shopifyConn.tokenExpiresAt <= new Date();
 
     if (isExpired) {
       const refreshed = await this.refreshAccessToken();
@@ -142,7 +140,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
 
     while (url) {
       const { data, headers: resHeaders } = await axios.get(url, { headers });
-      console.log("the products are: ", JSON.stringify(data.products, null, 2))
+      console.log("the products are: ", JSON.stringify(data.products, null, 2));
       await this.upsertProducts(data.products);
       url = this.extractNextPageUrl(resHeaders["link"]);
     }
@@ -155,13 +153,16 @@ export class ShopifyConnection extends AbstractStoreConnection {
     let url: string | null =
       `https://${this.shopDomain}/admin/api/${API_VERSION}/orders.json?limit=250&status=any`;
 
+    let totalCount = 0;
     while (url) {
       const { data, headers: resHeaders } = await axios.get(url, { headers });
-
-      console.log("the orders are: ", JSON.stringify(data.orders, null, 2))
-      await this.upsertOrders(data.orders);
+      const orders = data.orders || [];
+      totalCount += orders.length;
+      console.log(`[Shopify] Fetched ${orders.length} orders from Shopify`);
+      await this.upsertOrders(orders);
       url = this.extractNextPageUrl(resHeaders["link"]);
     }
+    console.log(`[Shopify] syncOrders completed — total fetched: ${totalCount}`);
   }
 
   // ─────────────────────────────────────────────
@@ -175,12 +176,15 @@ export class ShopifyConnection extends AbstractStoreConnection {
     const address = `${APP_URL}/store-connection/shopify/webhooks/orders`;
 
     // Check if already registered
-    const { data } = await axios.get(`${base}/webhooks.json?topic=orders/create`, {
-      headers,
-    });
+    const { data } = await axios.get(
+      `${base}/webhooks.json?topic=orders/create`,
+      {
+        headers,
+      },
+    );
 
     const alreadyRegistered = data.webhooks.some(
-      (w: { address: string }) => w.address === address
+      (w: { address: string }) => w.address === address,
     );
 
     if (alreadyRegistered) {
@@ -197,9 +201,8 @@ export class ShopifyConnection extends AbstractStoreConnection {
           format: "json",
         },
       },
-      { headers }
+      { headers },
     );
-   
   }
 
   verifyWebhookSignature(payload: Buffer, signature: string): boolean {
@@ -211,7 +214,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
     try {
       return crypto.timingSafeEqual(
         Buffer.from(generated),
-        Buffer.from(signature)
+        Buffer.from(signature),
       );
     } catch {
       return false;
@@ -227,7 +230,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
 
     const { data } = await axios.get(
       `https://${this.shopDomain}/admin/api/${API_VERSION}/orders/${platformOrderId}.json`,
-      { headers: { "X-Shopify-Access-Token": accessToken } }
+      { headers: { "X-Shopify-Access-Token": accessToken } },
     );
 
     const o = data.order;
@@ -242,21 +245,26 @@ export class ShopifyConnection extends AbstractStoreConnection {
       wilaya: o.shipping_address?.province ?? "",
       commune: o.shipping_address?.city ?? undefined,
       totalAmount: parseFloat(o.total_price),
-      lineItems: o.line_items.map((item: { title: string; quantity: number; price: string }) => ({
-        title: item.title,
-        quantity: item.quantity,
-        price: item.price,
-      })),
+      lineItems: o.line_items.map(
+        (item: { title: string; quantity: number; price: string }) => ({
+          title: item.title,
+          quantity: item.quantity,
+          price: item.price,
+        }),
+      ),
     };
   }
 
-  async updateOrderStatus(platformOrderId: string, status: string): Promise<void> {
+  async updateOrderStatus(
+    platformOrderId: string,
+    status: string,
+  ): Promise<void> {
     const accessToken = await this.getValidAccessToken();
 
     await axios.post(
       `https://${this.shopDomain}/admin/api/${API_VERSION}/orders/${platformOrderId}/fulfillments.json`,
       { fulfillment: { status } },
-      { headers: { "X-Shopify-Access-Token": accessToken } }
+      { headers: { "X-Shopify-Access-Token": accessToken } },
     );
   }
 
@@ -269,7 +277,9 @@ export class ShopifyConnection extends AbstractStoreConnection {
       const price = parseFloat(p.variants?.[0]?.price ?? "0");
       const images = p.images.map((img: { src: string }) => img.src);
       const stockStatus =
-        (p.variants?.[0]?.inventory_quantity ?? 0) > 0 ? "in_stock" : "out_of_stock";
+        (p.variants?.[0]?.inventory_quantity ?? 0) > 0
+          ? "in_stock"
+          : "out_of_stock";
 
       await prisma.product.upsert({
         where: {
@@ -303,7 +313,9 @@ export class ShopifyConnection extends AbstractStoreConnection {
     }
   }
 
-  private async upsertOrders(orders: any[]): Promise<void> {
+  async upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]> {
+    const saved: { id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[] = [];
+
     for (const o of orders) {
       const existing = await prisma.order.findFirst({
         where: { merchantId: this.merchantId, platformOrderId: String(o.id) },
@@ -318,22 +330,50 @@ export class ShopifyConnection extends AbstractStoreConnection {
       }
 
       const firstItem = o.line_items[0];
-      if (!firstItem) continue;
+      if (!firstItem) {
+        console.log(`[Shopify] Skipping order ${o.id} — no line items`);
+        continue;
+      }
 
-      const product = await prisma.product.findFirst({
-        where: { merchantId: this.merchantId, name: firstItem.title },
-      });
+      let product = firstItem.product_id
+        ? await prisma.product.findFirst({
+            where: { merchantId: this.merchantId, platformProductId: String(firstItem.product_id) },
+          })
+        : null;
 
-      if (!product) continue;
+      if (!product) {
+        product = await prisma.product.findFirst({
+          where: { merchantId: this.merchantId, name: firstItem.title },
+        });
+      }
 
-      await prisma.order.create({
+      if (!product) {
+        console.log(`[Shopify] Skipping order ${o.id} — no matching product for "${firstItem.title}" (product_id: ${firstItem.product_id})`);
+        continue;
+      }
+
+      const phone = o.customer?.phone ?? "";
+      const customerName = o.customer
+        ? `${o.customer.first_name} ${o.customer.last_name}`.trim()
+        : "Unknown";
+
+      const customer = phone
+        ? await prisma.customer.upsert({
+            where: { merchantId_phone: { merchantId: this.merchantId, phone } },
+            update: { name: customerName },
+            create: { merchantId: this.merchantId, phone, name: customerName },
+          })
+        : await prisma.customer.create({
+            data: { merchantId: this.merchantId, phone: "", name: customerName },
+          });
+
+      const created = await prisma.order.create({
         data: {
           merchantId: this.merchantId,
+          customerId: customer.id,
           platformOrderId: String(o.id),
-          customerName: o.customer
-            ? `${o.customer.first_name} ${o.customer.last_name}`.trim()
-            : "Unknown",
-          customerPhone: o.customer?.phone ?? "",
+          customerName,
+          customerPhone: phone,
           wilaya: o.shipping_address?.province ?? "",
           commune: o.shipping_address?.city ?? null,
           address: o.shipping_address?.address1 ?? "",
@@ -344,7 +384,21 @@ export class ShopifyConnection extends AbstractStoreConnection {
           status: this.mapFinancialStatus(o.financial_status),
         },
       });
+
+      saved.push({
+        id: created.id,
+        merchantId: created.merchantId,
+        customerId: customer.id,
+        customerName: created.customerName,
+        customerPhone: created.customerPhone,
+        productName: created.productName,
+        platformOrderId: created.platformOrderId,
+        totalAmount: created.totalAmount,
+        wilaya: created.wilaya,
+      });
     }
+
+    return saved;
   }
 
   private mapFinancialStatus(status: string): string {
