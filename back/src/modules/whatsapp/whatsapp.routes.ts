@@ -1,11 +1,11 @@
-import { Router } from "express";
 import { Request, Response } from "express";
 import prisma from "../../config/db.config";
+import express,{ Router } from "express";
 import * as controller from "./whatsapp.controller";
 import { authenticate, AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import { notificationService } from "./notification.service";
 
-const router = Router();
+const router:Router = express.Router();
 
 router.post("/webhook", controller.handleWebhook);
 router.post("/session", authenticate, controller.createSession);

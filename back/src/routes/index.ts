@@ -7,6 +7,7 @@ import agentConfigRoutes from "../modules/agent-config/agent-config.routes"
 import productsRoutes from "../modules/products/products.routes"
 import customersRoutes from "../modules/customers/customers.routes"
 import escalationsRoutes from "../modules/escalations/escalations.routes"
+import messagesRoutes from "../modules/fakeMessages/fakeMessage.routes"
 
 const router: Router = express.Router()
 
@@ -18,5 +19,6 @@ router.use('/agent-config', agentConfigRoutes)
 router.use('/products', productsRoutes)
 router.use('/customers', customersRoutes)
 router.use('/escalations', escalationsRoutes)
+router.use('/messages', messagesRoutes)
 
 export default router;

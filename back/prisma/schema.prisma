@@ -29,6 +29,7 @@ model Merchant {
   wilayaCosts      WilayaDeliveryCost[]
   whatsAppSession  WhatsAppSession?
   notifications    Notification[]
+  customers Customer[]
 }
 
 model StoreConnection {
@@ -121,31 +122,49 @@ model Customer {
   @@index([merchantId])
 }
 
+
+
+model Customer {
+  id         String   @id @default(cuid())
+  merchantId String
+
+  phone      String
+  name       String?
+  language   String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  merchant      Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  conversations Conversation[]
+
+  @@unique([merchantId, phone])
+  @@index([merchantId])
+}
+
 model Order {
-  id               String   @id @default(cuid())
+  id               String      @id @default(cuid())
   merchantId       String
   customerId       String
   platformOrderId  String
-  customerName     String
-  customerPhone    String
   wilaya           String
   commune          String?
   address          String
   productId        String
   productName      String
-  quantity         Int      @default(1)
+  quantity         Int         @default(1)
   totalAmount      Float
-  deliveryCost     Float    @default(0)
-  status           String   @default("pending")
+  deliveryCost     Float       @default(0)
+  status           OrderStatus @default(PENDING)
   trackingNumber   String?
   deliveryProvider String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
   merchant     Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
   product      Product       @relation(fields: [productId], references: [id])
-  conversation Conversation?
+  conversation Conversation? @relation("currentOrder")
 
   @@unique([merchantId, platformOrderId])
   @@index([merchantId])
@@ -156,40 +175,64 @@ model Conversation {
   id               String            @id @default(cuid())
   merchantId       String
   customerId       String
-  currentOrderId   String?   @unique
-  customerPhone    String
-  status           String            @default("active")
+  currentOrderId   String?
+  owner            ConversationOwner @default(AI)
+  state            ConversationState @default(IDLE)
   language         String            @default("auto")
+  memory           Json?
   followUpStep     Int               @default(0)
-  lastMessageAt     DateTime?
-  lastReadMessageAt DateTime?
-  escalatedAt       DateTime?
-  takenOverByHuman  Boolean           @default(false)
+  takenOverByHuman Boolean           @default(false)
+  lastMessageAt    DateTime?
+  escalatedAt      DateTime?
   createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  currentOrder Order?    @relation(fields: [currentOrderId], references: [id])
+  
+  // Fixed relation name here to lowercase "currentOrder"
+  currentOrder Order?    @relation("currentOrder", fields: [currentOrderId], references: [id])
+  
   messages     Message[]
 
-  @@unique([merchantId, customerId])
   @@index([merchantId])
   @@index([customerId])
-  @@index([status])
+  @@index([state])
 }
 
 model Message {
-  id             String   @id @default(cuid())
+
+  id String @id @default(cuid())
+
   conversationId String
   role           String
   content        String
   contentType    String   @default("text")
   mediaUrl       String?
   mimeType       String?
-  createdAt      DateTime @default(now())
+  
+
+  whatsappMessageId String? @unique
+
+  direction MessageDirection
+
+  sender MessageSender
+
+  text String
+
+  
+
+  rawPayload Json?
+
+  intent String?
+
+  entities Json?
+
+  confidence Float?
+
+  createdAt DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
   @@index([conversationId])
 }
 
@@ -232,4 +275,53 @@ model Notification {
 
   @@index([merchantId, read])
   @@index([merchantId, createdAt(sort: Desc)])
+}
+enum ConversationOwner {
+  AI
+  MERCHANT
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MessageSender {
+  CUSTOMER
+  AI
+  MERCHANT
+}
+
+enum ConversationState {
+
+  IDLE
+
+  GREETING
+
+  PRODUCT_DISCOVERY
+
+  PRODUCT_SELECTED
+
+  WAITING_CONFIRMATION
+
+  CONFIRMED
+
+  SHIPPING
+
+  FINISHED
+
+  CANCELLED
+}
+
+enum OrderStatus {
+
+  PENDING
+
+  CONFIRMED
+
+  SHIPPED
+
+  DELIVERED
+
+  CANCELLED
 }
