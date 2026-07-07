@@ -1,10 +1,12 @@
 import type { ToolName } from '../schemas/intents.schemas';
+import { Prisma } from '@prisma/client';
 import prisma from '../../../config/db.config';
 import {
   SearchProductsArgsSchema,
   GetOrderStatusArgsSchema,
   CalculateShippingArgsSchema,
-  ConfirmOrderArgsSchema
+  ConfirmOrderArgsSchema,
+  CancelOrderArgsSchema
 } from '../schemas/intents.schemas';
 
 export interface ToolExecutionContext {
@@ -99,8 +101,6 @@ const calculateShipping: ToolHandler = async (entities, ctx) => {
   return { success: true, data: { wilaya: cost.wilaya, cost: cost.cost } };
 };
 
-import { Prisma } from '@prisma/client';
-
 const confirmOrder: ToolHandler = async (entities, ctx) => {
   const parsedArgs = ConfirmOrderArgsSchema.safeParse(entities);
 
@@ -149,12 +149,85 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
   }
 };
 
+const cancelOrder: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = CancelOrderArgsSchema.safeParse(entities);
+
+  const orderId =
+    ctx.currentOrderId ??
+    (parsedArgs.success ? parsedArgs.data.orderId : undefined);
+
+  if (!orderId) {
+    return {
+      success: false,
+      error: 'No order in context to cancel',
+    };
+  }
+
+  try {
+    const existing = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        merchantId: ctx.merchantId,
+        customerId: ctx.customerId,
+      },
+    });
+
+    if (!existing) {
+      return { success: false, error: 'Order not found' };
+    }
+
+    if (existing.status === 'CANCELLED') {
+      return { success: false, error: 'Order is already cancelled' };
+    }
+
+
+    // claude doesn't know that algerians cancel even after shipping 😂, so we will not block it for now
+    // if (existing.status === 'SHIPPED' || existing.status === 'DELIVERED') {
+    //   return {
+    //     success: false,
+    //     error: `Order cannot be cancelled because it is already ${existing.status.toLowerCase()}`,
+    //   };
+    // }
+
+    const order = await prisma.order.update({
+      where: {
+        id: orderId,
+        merchantId: ctx.merchantId,
+        customerId: ctx.customerId,
+      },
+      data: {
+        status: 'CANCELLED',
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        orderId: order.id,
+        status: order.status,
+      },
+    };
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2025'
+    ) {
+      return {
+        success: false,
+        error: 'Order not found',
+      };
+    }
+
+    throw err;
+  }
+};
+
 export const toolRegistry: Record<ToolName, ToolHandler> = {
   searchProducts,
   getProductDetails: notImplemented,
   createOrder: notImplemented,
   confirmOrder,
-  cancelOrder: notImplemented,
+  cancelOrder,
   getOrderStatus,
   calculateShipping,
   updateAddress: notImplemented,

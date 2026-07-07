@@ -69,3 +69,7 @@ export const GetOrderStatusArgsSchema = z.object({
 export const CalculateShippingArgsSchema = z.object({
   wilaya: z.string().min(1),
 });
+
+export const CancelOrderArgsSchema = z.object({
+  orderId: z.string().optional(),
+});
