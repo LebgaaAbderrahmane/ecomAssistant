@@ -187,7 +187,6 @@ model Message {
   id String @id @default(cuid())
 
   conversationId String
-  role           String
   content        String
   contentType    String   @default("text")
   mediaUrl       String?

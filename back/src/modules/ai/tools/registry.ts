@@ -1,12 +1,12 @@
-import type { ToolName } from '../schemas/intents.schemas';
-import { Prisma } from '@prisma/client';
+import type { Product, ToolName } from '@prisma/client';
 import prisma from '../../../config/db.config';
 import {
   SearchProductsArgsSchema,
   GetOrderStatusArgsSchema,
   CalculateShippingArgsSchema,
   ConfirmOrderArgsSchema,
-  CancelOrderArgsSchema
+  CancelOrderArgsSchema,
+  RecallPreviousProductsArgsSchema
 } from '../schemas/intents.schemas';
 
 export interface ToolExecutionContext {
@@ -51,7 +51,7 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
   return {
     success: true,
     data: {
-      products: products.map((p) => ({
+      products: products.map((p: Product) => ({
         id: p.id,
         name: p.name,
         price: p.price,
@@ -136,7 +136,7 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
     };
   } catch (err) {
     if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err instanceof prisma.PrismaClientKnownRequestError &&
       err.code === 'P2025'
     ) {
       return {
@@ -209,7 +209,7 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
     };
   } catch (err) {
     if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err instanceof prisma.PrismaClientKnownRequestError &&
       err.code === 'P2025'
     ) {
       return {
@@ -221,6 +221,65 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
     throw err;
   }
 };
+const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = RecallPreviousProductsArgsSchema.safeParse(entities);
+  const limit = parsedArgs.success && parsedArgs.data.limit ? parsedArgs.data.limit : 5;
+
+  const messages = await prisma.message.findMany({
+    where: {
+      conversationId: ctx.conversationId,
+      intent: { in: ['SEARCH_PRODUCT', 'getProductDetails'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 30, // scan a window, not the whole history
+  });
+
+  console.log(`[recallPreviousProducts] found ${messages.length} messages in conversation ${ctx.conversationId}`);
+
+  // Extract product names from entities (e.g. {"product":"iphone 15"}), most-recent-first, deduped
+  const seen = new Set<string>();
+  const productNames: string[] = [];
+
+  for (const msg of messages) {
+    let ents: Record<string, unknown> | null = null;
+    console.log(`[recallPreviousProducts] parsing entities string: ${msg.entities}`);
+    if (typeof msg.entities === 'string') {
+      try { ents = JSON.parse(msg.entities); } catch { /* skip */ }
+      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
+    } else if (msg.entities && typeof msg.entities === 'object') {
+      ents = msg.entities as Record<string, unknown>;
+      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
+    }
+    const name = ents?.product;
+    console.log('[recallPreviousProducts] extracted product name:', name);
+    if (typeof name === 'string' && !seen.has(name)) {
+      seen.add(name);
+      productNames.push(name);
+    }
+    if (productNames.length >= limit) break;
+    console.log(`[recallPreviousProducts] collected ${productNames.length} product names so far:`, productNames);
+  }
+
+  if (productNames.length === 0) {
+    return { success: false, error: 'No previous products found in this conversation' };
+  }
+
+  const products = await prisma.product.findMany({
+    where: { name: { in: productNames, mode: 'insensitive' }, merchantId: ctx.merchantId },
+  });
+
+  // preserve recency order
+  const ordered = productNames
+    .map((name) => products.find((p: Product) => p.name.toLowerCase() === name.toLowerCase()))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+  return {
+    success: true,
+    data: {
+      products: productNames
+    },
+  };
+};
 
 export const toolRegistry: Record<ToolName, ToolHandler> = {
   searchProducts,
@@ -230,6 +289,7 @@ export const toolRegistry: Record<ToolName, ToolHandler> = {
   cancelOrder,
   getOrderStatus,
   calculateShipping,
+  recallPreviousProducts,
   updateAddress: notImplemented,
   createSupportTicket: notImplemented,
 };

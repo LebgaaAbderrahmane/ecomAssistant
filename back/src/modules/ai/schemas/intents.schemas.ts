@@ -50,6 +50,7 @@ export const ToolNameSchema = z.enum([
   'calculateShipping',
   'updateAddress',
   'createSupportTicket',
+  'recallPreviousProducts'
 ]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
 
@@ -72,4 +73,8 @@ export const CalculateShippingArgsSchema = z.object({
 
 export const CancelOrderArgsSchema = z.object({
   orderId: z.string().optional(),
+});
+
+export const RecallPreviousProductsArgsSchema = z.object({
+  limit: z.number().int().positive().max(10).optional(), // "the last 3 products" etc.
 });

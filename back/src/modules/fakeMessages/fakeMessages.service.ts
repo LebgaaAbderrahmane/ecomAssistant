@@ -22,6 +22,7 @@ export const ingestFakeMessage = async (input: FakeMessageInput) => {
       conversationId: conversation.id,
       direction: 'IN',
       sender: 'CUSTOMER',
+      content: input.text,
       text: input.text,
     },
   });
