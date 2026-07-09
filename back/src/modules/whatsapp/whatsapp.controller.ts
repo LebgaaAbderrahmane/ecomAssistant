@@ -9,6 +9,7 @@ import { openwaService } from "./whatsapp.service";
 import { conversationService } from "./conversation.service";
 import { notificationService } from "./notification.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
+import { enqueueMessageJob } from "../../queues/message.queue";
 
 const MEDIA_DIR = path.resolve("/app/uploads/media");
 
@@ -148,7 +149,7 @@ export async function handleWebhook(
 
         const content = body || (msgType === "text" ? "" : msgType);
 
-        await conversationService.addMessage(conversation.id, "customer", content, {
+        const savedMessage = await conversationService.addMessage(conversation.id, "customer", content, {
           contentType: msgType,
           mediaUrl,
           mimeType,
@@ -156,6 +157,11 @@ export async function handleWebhook(
         });
 
         console.log(`[WhatsApp] Message saved to conversation ${conversation.id}`);
+
+        enqueueMessageJob(savedMessage.id).catch((err) => {
+          console.error(`[WhatsApp] Failed to enqueue message ${savedMessage.id} for agent:`, err);
+        });
+
         return res.status(200).json({ status: "received" });
       }
 
