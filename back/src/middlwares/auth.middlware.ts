@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../lib/jwt";
 import { redis } from "../config";
+import prisma from "../config/db.config";
 
 export interface AuthenticatedRequest extends Request {
   merchant?: {
@@ -33,6 +34,14 @@ export const authenticate = async (
     const revokedBefore = await redis.get(`revoke-before:${decoded.merchantId}`);
     if (revokedBefore && decoded.iat <= parseInt(revokedBefore, 10)) {
       return res.status(401).json({ message: "Session revoked" });
+    }
+
+    const merchantExists = await prisma.merchant.findUnique({
+      where: { id: decoded.merchantId },
+      select: { id: true },
+    });
+    if (!merchantExists) {
+      return res.status(401).json({ message: "Account not found" });
     }
 
     req.merchant = decoded;

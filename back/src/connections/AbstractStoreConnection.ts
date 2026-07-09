@@ -88,5 +88,5 @@ export abstract class AbstractStoreConnection {
     status: string,
   ): Promise<void>;
 
-  abstract upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]>;
+  abstract upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]>;
 }

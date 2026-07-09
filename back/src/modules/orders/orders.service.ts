@@ -51,12 +51,18 @@ export const getOrders = async (
     };
   }
 
-  const orders = await prisma.order.findMany({
+  const rawOrders = await prisma.order.findMany({
     where: { ...where, ...cursorWhere },
     include: { customer: true },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
   });
+
+  const orders = rawOrders.map((o) => ({
+    ...o,
+    customerName: o.customer?.name ?? '',
+    customerPhone: o.customer?.phone ?? '',
+  }));
 
   const hasNextPage = orders.length > limit;
   if (hasNextPage) orders.pop();

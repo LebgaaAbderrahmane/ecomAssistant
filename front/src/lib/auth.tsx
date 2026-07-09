@@ -64,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem("user");
     return stored ? JSON.parse(stored) : null;
   });
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !!localStorage.getItem("user"));
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => !!localStorage.getItem("user"),
+  );
   const [isLoading, setIsLoading] = useState(false);
 
   const devLogin = useCallback((email: string, name?: string) => {
@@ -82,10 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           devLogin(email);
           return;
         }
-        const data = await api.post<LoginResponse>(
-          "/auth/login",
-          { email, password },
-        );
+        const data = await api.post<LoginResponse>("/auth/login", {
+          email,
+          password,
+        });
         const user: User = {
           id: data.merchant.id,
           email: data.merchant.email,
@@ -180,9 +182,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("auth:expired", handler);
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    if (import.meta.env.VITE_DEV_AUTH === "true") return;
+
+    let cancelled = false;
+    api
+      .get<{ id: string; email: string; name: string; shopName?: string }>(
+        "/auth/me",
+      )
+      .then((data) => {
+        if (cancelled) return;
+        const fresh: User = {
+          id: data.id,
+          email: data.email,
+          name: data.name,
+          shopName: data.shopName,
+        };
+        persistUser(fresh);
+        setUser(fresh);
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        localStorage.removeItem("user");
+        setUser(null);
+        setIsAuthenticated(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated, login, signup, verifyEmail, logout, isLoading }}
+      value={{
+        user,
+        isAuthenticated,
+        login,
+        signup,
+        verifyEmail,
+        logout,
+        isLoading,
+      }}
     >
       {children}
     </AuthContext.Provider>

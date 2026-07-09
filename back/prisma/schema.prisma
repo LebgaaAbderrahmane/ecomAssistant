@@ -157,32 +157,36 @@ model Order {
 }
 
 model Conversation {
-  id               String            @id @default(cuid())
+  id               String              @id @default(cuid())
   merchantId       String
   customerId       String
-  currentOrderId   String?           @unique
-  owner            ConversationOwner @default(AI)
-  state            ConversationState @default(IDLE)
-  language         String            @default("auto")
+  customerPhone    String              @default("")
+  currentOrderId   String?             @unique
+  owner            ConversationOwner   @default(AI)
+  state            ConversationState   @default(IDLE)
+  status           ConversationStatus  @default(ACTIVE)
+  language         String              @default("auto")
   memory           Json?
-  followUpStep     Int               @default(0)
-  takenOverByHuman Boolean           @default(false)
+  followUpStep     Int                 @default(0)
+  takenOverByHuman Boolean             @default(false)
   lastMessageAt    DateTime?
+  lastReadMessageAt DateTime?
   escalatedAt      DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  // Fixed relation name here to lowercase "currentOrder"
   currentOrder Order?    @relation("currentOrder", fields: [currentOrderId], references: [id])
 
   messages     Message[]
 
+  @@unique([merchantId, customerId])
   @@index([merchantId])
   @@index([customerId])
   @@index([state])
+  @@index([status])
 }
 
 model Message {
@@ -264,17 +268,12 @@ model Notification {
 enum ConversationOwner {
   AI
   MERCHANT
-}
-
-enum MessageDirection {
-  IN
-  OUT
-}
-
-enum MessageSender {
   CUSTOMER
-  AI
-  MERCHANT
+}
+
+enum ConversationStatus {
+  ACTIVE
+  RESOLVED
 }
 
 enum ConversationState {
@@ -309,4 +308,15 @@ enum OrderStatus {
   DELIVERED
 
   CANCELLED
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MessageSender {
+  CUSTOMER
+  AI
+  MERCHANT
 }
