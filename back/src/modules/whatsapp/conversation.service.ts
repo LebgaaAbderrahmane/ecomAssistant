@@ -23,6 +23,8 @@ export const conversationService = {
     role: "agent" | "customer" | "system",
     content: string,
     opts: {
+      direction?: "IN" | "OUT";
+      sender?: "CUSTOMER" | "AI" | "MERCHANT";
       contentType?: string;
       mediaUrl?: string;
       mimeType?: string;
@@ -36,6 +38,9 @@ export const conversationService = {
           conversationId,
           role,
           content,
+          text: content,
+          direction: opts.direction ?? (role === "customer" ? "IN" : "OUT"),
+          sender: opts.sender ?? (role === "customer" ? "CUSTOMER" : "AI"),
           contentType: opts.contentType ?? "text",
           mediaUrl: opts.mediaUrl ?? null,
           mimeType: opts.mimeType ?? null,
@@ -67,7 +72,7 @@ export const conversationService = {
     });
   },
 
-  updateStatus: async (id: string, status: string) => {
+  updateStatus: async (id: string, status: "ACTIVE" | "RESOLVED") => {
     return prisma.conversation.update({
       where: { id },
       data: { status },
@@ -89,7 +94,7 @@ export const conversationService = {
         merchantId,
         customerId,
         customerPhone,
-        status: "active",
+        status: "ACTIVE",
       },
     });
   },
@@ -117,7 +122,7 @@ export const conversationService = {
         customerId,
         customerPhone,
         currentOrderId: orderId,
-        status: "active",
+        status: "ACTIVE",
       },
     });
   },

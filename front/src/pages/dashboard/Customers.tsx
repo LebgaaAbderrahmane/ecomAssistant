@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Users, Loader2, SlidersHorizontal } from 'lucide-react'
+import { Search, Users, Loader2, SlidersHorizontal, RefreshCw } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge.js'
 import { Button } from '../../components/ui/Button.js'
 import { api } from '../../lib/api.js'
+import { toast } from 'sonner'
 
 interface Customer {
   id: string
@@ -30,7 +31,20 @@ export function Customers() {
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
+  const [resyncing, setResyncing] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
+
+  const handleResync = async () => {
+    setResyncing(true)
+    try {
+      await api.get('/store-connection/shopify/sync-all')
+      await fetchCustomers()
+      toast.success('Données resynchronisées')
+    } catch {
+      toast.error("Erreur lors de la resynchronisation")
+    }
+    setResyncing(false)
+  }
 
   const fetchCustomers = async (cursor?: string) => {
     setLoading(true)
@@ -92,6 +106,10 @@ export function Customers() {
               className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             />
           </div>
+          <Button variant="secondary" className="gap-2" onClick={handleResync} loading={resyncing}>
+            <RefreshCw className="h-4 w-4" />
+            <span className="hidden sm:inline">Resynchroniser</span>
+          </Button>
           <div ref={filterRef} className="relative sm:hidden">
             <button
               onClick={() => setFilterOpen(!filterOpen)}

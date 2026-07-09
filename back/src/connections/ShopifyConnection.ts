@@ -372,8 +372,6 @@ export class ShopifyConnection extends AbstractStoreConnection {
           merchantId: this.merchantId,
           customerId: customer.id,
           platformOrderId: String(o.id),
-          customerName,
-          customerPhone: phone,
           wilaya: o.shipping_address?.province ?? "",
           commune: o.shipping_address?.city ?? null,
           address: o.shipping_address?.address1 ?? "",
@@ -389,8 +387,8 @@ export class ShopifyConnection extends AbstractStoreConnection {
         id: created.id,
         merchantId: created.merchantId,
         customerId: customer.id,
-        customerName: created.customerName,
-        customerPhone: created.customerPhone,
+        customerName,
+        customerPhone: phone,
         productName: created.productName,
         platformOrderId: created.platformOrderId,
         totalAmount: created.totalAmount,
@@ -403,14 +401,14 @@ export class ShopifyConnection extends AbstractStoreConnection {
 
   private mapFinancialStatus(status: string): string {
     const map: Record<string, string> = {
-      pending: "pending",
-      authorized: "pending",
-      paid: "confirmed",
-      partially_paid: "pending",
-      refunded: "cancelled",
-      voided: "cancelled",
+      pending: "PENDING",
+      authorized: "PENDING",
+      paid: "CONFIRMED",
+      partially_paid: "PENDING",
+      refunded: "CANCELLED",
+      voided: "CANCELLED",
     };
-    return map[status] ?? "pending";
+    return map[status] ?? "PENDING";
   }
 
   private extractNextPageUrl(linkHeader: string | undefined): string | null {

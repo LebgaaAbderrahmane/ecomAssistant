@@ -1,5 +1,6 @@
 import prisma from '../../config/db.config';
 import { buildOrderConfirmationText } from './orderConfirmation.templates';
+import { openwaService } from '../whatsapp/whatsapp.service';
 
 export const sendOrderConfirmation = async (orderId: string) => {
   const order = await prisma.order.findUniqueOrThrow({
@@ -18,7 +19,7 @@ export const sendOrderConfirmation = async (orderId: string) => {
       productName: order.productName,
       quantity: order.quantity,
       totalAmount: order.totalAmount,
-      currency: 'DZD', // Order has no currency column — assumed DZD project-wide; flag if that's wrong
+      currency: 'DZD',
       wilaya: order.wilaya,
       commune: order.commune,
       address: order.address,
@@ -33,9 +34,27 @@ export const sendOrderConfirmation = async (orderId: string) => {
       direction: 'OUT',
       sender: 'AI',
       text,
+      role: 'assistant',
+      content: text,
     },
   });
 
-  // Not sent via OpenWA yet — same stopping point as LLM #2 replies right now.
-  console.log(`[orders] confirmation composed for order ${orderId}: "${text}"`);
+  // Send via WhatsApp
+  try {
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId: order.merchantId },
+    });
+    if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
+      if (order.customer.phone) {
+        await openwaService.sendText(waSession.sessionId, order.customer.phone, text);
+        console.log(`[orders] Confirmation sent via WhatsApp for order ${orderId}`);
+      } else {
+        console.log(`[orders] No phone for customer ${order.customerId}, skipping WhatsApp send`);
+      }
+    } else {
+      console.log(`[orders] WhatsApp not connected for merchant ${order.merchantId}, skipping send`);
+    }
+  } catch (err) {
+    console.error(`[orders] Failed to send confirmation via WhatsApp for order ${orderId}:`, err);
+  }
 };

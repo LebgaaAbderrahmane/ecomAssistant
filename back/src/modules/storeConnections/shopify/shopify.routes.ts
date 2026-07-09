@@ -12,5 +12,6 @@ router.get("/callback", controller.callBack); // called by shopify
 router.post("/webhooks/orders", controller.handleOrderWebhook); // called by shopify 
 router.post("/disconnect", authenticate, controller.disconnect);
 router.get('/sync-orders', authenticate, controller.syncOrders);
+router.get('/sync-all', authenticate, controller.syncStore);
 
 export default router;
