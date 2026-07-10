@@ -6,6 +6,7 @@ export const IntentSchema = z.enum([
   // Product
   'SEARCH_PRODUCT',
   'ASK_PRODUCT_DETAILS',
+  'RECALL_PREVIOUS_PRODUCT',
   'CHECK_PRICE',
   'CHECK_STOCK',
   // Order
@@ -50,6 +51,7 @@ export const ToolNameSchema = z.enum([
   'calculateShipping',
   'updateAddress',
   'createSupportTicket',
+  'recallPreviousProducts'
 ]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
 
@@ -68,4 +70,12 @@ export const GetOrderStatusArgsSchema = z.object({
 
 export const CalculateShippingArgsSchema = z.object({
   wilaya: z.string().min(1),
+});
+
+export const CancelOrderArgsSchema = z.object({
+  orderId: z.string().optional(),
+});
+
+export const RecallPreviousProductsArgsSchema = z.object({
+  limit: z.number().int().positive().max(10).optional(), // "the last 3 products" etc.
 });

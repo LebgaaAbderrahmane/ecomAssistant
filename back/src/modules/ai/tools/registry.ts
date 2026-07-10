@@ -1,10 +1,12 @@
-import type { ToolName } from '../schemas/intents.schemas';
+import type { Product, ToolName } from '@prisma/client';
 import prisma from '../../../config/db.config';
 import {
   SearchProductsArgsSchema,
   GetOrderStatusArgsSchema,
   CalculateShippingArgsSchema,
-  ConfirmOrderArgsSchema
+  ConfirmOrderArgsSchema,
+  CancelOrderArgsSchema,
+  RecallPreviousProductsArgsSchema
 } from '../schemas/intents.schemas';
 
 export interface ToolExecutionContext {
@@ -49,7 +51,7 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
   return {
     success: true,
     data: {
-      products: products.map((p) => ({
+      products: products.map((p: Product) => ({
         id: p.id,
         name: p.name,
         price: p.price,
@@ -99,8 +101,6 @@ const calculateShipping: ToolHandler = async (entities, ctx) => {
   return { success: true, data: { wilaya: cost.wilaya, cost: cost.cost } };
 };
 
-import { Prisma } from '@prisma/client';
-
 const confirmOrder: ToolHandler = async (entities, ctx) => {
   const parsedArgs = ConfirmOrderArgsSchema.safeParse(entities);
 
@@ -136,7 +136,7 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
     };
   } catch (err) {
     if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err instanceof prisma.PrismaClientKnownRequestError &&
       err.code === 'P2025'
     ) {
       return {
@@ -149,14 +149,147 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
   }
 };
 
+const cancelOrder: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = CancelOrderArgsSchema.safeParse(entities);
+
+  const orderId =
+    ctx.currentOrderId ??
+    (parsedArgs.success ? parsedArgs.data.orderId : undefined);
+
+  if (!orderId) {
+    return {
+      success: false,
+      error: 'No order in context to cancel',
+    };
+  }
+
+  try {
+    const existing = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        merchantId: ctx.merchantId,
+        customerId: ctx.customerId,
+      },
+    });
+
+    if (!existing) {
+      return { success: false, error: 'Order not found' };
+    }
+
+    if (existing.status === 'CANCELLED') {
+      return { success: false, error: 'Order is already cancelled' };
+    }
+
+
+    // claude doesn't know that algerians cancel even after shipping 😂, so we will not block it for now
+    // if (existing.status === 'SHIPPED' || existing.status === 'DELIVERED') {
+    //   return {
+    //     success: false,
+    //     error: `Order cannot be cancelled because it is already ${existing.status.toLowerCase()}`,
+    //   };
+    // }
+
+    const order = await prisma.order.update({
+      where: {
+        id: orderId,
+        merchantId: ctx.merchantId,
+        customerId: ctx.customerId,
+      },
+      data: {
+        status: 'CANCELLED',
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        orderId: order.id,
+        status: order.status,
+      },
+    };
+  } catch (err) {
+    if (
+      err instanceof prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2025'
+    ) {
+      return {
+        success: false,
+        error: 'Order not found',
+      };
+    }
+
+    throw err;
+  }
+};
+const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = RecallPreviousProductsArgsSchema.safeParse(entities);
+  const limit = parsedArgs.success && parsedArgs.data.limit ? parsedArgs.data.limit : 5;
+
+  const messages = await prisma.message.findMany({
+    where: {
+      conversationId: ctx.conversationId,
+      intent: { in: ['SEARCH_PRODUCT', 'getProductDetails'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 30, // scan a window, not the whole history
+  });
+
+  console.log(`[recallPreviousProducts] found ${messages.length} messages in conversation ${ctx.conversationId}`);
+
+  // Extract product names from entities (e.g. {"product":"iphone 15"}), most-recent-first, deduped
+  const seen = new Set<string>();
+  const productNames: string[] = [];
+
+  for (const msg of messages) {
+    let ents: Record<string, unknown> | null = null;
+    console.log(`[recallPreviousProducts] parsing entities string: ${msg.entities}`);
+    if (typeof msg.entities === 'string') {
+      try { ents = JSON.parse(msg.entities); } catch { /* skip */ }
+      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
+    } else if (msg.entities && typeof msg.entities === 'object') {
+      ents = msg.entities as Record<string, unknown>;
+      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
+    }
+    const name = ents?.product;
+    console.log('[recallPreviousProducts] extracted product name:', name);
+    if (typeof name === 'string' && !seen.has(name)) {
+      seen.add(name);
+      productNames.push(name);
+    }
+    if (productNames.length >= limit) break;
+    console.log(`[recallPreviousProducts] collected ${productNames.length} product names so far:`, productNames);
+  }
+
+  if (productNames.length === 0) {
+    return { success: false, error: 'No previous products found in this conversation' };
+  }
+
+  const products = await prisma.product.findMany({
+    where: { name: { in: productNames, mode: 'insensitive' }, merchantId: ctx.merchantId },
+  });
+
+  // preserve recency order
+  const ordered = productNames
+    .map((name) => products.find((p: Product) => p.name.toLowerCase() === name.toLowerCase()))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+  return {
+    success: true,
+    data: {
+      products: productNames
+    },
+  };
+};
+
 export const toolRegistry: Record<ToolName, ToolHandler> = {
   searchProducts,
   getProductDetails: notImplemented,
   createOrder: notImplemented,
   confirmOrder,
-  cancelOrder: notImplemented,
+  cancelOrder,
   getOrderStatus,
   calculateShipping,
+  recallPreviousProducts,
   updateAddress: notImplemented,
   createSupportTicket: notImplemented,
 };

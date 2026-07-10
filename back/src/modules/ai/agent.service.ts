@@ -95,6 +95,7 @@ const rawReply = await callLLM({
       conversationId: conversation.id,
       direction: 'OUT',
       sender: 'AI',
+      content: replyParsed.response,
       text: replyParsed.response,
       role: 'assistant',
       content: replyParsed.response,
