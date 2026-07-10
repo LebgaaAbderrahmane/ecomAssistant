@@ -163,14 +163,13 @@ export async function callBack(req: Request, res: Response): Promise<void> {
   }
 }
 
-export async function syncStore(req: Request, res: Response): Promise<void> {
-  const { merchantId } = req.body;
+export async function syncStore(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const merchantId = req.merchant!.merchantId;
 
   try {
     const connection =
       await StoreConnectionFactory.createForMerchant(merchantId);
 
-    // ✅ Run in parallel, collect individual results
     const [productsResult, ordersResult] = await Promise.allSettled([
       connection.syncProducts(),
       connection.syncOrders(),
@@ -187,7 +186,6 @@ export async function syncStore(req: Request, res: Response): Promise<void> {
           : { success: false, error: (ordersResult.reason as Error).message },
     };
 
-    // 200 even if one failed — partial success is still success
     const statusCode =
       productsResult.status === "rejected" && ordersResult.status === "rejected"
         ? 500

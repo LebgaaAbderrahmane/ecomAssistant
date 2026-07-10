@@ -7,6 +7,7 @@ import { IntentSchema, ToolNameSchema } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import type { ConversationMemory } from './memory.types';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
+import { openwaService } from '../whatsapp/whatsapp.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
 const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
@@ -96,8 +97,32 @@ const rawReply = await callLLM({
       sender: 'AI',
       content: replyParsed.response,
       text: replyParsed.response,
+      role: 'assistant',
+      content: replyParsed.response,
     },
   });
+
+  // --- Send reply via WhatsApp ---
+  try {
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId: conversation.merchantId },
+    });
+    if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: conversation.customerId },
+      });
+      if (customer?.phone) {
+        await openwaService.sendText(waSession.sessionId, customer.phone, replyParsed.response);
+        console.log(`[agent] Reply sent via WhatsApp to ${customer.phone}`);
+      } else {
+        console.log(`[agent] No phone found for customer ${conversation.customerId}, reply not sent`);
+      }
+    } else {
+      console.log(`[agent] WhatsApp not connected for merchant ${conversation.merchantId}, reply not sent`);
+    }
+  } catch (err) {
+    console.error(`[agent] Failed to send reply via WhatsApp:`, err);
+  }
 
   // --- Update conversation memory ---
   const updatedMemory: ConversationMemory = {

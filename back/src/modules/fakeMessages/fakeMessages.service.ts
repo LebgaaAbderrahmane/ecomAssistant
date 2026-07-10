@@ -20,6 +20,8 @@ export const ingestFakeMessage = async (input: FakeMessageInput) => {
   const message = await prisma.message.create({
     data: {
       conversationId: conversation.id,
+      role: 'user',
+      content: input.text,
       direction: 'IN',
       sender: 'CUSTOMER',
       content: input.text,

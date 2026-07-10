@@ -91,9 +91,9 @@ export function Catalog() {
   const handleResync = async () => {
     setResyncing(true)
     try {
-      await api.get('/store-connection/shopify/sync-orders')
+      await api.get('/store-connection/shopify/sync-all')
       await fetchProducts()
-      toast.success('Produits resynchronisés')
+      toast.success('Données resynchronisées')
     } catch {
       toast.error('Erreur lors de la resynchronisation')
     }

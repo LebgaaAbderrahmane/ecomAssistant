@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Loader2, Package, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import { Search, Loader2, Package, MessageCircle, SlidersHorizontal, RefreshCw } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge.js'
 import { Button } from '../../components/ui/Button.js'
 import { api } from '../../lib/api.js'
+import { toast } from 'sonner'
 
 interface Order {
   id: string
@@ -35,21 +36,21 @@ interface OrdersResponse {
 }
 
 const statusVariant: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = {
-  confirmed: 'success',
-  pending: 'warning',
-  cancelled: 'danger',
-  processing: 'info',
-  shipped: 'info',
-  delivered: 'success',
+  CONFIRMED: 'success',
+  PENDING: 'warning',
+  CANCELLED: 'danger',
+  PROCESSING: 'info',
+  SHIPPED: 'info',
+  DELIVERED: 'success',
 }
 
 const statusLabels: Record<string, string> = {
-  confirmed: 'Confirmée',
-  pending: 'En attente',
-  cancelled: 'Annulée',
-  processing: 'En cours',
-  shipped: 'Expédiée',
-  delivered: 'Livrée',
+  CONFIRMED: 'Confirmée',
+  PENDING: 'En attente',
+  CANCELLED: 'Annulée',
+  PROCESSING: 'En cours',
+  SHIPPED: 'Expédiée',
+  DELIVERED: 'Livrée',
 }
 
 function formatWhatsAppUrl(phone: string): string {
@@ -65,7 +66,20 @@ export function Orders() {
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
+  const [resyncing, setResyncing] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
+
+  const handleResync = async () => {
+    setResyncing(true)
+    try {
+      await api.get('/store-connection/shopify/sync-all')
+      await fetchOrders()
+      toast.success('Données resynchronisées')
+    } catch {
+      toast.error("Erreur lors de la resynchronisation")
+    }
+    setResyncing(false)
+  }
 
   const fetchOrders = async (cursor?: string) => {
     setLoading(true)
@@ -137,6 +151,10 @@ export function Orders() {
               className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             />
           </div>
+          <Button variant="secondary" className="gap-2" onClick={handleResync} loading={resyncing}>
+            <RefreshCw className="h-4 w-4" />
+            <span className="hidden sm:inline">Resynchroniser</span>
+          </Button>
           <div ref={filterRef} className="relative sm:hidden">
             <button
               onClick={() => setFilterOpen(!filterOpen)}
@@ -157,11 +175,11 @@ export function Orders() {
                   Tous les statuts
                 </button>
                 {[
-                  { value: 'confirmed', label: 'Confirmée' },
-                  { value: 'pending', label: 'En attente' },
-                  { value: 'cancelled', label: 'Annulée' },
-                  { value: 'shipped', label: 'Expédiée' },
-                  { value: 'delivered', label: 'Livrée' },
+                  { value: 'CONFIRMED', label: 'Confirmée' },
+                  { value: 'PENDING', label: 'En attente' },
+                  { value: 'CANCELLED', label: 'Annulée' },
+                  { value: 'SHIPPED', label: 'Expédiée' },
+                  { value: 'DELIVERED', label: 'Livrée' },
                 ].map((opt) => (
                   <button
                     key={opt.value}
@@ -180,11 +198,11 @@ export function Orders() {
             className="hidden sm:block h-10 w-40 rounded-md border border-gray-300 px-3 text-sm text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-600"
           >
             <option value="">Tous les statuts</option>
-            <option value="confirmed">Confirmée</option>
-            <option value="pending">En attente</option>
-            <option value="cancelled">Annulée</option>
-            <option value="shipped">Expédiée</option>
-            <option value="delivered">Livrée</option>
+            <option value="CONFIRMED">Confirmée</option>
+            <option value="PENDING">En attente</option>
+            <option value="CANCELLED">Annulée</option>
+            <option value="SHIPPED">Expédiée</option>
+            <option value="DELIVERED">Livrée</option>
           </select>
         </div>
       </div>
