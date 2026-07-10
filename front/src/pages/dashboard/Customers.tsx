@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Users, Loader2 } from 'lucide-react'
+import { Search, Users, Loader2, MessageCircle, Ban, Unlock, ShoppingBag } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Badge } from '../../components/ui/Badge.js'
 import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
+import { DropdownMenu, DropdownMenuItem } from '../../components/ui/DropdownMenu.js'
+import { SelectionBar } from '../../components/ui/SelectionBar.js'
 import { api } from '../../lib/api.js'
 import { toast } from 'sonner'
 
@@ -9,8 +12,11 @@ interface Customer {
   id: string
   name: string | null
   phone: string
+  blocked: boolean
   createdAt: string
   _count: { orders: number }
+  confirmedOrders: number
+  cancelledOrders: number
 }
 
 interface CustomersResponse {
@@ -24,7 +30,13 @@ interface CustomersResponse {
   }
 }
 
+function formatWhatsAppUrl(phone: string): string {
+  const clean = phone.replace(/[^0-9]/g, '')
+  return `https://wa.me/${clean}`
+}
+
 export function Customers() {
+  const navigate = useNavigate()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -33,7 +45,71 @@ export function Customers() {
   const [hasMore, setHasMore] = useState(false)
   const [total, setTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
+  const [actionLoading, setActionLoading] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+
+  const allSelected = total > 0 && selectedCustomers.size === total
+
+  const toggleSelectAll = async () => {
+    if (allSelected) {
+      setSelectedCustomers(new Set())
+    } else {
+      try {
+        const params = new URLSearchParams()
+        if (search) params.set('search', search)
+        if (orderFilters.length > 0) params.set('orderFilter', orderFilters.join(','))
+        const res = await api.get<{ ids: string[] }>(`/customers/ids?${params}`)
+        setSelectedCustomers(new Set(res.ids))
+      } catch {
+        setSelectedCustomers(new Set(customers.map(c => c.id)))
+      }
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedCustomers(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkBlock = async (blocked: boolean, ids?: string[]) => {
+    const targetIds = ids ?? Array.from(selectedCustomers)
+    setActionLoading(true)
+    try {
+      const res = await api.patch<{ count: number }>('/customers/bulk-block', { customerIds: targetIds, blocked })
+      toast.success(`${res.count} client(s) ${blocked ? 'bloqué(s)' : 'débloqué(s)'}`)
+      if (!ids) setSelectedCustomers(new Set())
+      fetchCustomers()
+    } catch {
+      toast.error('Erreur lors de la mise à jour')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const getRowActions = (customer: Customer): DropdownMenuItem[] => [
+    {
+      label: 'WhatsApp',
+      icon: <MessageCircle className="h-4 w-4" />,
+      onClick: () => window.open(formatWhatsAppUrl(customer.phone), '_blank'),
+    },
+    {
+      label: 'Voir commandes',
+      icon: <ShoppingBag className="h-4 w-4" />,
+      onClick: () => navigate(`/dashboard/orders?search=${encodeURIComponent(customer.phone)}`),
+    },
+    {
+      label: customer.blocked ? 'Débloquer' : 'Bloquer',
+      icon: customer.blocked ? <Unlock className="h-4 w-4" /> : <Ban className="h-4 w-4" />,
+      onClick: () => handleBulkBlock(!customer.blocked, [customer.id]),
+      disabled: actionLoading,
+      variant: customer.blocked ? 'default' : 'danger',
+    },
+  ]
 
   const fetchCustomers = async (cursor?: string) => {
     if (!cursor) setLoading(true)
@@ -63,6 +139,7 @@ export function Customers() {
   }
 
   useEffect(() => {
+    setSelectedCustomers(new Set())
     fetchCustomers()
   }, [search, orderFilters])
 
@@ -89,6 +166,10 @@ export function Customers() {
     observer.observe(el)
     return () => observer.disconnect()
   }, [hasMore, loading, loadingMore, nextCursor])
+
+  const selectedIds = Array.from(selectedCustomers)
+  const selectedBlockedCount = customers.filter(c => selectedCustomers.has(c.id) && c.blocked).length
+  const majorityBlocked = selectedBlockedCount > selectedIds.length / 2
 
   return (
     <div>
@@ -127,41 +208,79 @@ export function Customers() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Téléphone</th>
-                <th className="px-4 py-3 text-right text-[13px] font-medium text-gray-500">Commandes</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Confirmées</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Annulées</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Total</th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client depuis</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     Chargement...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
                     <Users className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                     Aucun client trouvé.
                   </td>
                 </tr>
               ) : (
                 customers.map((customer) => (
-                  <tr key={customer.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{customer.name || "—"}</p>
+                  <tr key={customer.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedCustomers.has(customer.id) ? 'bg-brand-50' : ''}`}>
+                    <td className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedCustomers.has(customer.id)}
+                        onChange={() => toggleSelect(customer.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                      />
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{customer.phone}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Badge variant={customer._count.orders > 0 ? "success" : "neutral"}>
+                    <td className="px-4 py-3">
+                      <p className="text-sm font-medium text-gray-900">{customer.name || '—'}</p>
+                      <p className="text-xs text-gray-500">{customer.phone}</p>
+                      {customer.blocked && (
+                        <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-red-600">
+                          <Ban className="h-3 w-3" /> Bloqué
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={customer.confirmedOrders > 0 ? 'success' : 'neutral'}>
+                        {customer.confirmedOrders}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={customer.cancelledOrders > 0 ? 'danger' : 'neutral'}>
+                        {customer.cancelledOrders}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={customer._count.orders > 0 ? 'info' : 'neutral'}>
                         {customer._count.orders}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {new Date(customer.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center">
+                        <DropdownMenu items={getRowActions(customer)} />
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -184,15 +303,33 @@ export function Customers() {
           ) : (
             <div className="divide-y divide-gray-100">
               {customers.map((customer) => (
-                <div key={customer.id} className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{customer.name || "—"}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{customer.phone}</p>
+                <div key={customer.id} className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{customer.name || '—'}</p>
+                      <p className="text-xs text-gray-500">{customer.phone}</p>
+                      {customer.blocked && (
+                        <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-red-600">
+                          <Ban className="h-3 w-3" /> Bloqué
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant={customer.confirmedOrders > 0 ? 'success' : 'neutral'}>
+                          {customer.confirmedOrders} ✓
+                        </Badge>
+                        <Badge variant={customer.cancelledOrders > 0 ? 'danger' : 'neutral'}>
+                          {customer.cancelledOrders} ✗
+                        </Badge>
+                      </div>
+                      <DropdownMenu items={getRowActions(customer)} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant={customer._count.orders > 0 ? "success" : "neutral"}>
-                      {customer._count.orders} commande{customer._count.orders > 1 ? 's' : ''}
-                    </Badge>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-gray-400">
+                      {customer._count.orders} commande{customer._count.orders !== 1 ? 's' : ''} · {new Date(customer.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -210,6 +347,31 @@ export function Customers() {
           </div>
         )}
       </div>
+
+      <SelectionBar
+        count={selectedCustomers.size}
+        singularLabel="sélectionné"
+        pluralLabel="sélectionnés"
+        onClear={() => setSelectedCustomers(new Set())}
+        actions={[
+          {
+            label: majorityBlocked ? 'Débloquer' : 'Bloquer',
+            icon: majorityBlocked ? <Unlock className="h-4 w-4" /> : <Ban className="h-4 w-4" />,
+            onClick: () => handleBulkBlock(!majorityBlocked),
+            disabled: actionLoading,
+            variant: majorityBlocked ? 'default' : 'danger',
+          },
+          {
+            label: 'WhatsApp',
+            icon: <MessageCircle className="h-4 w-4" />,
+            onClick: () => {
+              const customer = customers.find(c => selectedCustomers.has(c.id))
+              if (customer) window.open(formatWhatsAppUrl(customer.phone), '_blank')
+            },
+            disabled: selectedCustomers.size !== 1,
+          },
+        ]}
+      />
     </div>
   )
 }

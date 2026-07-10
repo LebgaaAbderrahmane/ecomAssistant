@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, ImageOff, Loader2 } from 'lucide-react'
+import { Search, ImageOff, Loader2, ExternalLink, Bot, BotOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '../../components/ui/Badge.js'
 import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
+import { DropdownMenu, DropdownMenuItem } from '../../components/ui/DropdownMenu.js'
+import { SelectionBar } from '../../components/ui/SelectionBar.js'
 import { api } from '../../lib/api.js'
 
 interface Product {
   id: string
+  platformProductId: string
   name: string
   description: string
   price: number
@@ -15,6 +18,8 @@ interface Product {
   variants: any[]
   stockStatus: string
   category: string | null
+  agentEnabled: boolean
+  shopDomain: string | null
   createdAt: string
 }
 
@@ -49,7 +54,70 @@ export function Catalog() {
   const [total, setTotal] = useState(0)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [actionLoading, setActionLoading] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+
+  const allSelected = total > 0 && selectedProducts.size === total
+
+  const toggleSelectAll = async () => {
+    if (allSelected) {
+      setSelectedProducts(new Set())
+    } else {
+      try {
+        const params = new URLSearchParams()
+        if (search) params.set('search', search)
+        if (stockFilters.length > 0) params.set('stockStatus', stockFilters.join(','))
+        const res = await api.get<{ ids: string[] }>(`/products/ids?${params}`)
+        setSelectedProducts(new Set(res.ids))
+      } catch {
+        setSelectedProducts(new Set(products.map(p => p.id)))
+      }
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedProducts(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkAgent = async (agentEnabled: boolean, ids?: string[]) => {
+    const targetIds = ids ?? Array.from(selectedProducts)
+    setActionLoading(true)
+    try {
+      const res = await api.patch<{ count: number }>('/products/bulk-agent', { productIds: targetIds, agentEnabled })
+      toast.success(`Agent ${agentEnabled ? 'activé' : 'désactivé'} pour ${res.count} produit(s)`)
+      if (!ids) setSelectedProducts(new Set())
+      fetchProducts()
+    } catch {
+      toast.error('Erreur lors de la mise à jour')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const getRowActions = (product: Product): DropdownMenuItem[] => [
+    {
+      label: 'Voir sur Shopify',
+      icon: <ExternalLink className="h-4 w-4" />,
+      onClick: () => {
+        if (product.shopDomain) {
+          window.open(`https://${product.shopDomain}/admin/products/${product.platformProductId}`, '_blank')
+        }
+      },
+      disabled: !product.shopDomain,
+    },
+    {
+      label: product.agentEnabled ? 'Désactiver agent' : 'Activer agent',
+      icon: product.agentEnabled ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />,
+      onClick: () => handleBulkAgent(!product.agentEnabled, [product.id]),
+      disabled: actionLoading,
+    },
+  ]
 
   const fetchProducts = async (cursor?: string) => {
     if (!cursor) setLoading(true)
@@ -79,6 +147,7 @@ export function Catalog() {
   }
 
   useEffect(() => {
+    setSelectedProducts(new Set())
     fetchProducts()
   }, [search, stockFilters])
 
@@ -106,13 +175,17 @@ export function Catalog() {
     return () => observer.disconnect()
   }, [hasMore, loading, loadingMore, nextCursor])
 
+  const selectedIds = Array.from(selectedProducts)
+  const selectedAgentDisabledCount = products.filter(p => selectedProducts.has(p.id) && !p.agentEnabled).length
+  const majorityAgentDisabled = selectedAgentDisabledCount > selectedIds.length / 2
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Catalogue</h1>
-            <p className="mt-1 text-sm text-gray-500">{total} produits synchronisés depuis votre boutique</p>
+            <p className="mt-1 text-sm text-gray-500">{total} produit{total !== 1 ? 's' : ''} synchronisé{total !== 1 ? 's' : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -144,31 +217,49 @@ export function Catalog() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Image</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Produit</th>
-                <th className="px-4 py-3 text-right text-[13px] font-medium text-gray-500">Prix</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Stock</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Catégorie</th>
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                  />
+                </th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 w-16">Image</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 max-w-[200px]">Produit</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium text-gray-500 w-24">Prix</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 w-28">Stock</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 w-32">Catégorie</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500 w-10">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading && products.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     Chargement...
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
+                    <ImageOff className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                     Aucun produit trouvé.
                   </td>
                 </tr>
               ) : (
                 products.map((product) => (
-                  <tr key={product.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3">
+                  <tr key={product.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedProducts.has(product.id) ? 'bg-brand-50' : ''}`}>
+                    <td className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedProducts.has(product.id)}
+                        onChange={() => toggleSelect(product.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                      />
+                    </td>
+                    <td className="px-4 py-3 w-16">
                       <div className="flex h-12 w-12 items-center justify-center rounded-md bg-gray-50 overflow-hidden">
                         {getImageUrl(product.images) ? (
                           <img src={getImageUrl(product.images)!} alt="" className="h-12 w-12 object-cover" />
@@ -177,17 +268,27 @@ export function Catalog() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{product.name}</p>
-                      <p className="truncate text-xs text-gray-500 max-w-[240px]">{product.description}</p>
+                    <td className="px-4 py-3 max-w-[200px]">
+                      <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
+                      <p className="truncate text-xs text-gray-500 max-w-[200px]">{product.description}</p>
+                      {!product.agentEnabled && (
+                        <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-amber-600">
+                          <BotOff className="h-3 w-3" /> Agent désactivé
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-gray-900">{product.price.toLocaleString('fr-FR')} DA</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-right text-sm text-gray-900 w-24">{product.price.toLocaleString('fr-FR')} DA</td>
+                    <td className="px-4 py-3 w-28">
                       <Badge variant={stockVariants[product.stockStatus] || 'neutral'}>
                         {stockLabels[product.stockStatus] || product.stockStatus}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{product.category || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 w-32">{product.category || '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center">
+                        <DropdownMenu items={getRowActions(product)} />
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -203,6 +304,7 @@ export function Catalog() {
             </div>
           ) : products.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-gray-500">
+              <ImageOff className="h-8 w-8 mx-auto mb-2 text-gray-300" />
               Aucun produit trouvé.
             </div>
           ) : (
@@ -216,14 +318,24 @@ export function Catalog() {
                       <ImageOff className="h-5 w-5 text-gray-400" />
                     )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                    <p className="text-xs text-gray-500 truncate">{product.description}</p>
+                  <div className="min-w-0 flex-1 max-w-[200px]">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{product.description}</p>
+                      </div>
+                      <DropdownMenu items={getRowActions(product)} />
+                    </div>
                     <div className="flex items-center gap-2 mt-1.5">
                       <p className="text-sm font-medium text-gray-900">{product.price.toLocaleString('fr-FR')} DA</p>
                       <Badge variant={stockVariants[product.stockStatus] || 'neutral'}>
                         {stockLabels[product.stockStatus] || product.stockStatus}
                       </Badge>
+                      {!product.agentEnabled && (
+                        <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-amber-600">
+                          <BotOff className="h-3 w-3" />
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -242,6 +354,32 @@ export function Catalog() {
           </div>
         )}
       </div>
+
+      <SelectionBar
+        count={selectedProducts.size}
+        singularLabel="sélectionné"
+        pluralLabel="sélectionnés"
+        onClear={() => setSelectedProducts(new Set())}
+        actions={[
+          {
+            label: majorityAgentDisabled ? 'Activer agent' : 'Désactiver agent',
+            icon: majorityAgentDisabled ? <Bot className="h-4 w-4" /> : <BotOff className="h-4 w-4" />,
+            onClick: () => handleBulkAgent(majorityAgentDisabled),
+            disabled: actionLoading,
+          },
+          {
+            label: 'Voir sur Shopify',
+            icon: <ExternalLink className="h-4 w-4" />,
+            onClick: () => {
+              const product = products.find(p => selectedProducts.has(p.id))
+              if (product?.shopDomain) {
+                window.open(`https://${product.shopDomain}/admin/products/${product.platformProductId}`, '_blank')
+              }
+            },
+            disabled: selectedProducts.size !== 1 || !products.find(p => selectedProducts.has(p.id))?.shopDomain,
+          },
+        ]}
+      />
     </div>
   )
 }

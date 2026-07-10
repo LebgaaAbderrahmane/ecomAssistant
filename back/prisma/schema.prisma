@@ -95,6 +95,7 @@ model Product {
   variants          Json
   stockStatus       String   @default("in_stock")
   category          String?
+  agentEnabled      Boolean  @default(true)
   createdAt         DateTime @default(now())
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
@@ -116,6 +117,7 @@ model Customer {
   phone      String
   name       String?
   language   String?
+  blocked    Boolean  @default(false)
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

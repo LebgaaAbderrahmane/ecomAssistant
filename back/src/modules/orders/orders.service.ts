@@ -12,6 +12,7 @@ interface GetOrdersParams {
   limit?: number | string; 
   status?: string;
   search?: string;
+  dateRange?: string;
   storeConnectionId?: string;
 }
 
@@ -27,7 +28,7 @@ const decodeCursor = (cursor: string): { createdAt: Date; id: string } => {
 export const getOrders = async (
   params: GetOrdersParams
 ): Promise<PaginatedResult<Order>> => {
-  const { merchantId, cursor, status, search } = params;
+  const { merchantId, cursor, status, search, dateRange } = params;
   const limit = Math.min(Number(params.limit) || 20, 100);  
   const where: any = {
     merchantId,
@@ -39,6 +40,32 @@ export const getOrders = async (
       { customer: { phone: { contains: search } } },
       { productName: { contains: search, mode: 'insensitive' } },
     ];
+  }
+  if (dateRange) {
+    const now = new Date();
+    let start: Date;
+    switch (dateRange) {
+      case 'today':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week': {
+        start = new Date(now);
+        const day = start.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        start.setDate(start.getDate() - diff);
+        start.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'month':
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'year':
+        start = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        start = null;
+    }
+    if (start) where.createdAt = { gte: start };
   }
 
   let cursorWhere = {};
@@ -62,7 +89,7 @@ export const getOrders = async (
   const [rawOrders, total] = await Promise.all([
     prisma.order.findMany({
       where: { ...where, ...cursorWhere },
-      include: { customer: true },
+      include: { customer: true, conversation: { select: { takenOverByHuman: true } } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
     }),
@@ -208,6 +235,7 @@ export const listOrderIds = async (
   merchantId: string,
   status?: string,
   search?: string,
+  dateRange?: string,
 ): Promise<string[]> => {
   const where: any = {
     merchantId,
@@ -219,6 +247,30 @@ export const listOrderIds = async (
       { customer: { phone: { contains: search } } },
       { productName: { contains: search, mode: 'insensitive' } },
     ];
+  }
+  if (dateRange) {
+    const now = new Date();
+    let start: Date | null = null;
+    switch (dateRange) {
+      case 'today':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week': {
+        start = new Date(now);
+        const day = start.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        start.setDate(start.getDate() - diff);
+        start.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'month':
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'year':
+        start = new Date(now.getFullYear(), 0, 1);
+        break;
+    }
+    if (start) where.createdAt = { gte: start };
   }
 
   const orders = await prisma.order.findMany({

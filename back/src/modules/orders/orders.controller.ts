@@ -8,7 +8,7 @@ import { ingestOrder } from './orders.service';
 export const listOrders = async (req: AuthenticatedRequest, res: Response) => {
   const merchantId = req.merchant!.merchantId;
 
-  const { cursor, limit, status, search, storeConnectionId } = req.query as unknown as GetOrdersQuery;
+  const { cursor, limit, status, search, dateRange, storeConnectionId } = req.query as unknown as GetOrdersQuery;
 
   const result = await getOrders({
     merchantId,
@@ -16,6 +16,7 @@ export const listOrders = async (req: AuthenticatedRequest, res: Response) => {
     limit,
     status,
     search,
+    dateRange,
     storeConnectionId,
   });
 
@@ -69,8 +70,8 @@ export const patchBulkTracking = async (req: AuthenticatedRequest, res: Response
 
 export const getOrderIds = async (req: AuthenticatedRequest, res: Response) => {
   const merchantId = req.merchant!.merchantId;
-  const { status, search } = req.query as { status?: string; search?: string };
+  const { status, search, dateRange } = req.query as { status?: string; search?: string; dateRange?: string };
 
-  const ids = await listOrderIds(merchantId, status, search);
+  const ids = await listOrderIds(merchantId, status, search, dateRange);
   res.json({ ids });
 };

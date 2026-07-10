@@ -4,6 +4,8 @@ import { Badge } from '../../components/ui/Badge.js'
 import { SelectionBar } from '../../components/ui/SelectionBar.js'
 import { TrackingModal } from '../../components/ui/TrackingModal.js'
 import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
+import { DateRangeFilter } from '../../components/ui/DateRangeFilter.js'
+import { DropdownMenu, DropdownMenuItem } from '../../components/ui/DropdownMenu.js'
 import { api } from '../../lib/api.js'
 import { toast } from 'sonner'
 
@@ -23,6 +25,7 @@ interface Order {
   status: string
   trackingNumber: string | null
   deliveryProvider: string | null
+  conversation: { takenOverByHuman: boolean } | null
   createdAt: string
   updatedAt: string
 }
@@ -68,6 +71,7 @@ export function Orders() {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [statusFilters, setStatusFilters] = useState<string[]>([])
+  const [dateRange, setDateRange] = useState<string | null>(null)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
@@ -83,6 +87,7 @@ export function Orders() {
         const params = new URLSearchParams()
         if (statusFilters.length > 0) params.set('status', statusFilters.join(','))
         if (search) params.set('search', search)
+        if (dateRange) params.set('dateRange', dateRange)
         const res = await api.get<{ ids: string[] }>(`/orders/ids?${params}`)
         setSelectedOrders(new Set(res.ids))
       } catch {
@@ -102,16 +107,18 @@ export function Orders() {
   }
 
   const [trackingOpen, setTrackingOpen] = useState(false)
+  const [trackingIds, setTrackingIds] = useState<string[]>([])
   const [actionLoading, setActionLoading] = useState(false)
 
   const selectedIds = Array.from(selectedOrders)
 
-  const handleBulkStatus = async (status: string) => {
+  const handleBulkStatus = async (status: string, ids?: string[]) => {
+    const targetIds = ids ?? selectedIds
     setActionLoading(true)
     try {
-      const res = await api.patch<{ count: number }>('/orders/bulk-status', { orderIds: selectedIds, status })
+      const res = await api.patch<{ count: number }>('/orders/bulk-status', { orderIds: targetIds, status })
       toast.success(`${res.count} commande(s) mise(s) à jour`)
-      setSelectedOrders(new Set())
+      if (!ids) setSelectedOrders(new Set())
       fetchOrders()
     } catch {
       toast.error('Erreur lors de la mise à jour')
@@ -120,12 +127,13 @@ export function Orders() {
     }
   }
 
-  const handleBulkHold = async (hold: boolean) => {
+  const handleBulkHold = async (hold: boolean, ids?: string[]) => {
+    const targetIds = ids ?? selectedIds
     setActionLoading(true)
     try {
-      const res = await api.patch<{ count: number }>('/orders/bulk-hold', { orderIds: selectedIds, hold })
+      const res = await api.patch<{ count: number }>('/orders/bulk-hold', { orderIds: targetIds, hold })
       toast.success(`Agent ${hold ? 'mis en pause' : 'repris'} pour ${res.count} commande(s)`)
-      setSelectedOrders(new Set())
+      if (!ids) setSelectedOrders(new Set())
     } catch {
       toast.error('Erreur lors de la mise à jour')
     } finally {
@@ -136,7 +144,7 @@ export function Orders() {
   const handleBulkTracking = async (trackingNumber: string, deliveryProvider: string) => {
     setActionLoading(true)
     try {
-      const res = await api.patch<{ count: number }>('/orders/bulk-tracking', { orderIds: selectedIds, trackingNumber, deliveryProvider })
+      const res = await api.patch<{ count: number }>('/orders/bulk-tracking', { orderIds: trackingIds, trackingNumber, deliveryProvider })
       toast.success(`Suivi attribué à ${res.count} commande(s)`)
       setTrackingOpen(false)
       setSelectedOrders(new Set())
@@ -148,6 +156,47 @@ export function Orders() {
     }
   }
 
+  const getRowActions = (order: Order): DropdownMenuItem[] => {
+    const isConfirmed = order.status === 'CONFIRMED'
+    const isPaused = order.conversation?.takenOverByHuman ?? false
+
+    return [
+      {
+        label: 'Confirmer',
+        icon: <Check className="h-4 w-4" />,
+        onClick: () => handleBulkStatus('CONFIRMED', [order.id]),
+        disabled: actionLoading || isConfirmed,
+      },
+      {
+        label: 'Annuler',
+        icon: <XCircle className="h-4 w-4" />,
+        onClick: () => handleBulkStatus('CANCELLED', [order.id]),
+        disabled: actionLoading || isConfirmed,
+        variant: 'danger',
+      },
+      ...(isPaused
+        ? [{
+            label: 'Reprendre',
+            icon: <Play className="h-4 w-4" />,
+            onClick: () => handleBulkHold(false, [order.id]),
+            disabled: actionLoading,
+          }]
+        : [{
+            label: 'Pause agent',
+            icon: <Pause className="h-4 w-4" />,
+            onClick: () => handleBulkHold(true, [order.id]),
+            disabled: actionLoading,
+          }]
+      ),
+      {
+        label: 'Suivi',
+        icon: <Hash className="h-4 w-4" />,
+        onClick: () => { setTrackingIds([order.id]); setTrackingOpen(true) },
+        disabled: actionLoading,
+      },
+    ]
+  }
+
   const fetchOrders = async (cursor?: string) => {
     if (!cursor) setLoading(true)
     else setLoadingMore(true)
@@ -155,6 +204,7 @@ export function Orders() {
       const params = new URLSearchParams()
       if (statusFilters.length > 0) params.set('status', statusFilters.join(','))
       if (search) params.set('search', search)
+      if (dateRange) params.set('dateRange', dateRange)
       if (cursor) params.set('cursor', cursor)
       params.set('limit', '20')
 
@@ -178,7 +228,7 @@ export function Orders() {
   useEffect(() => {
     setSelectedOrders(new Set())
     fetchOrders()
-  }, [statusFilters])
+  }, [statusFilters, dateRange])
 
   useEffect(() => {
     setSelectedOrders(new Set())
@@ -244,6 +294,7 @@ export function Orders() {
             label="Statut"
             placeholder="Tous les statuts"
           />
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
         </div>
       </div>
 
@@ -316,16 +367,19 @@ export function Orders() {
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {new Date(order.createdAt).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <a
-                        href={formatWhatsAppUrl(order.customerPhone)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
-                        title="Ouvrir WhatsApp"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                      </a>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1">
+                        <a
+                          href={formatWhatsAppUrl(order.customerPhone)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                          title="Ouvrir WhatsApp"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                        <DropdownMenu items={getRowActions(order)} />
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -364,15 +418,18 @@ export function Orders() {
                       <p className="text-sm font-medium text-gray-900">{order.totalAmount.toLocaleString('fr-FR')} DA</p>
                       <span className="text-xs text-gray-400">{order.wilaya}</span>
                     </div>
-                    <a
-                      href={formatWhatsAppUrl(order.customerPhone)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
-                      title="Ouvrir WhatsApp"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </a>
+                    <div className="flex items-center gap-1">
+                      <a
+                        href={formatWhatsAppUrl(order.customerPhone)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                        title="Ouvrir WhatsApp"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </a>
+                      <DropdownMenu items={getRowActions(order)} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -425,7 +482,7 @@ export function Orders() {
           {
             label: 'Suivi',
             icon: <Hash className="h-4 w-4" />,
-            onClick: () => setTrackingOpen(true),
+            onClick: () => { setTrackingIds(selectedIds); setTrackingOpen(true) },
             disabled: actionLoading,
           },
           {

@@ -19,12 +19,7 @@ const decodeCursor = (cursor: string): { createdAt: Date; id: string } => {
   return { createdAt: new Date(decoded.createdAt), id: decoded.id };
 };
 
-export const getProducts = async (
-  params: GetProductsParams,
-): Promise<PaginatedResult<Product>> => {
-  const { merchantId, cursor, search, stockStatus } = params;
-  const limit = Math.min(Number(params.limit) || 20, 100);
-
+function buildWhere(merchantId: string, search?: string, stockStatus?: string): any {
   const where: any = { merchantId };
   if (stockStatus) where.stockStatus = { in: stockStatus.split(',') };
   if (search) {
@@ -33,6 +28,16 @@ export const getProducts = async (
       { description: { contains: search, mode: "insensitive" } },
     ];
   }
+  return where;
+}
+
+export const getProducts = async (
+  params: GetProductsParams,
+): Promise<PaginatedResult<any>> => {
+  const { merchantId, cursor, search, stockStatus } = params;
+  const limit = Math.min(Number(params.limit) || 20, 100);
+
+  const where = buildWhere(merchantId, search, stockStatus);
 
   let cursorWhere = {};
   let decodedCursor: { createdAt: Date; id: string } | null = null;
@@ -50,17 +55,28 @@ export const getProducts = async (
     };
   }
 
-  const [products, total] = await Promise.all([
+  const [products, total, shopConnection] = await Promise.all([
     prisma.product.findMany({
       where: { ...where, ...cursorWhere },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
     }),
     prisma.product.count({ where }),
+    prisma.shopifyConnection.findFirst({
+      where: { storeConnection: { merchantId } },
+      select: { shopDomain: true },
+    }),
   ]);
 
   const hasNextPage = products.length > limit;
   if (hasNextPage) products.pop();
+
+  const shopDomain = shopConnection?.shopDomain ?? null;
+
+  const data = products.map((p) => ({
+    ...p,
+    shopDomain,
+  }));
 
   const nextCursor =
     hasNextPage
@@ -72,7 +88,7 @@ export const getProducts = async (
     : null;
 
   return {
-    data: products,
+    data,
     pagination: {
       total,
       hasNextPage,
@@ -81,6 +97,34 @@ export const getProducts = async (
       prevCursor,
     },
   };
+};
+
+export const listProductIds = async (
+  merchantId: string,
+  search?: string,
+  stockStatus?: string,
+): Promise<string[]> => {
+  const where = buildWhere(merchantId, search, stockStatus);
+
+  const products = await prisma.product.findMany({
+    where,
+    select: { id: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+
+  return products.map((p) => p.id);
+};
+
+export const bulkToggleAgent = async (
+  merchantId: string,
+  productIds: string[],
+  agentEnabled: boolean,
+): Promise<number> => {
+  const result = await prisma.product.updateMany({
+    where: { merchantId, id: { in: productIds } },
+    data: { agentEnabled },
+  });
+  return result.count;
 };
 
 export const upsertSingleProduct = async (

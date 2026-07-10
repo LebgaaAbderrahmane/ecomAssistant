@@ -17,12 +17,7 @@ const decodeCursor = (cursor: string): { createdAt: Date; id: string } => {
   return { createdAt: new Date(decoded.createdAt), id: decoded.id };
 };
 
-export const getCustomers = async (
-  params: GetCustomersParams,
-): Promise<PaginatedResult<any>> => {
-  const { merchantId, cursor, search, orderFilter } = params;
-  const limit = Math.min(Number(params.limit) || 20, 100);
-
+function buildWhere(merchantId: string, search?: string, orderFilter?: string): any {
   const where: any = { merchantId };
   if (search) {
     where.OR = [
@@ -38,10 +33,18 @@ export const getCustomers = async (
       } else if (filters[0] === "without_orders") {
         where.orders = { _count: 0 };
       }
-    } else if (filters.length === 2) {
-      // both selected = no filter (show all)
     }
   }
+  return where;
+}
+
+export const getCustomers = async (
+  params: GetCustomersParams,
+): Promise<PaginatedResult<any>> => {
+  const { merchantId, cursor, search, orderFilter } = params;
+  const limit = Math.min(Number(params.limit) || 20, 100);
+
+  const where = buildWhere(merchantId, search, orderFilter);
 
   let cursorWhere = {};
   let decodedCursor: { createdAt: Date; id: string } | null = null;
@@ -74,6 +77,32 @@ export const getCustomers = async (
   const hasNextPage = customers.length > limit;
   if (hasNextPage) customers.pop();
 
+  const customerIds = customers.map((c) => c.id);
+
+  const [confirmedCounts, cancelledCounts] = customerIds.length > 0
+    ? await Promise.all([
+        prisma.order.groupBy({
+          by: ["customerId"],
+          where: { merchantId, customerId: { in: customerIds }, status: "CONFIRMED" },
+          _count: true,
+        }),
+        prisma.order.groupBy({
+          by: ["customerId"],
+          where: { merchantId, customerId: { in: customerIds }, status: "CANCELLED" },
+          _count: true,
+        }),
+      ])
+    : [[], []];
+
+  const confirmedMap = new Map(confirmedCounts.map((c) => [c.customerId, c._count]));
+  const cancelledMap = new Map(cancelledCounts.map((c) => [c.customerId, c._count]));
+
+  const data = customers.map((c) => ({
+    ...c,
+    confirmedOrders: confirmedMap.get(c.id) || 0,
+    cancelledOrders: cancelledMap.get(c.id) || 0,
+  }));
+
   const nextCursor =
     hasNextPage
       ? encodeCursor(customers[customers.length - 1].createdAt, customers[customers.length - 1].id)
@@ -84,7 +113,7 @@ export const getCustomers = async (
     : null;
 
   return {
-    data: customers,
+    data,
     pagination: {
       total,
       hasNextPage,
@@ -93,4 +122,32 @@ export const getCustomers = async (
       prevCursor,
     },
   };
+};
+
+export const listCustomerIds = async (
+  merchantId: string,
+  search?: string,
+  orderFilter?: string,
+): Promise<string[]> => {
+  const where = buildWhere(merchantId, search, orderFilter);
+
+  const customers = await prisma.customer.findMany({
+    where,
+    select: { id: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+
+  return customers.map((c) => c.id);
+};
+
+export const bulkBlockCustomers = async (
+  merchantId: string,
+  customerIds: string[],
+  blocked: boolean,
+): Promise<number> => {
+  const result = await prisma.customer.updateMany({
+    where: { merchantId, id: { in: customerIds } },
+    data: { blocked },
+  });
+  return result.count;
 };
