@@ -4,6 +4,8 @@ import * as shopifyService from "./shopify.service";
 import { StoreConnectionFactory } from "../../../connections/StoreConnectionFactory";
 import { AuthenticatedRequest } from "../../../middlwares/auth.middlware";
 import { sendOrderNotification } from "../../whatsapp/whatsapp.controller";
+import * as ordersService from "../../orders/orders.service";
+import * as productsService from "../../products/products.service";
 const { APP_URL } = process.env;
 
 export async function authenticateShopify(
@@ -65,11 +67,52 @@ export async function handleOrderWebhook(
       sendOrderNotification(saved).catch((err) => {
         console.error("[Shopify] Order notification failed:", err);
       });
+      ordersService.emitOrderCreated({ merchantId: saved.merchantId, orderId: saved.id });
     }
 
     res.status(200).send("OK");
   } catch (err) {
     console.error("Webhook processing error:", err);
+    res.status(500).send("Error");
+  }
+}
+
+export async function handleProductWebhook(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const hmac = req.headers["x-shopify-hmac-sha256"] as string;
+  const shop = req.headers["x-shopify-shop-domain"] as string;
+
+  try {
+    const rawBody: Buffer = (req as any).rawBody;
+
+    if (!rawBody) {
+      res.status(400).send("Missing raw body");
+      return;
+    }
+
+    const storeConn = await shopifyService.getStoreConnectionByShop(shop);
+    const connection = await StoreConnectionFactory.create(storeConn.id);
+
+    const isValid = connection.verifyWebhookSignature(rawBody, hmac);
+    if (!isValid) {
+      res.status(401).send("Unauthorized");
+      return;
+    }
+
+    const product = JSON.parse(rawBody.toString());
+    await productsService.upsertSingleProduct(storeConn.merchantId, product);
+    console.log("[Shopify] Product webhook processed:", product.id);
+
+    productsService.emitProductsSynced({
+      merchantId: storeConn.merchantId,
+      count: 1,
+    });
+
+    res.status(200).send("OK");
+  } catch (err) {
+    console.error("Product webhook processing error:", err);
     res.status(500).send("Error");
   }
 }

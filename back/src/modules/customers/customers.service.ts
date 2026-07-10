@@ -30,10 +30,17 @@ export const getCustomers = async (
       { phone: { contains: search } },
     ];
   }
-  if (orderFilter === "with_orders") {
-    where.orders = { _count: { gt: 0 } };
-  } else if (orderFilter === "without_orders") {
-    where.orders = { _count: 0 };
+  if (orderFilter) {
+    const filters = orderFilter.split(',');
+    if (filters.length === 1) {
+      if (filters[0] === "with_orders") {
+        where.orders = { _count: { gt: 0 } };
+      } else if (filters[0] === "without_orders") {
+        where.orders = { _count: 0 };
+      }
+    } else if (filters.length === 2) {
+      // both selected = no filter (show all)
+    }
   }
 
   let cursorWhere = {};

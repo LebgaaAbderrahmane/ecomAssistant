@@ -1,6 +1,7 @@
 import prisma from "../../config/db.config";
 import { PaginatedResult } from "../../types/pagination.types";
 import type { Product } from "@prisma/client";
+import eventBus from "../../events/eventBus";
 
 interface GetProductsParams {
   merchantId: string;
@@ -25,7 +26,7 @@ export const getProducts = async (
   const limit = Math.min(Number(params.limit) || 20, 100);
 
   const where: any = { merchantId };
-  if (stockStatus) where.stockStatus = stockStatus;
+  if (stockStatus) where.stockStatus = { in: stockStatus.split(',') };
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },
@@ -76,4 +77,64 @@ export const getProducts = async (
       prevCursor,
     },
   };
+};
+
+export const upsertSingleProduct = async (
+  merchantId: string,
+  shopifyProduct: any,
+): Promise<void> => {
+  const p = shopifyProduct;
+  const price = parseFloat(p.variants?.[0]?.price ?? "0");
+  const images = (p.images ?? []).map((img: { src: string }) => img.src);
+  const stockStatus =
+    (p.variants?.[0]?.inventory_quantity ?? 0) > 0
+      ? "in_stock"
+      : "out_of_stock";
+
+  await prisma.product.upsert({
+    where: {
+      merchantId_platformProductId: {
+        merchantId,
+        platformProductId: String(p.id),
+      },
+    },
+    update: {
+      name: p.title,
+      description: p.body_html ?? "",
+      price,
+      images,
+      variants: p.variants,
+      stockStatus,
+      category: p.product_type || null,
+    },
+    create: {
+      merchantId,
+      platformProductId: String(p.id),
+      name: p.title,
+      description: p.body_html ?? "",
+      price,
+      currency: "DZD",
+      images,
+      variants: p.variants,
+      stockStatus,
+      category: p.product_type || null,
+    },
+  });
+};
+
+export interface ProductsSyncedEvent {
+  merchantId: string;
+  count: number;
+}
+
+export const emitProductsSynced = (data: ProductsSyncedEvent) => {
+  eventBus.emit("products.synced", data);
+};
+
+export const onProductsSynced = (listener: (data: ProductsSyncedEvent) => void) => {
+  eventBus.on("products.synced", listener);
+};
+
+export const offProductsSynced = (listener: (data: ProductsSyncedEvent) => void) => {
+  eventBus.off("products.synced", listener);
 };

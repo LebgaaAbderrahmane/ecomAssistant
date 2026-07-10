@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
-import { Search, RefreshCw, ImageOff, Loader2, SlidersHorizontal } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Search, ImageOff, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '../../components/ui/Badge.js'
+import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
 import { Button } from '../../components/ui/Button.js'
 import { api } from '../../lib/api.js'
 
@@ -44,19 +45,16 @@ export function Catalog() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [stockFilter, setStockFilter] = useState('')
+  const [stockFilters, setStockFilters] = useState<string[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
-  const [resyncing, setResyncing] = useState(false)
-  const [filterOpen, setFilterOpen] = useState(false)
-  const filterRef = useRef<HTMLDivElement>(null)
 
   const fetchProducts = async (cursor?: string) => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      if (stockFilter) params.set('stockStatus', stockFilter)
+      if (stockFilters.length > 0) params.set('stockStatus', stockFilters.join(','))
       if (cursor) params.set('cursor', cursor)
       params.set('limit', '20')
 
@@ -77,35 +75,25 @@ export function Catalog() {
 
   useEffect(() => {
     fetchProducts()
-  }, [search, stockFilter])
+  }, [search, stockFilters])
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node))
-        setFilterOpen(false)
+    const handler = () => {
+      fetchProducts()
+      toast.success('Catalogue mis à jour')
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    window.addEventListener('products:synced', handler)
+    return () => window.removeEventListener('products:synced', handler)
   }, [])
-
-  const handleResync = async () => {
-    setResyncing(true)
-    try {
-      await api.get('/store-connection/shopify/sync-all')
-      await fetchProducts()
-      toast.success('Données resynchronisées')
-    } catch {
-      toast.error('Erreur lors de la resynchronisation')
-    }
-    setResyncing(false)
-  }
 
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-        <div className="shrink-0">
-          <h1 className="text-2xl font-bold text-gray-900">Catalogue</h1>
-          <p className="mt-1 text-sm text-gray-500">{products.length} produits synchronisés depuis votre boutique</p>
+        <div className="shrink-0 flex items-center gap-2">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Catalogue</h1>
+            <p className="mt-1 text-sm text-gray-500">{products.length} produits synchronisés depuis votre boutique</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1 sm:max-w-xs">
@@ -117,55 +105,17 @@ export function Catalog() {
               className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             />
           </div>
-          <div ref={filterRef} className="relative sm:hidden">
-            <button
-              onClick={() => setFilterOpen(!filterOpen)}
-              className={`flex h-10 w-10 items-center justify-center rounded-md border transition-colors ${
-                stockFilter
-                  ? 'border-brand-600 bg-brand-50 text-brand-600'
-                  : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-              }`}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </button>
-            {filterOpen && (
-              <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg z-10 py-1">
-                <button
-                  onClick={() => { setStockFilter(''); setFilterOpen(false) }}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${!stockFilter ? 'text-brand-600 font-medium' : 'text-gray-700'}`}
-                >
-                  Tous les stocks
-                </button>
-                {[
-                  { value: 'in_stock', label: 'En stock' },
-                  { value: 'low_stock', label: 'Stock faible' },
-                  { value: 'out_of_stock', label: 'Rupture' },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => { setStockFilter(opt.value); setFilterOpen(false) }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${stockFilter === opt.value ? 'text-brand-600 font-medium' : 'text-gray-700'}`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <select
-            value={stockFilter}
-            onChange={(e) => setStockFilter(e.target.value)}
-            className="hidden sm:block h-10 w-40 rounded-md border border-gray-300 px-3 text-sm text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-600"
-          >
-            <option value="">Tous les stocks</option>
-            <option value="in_stock">En stock</option>
-            <option value="low_stock">Stock faible</option>
-            <option value="out_of_stock">Rupture</option>
-          </select>
-          <Button variant="secondary" className="gap-2" onClick={handleResync} loading={resyncing}>
-            <RefreshCw className="h-4 w-4" />
-            <span className="hidden sm:inline">Resynchroniser</span>
-          </Button>
+          <FilterDropdown
+            options={[
+              { value: 'in_stock', label: 'En stock' },
+              { value: 'low_stock', label: 'Stock faible' },
+              { value: 'out_of_stock', label: 'Rupture' },
+            ]}
+            selected={stockFilters}
+            onChange={setStockFilters}
+            label="Stock"
+            placeholder="Tous les stocks"
+          />
         </div>
       </div>
 

@@ -173,36 +173,32 @@ export class ShopifyConnection extends AbstractStoreConnection {
     const accessToken = await this.getValidAccessToken();
     const headers = { "X-Shopify-Access-Token": accessToken };
     const base = `https://${this.shopDomain}/admin/api/${API_VERSION}`;
-    const address = `${APP_URL}/store-connection/shopify/webhooks/orders`;
 
-    // Check if already registered
-    const { data } = await axios.get(
-      `${base}/webhooks.json?topic=orders/create`,
-      {
-        headers,
-      },
-    );
+    const topics: { topic: string; address: string }[] = [
+      { topic: "orders/create", address: `${APP_URL}/store-connection/shopify/webhooks/orders` },
+      { topic: "products/create", address: `${APP_URL}/store-connection/shopify/webhooks/products` },
+      { topic: "products/update", address: `${APP_URL}/store-connection/shopify/webhooks/products` },
+      { topic: "products/delete", address: `${APP_URL}/store-connection/shopify/webhooks/products` },
+    ];
 
-    const alreadyRegistered = data.webhooks.some(
-      (w: { address: string }) => w.address === address,
-    );
+    const { data } = await axios.get(`${base}/webhooks.json`, { headers });
+    const registered: { topic: string; address: string }[] = data.webhooks ?? [];
 
-    if (alreadyRegistered) {
-      console.log("Webhook already registered, skipping.");
-      return;
+    for (const { topic, address } of topics) {
+      const already = registered.some(
+        (w) => w.topic === topic && w.address === address,
+      );
+      if (already) {
+        console.log(`[Shopify] Webhook ${topic} already registered, skipping.`);
+        continue;
+      }
+      await axios.post(
+        `${base}/webhooks.json`,
+        { webhook: { topic, address, format: "json" } },
+        { headers },
+      );
+      console.log(`[Shopify] Registered webhook: ${topic}`);
     }
-
-    await axios.post(
-      `${base}/webhooks.json`,
-      {
-        webhook: {
-          topic: "orders/create",
-          address,
-          format: "json",
-        },
-      },
-      { headers },
-    );
   }
 
   verifyWebhookSignature(payload: Buffer, signature: string): boolean {
@@ -379,7 +375,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
           productName: firstItem.title,
           quantity: firstItem.quantity,
           totalAmount: parseFloat(o.total_price),
-          status: this.mapFinancialStatus(o.financial_status),
+          status: "PENDING",
         },
       });
 

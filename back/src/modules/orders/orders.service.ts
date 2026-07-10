@@ -4,6 +4,7 @@ import { PaginatedResult } from '../../types/pagination.types';
 import { Order } from '@prisma/client';
 import { enqueueOrderJob } from '../../queues/order.queue';
 import { FakeOrderInput } from '../../validators/order.validator';
+import eventBus from '../../events/eventBus';
 
 interface GetOrdersParams {
   merchantId: string;
@@ -29,8 +30,7 @@ export const getOrders = async (
   const limit = Math.min(Number(params.limit) || 20, 100);  
   const where = {
     merchantId,
-    ...(status && { status }),
-    // storeConnectionId is not on Order directly — filter via product or skip if not needed
+    ...(status && { status: { in: status.split(',') } }),
   };
 
   let cursorWhere = {};
@@ -149,4 +149,58 @@ export const ingestOrder = async (input: FakeOrderInput) => {
   await enqueueOrderJob(order.id);
 
   return { orderId: order.id, conversationId: conversation.id };
+};
+
+export interface OrderCreatedEvent {
+  merchantId: string;
+  orderId: string;
+}
+
+export const emitOrderCreated = (data: OrderCreatedEvent) => {
+  eventBus.emit("order.created", data);
+};
+
+export const onOrderCreated = (listener: (data: OrderCreatedEvent) => void) => {
+  eventBus.on("order.created", listener);
+};
+
+export const offOrderCreated = (listener: (data: OrderCreatedEvent) => void) => {
+  eventBus.off("order.created", listener);
+};
+
+export const bulkUpdateStatus = async (
+  merchantId: string,
+  orderIds: string[],
+  status: string,
+): Promise<number> => {
+  const result = await prisma.order.updateMany({
+    where: { merchantId, id: { in: orderIds } },
+    data: { status: status as any },
+  });
+  return result.count;
+};
+
+export const bulkHoldAgent = async (
+  merchantId: string,
+  orderIds: string[],
+  hold: boolean,
+): Promise<number> => {
+  const result = await prisma.conversation.updateMany({
+    where: { merchantId, currentOrderId: { in: orderIds } },
+    data: { takenOverByHuman: hold },
+  });
+  return result.count;
+};
+
+export const bulkUpdateTracking = async (
+  merchantId: string,
+  orderIds: string[],
+  trackingNumber: string,
+  deliveryProvider: string,
+): Promise<number> => {
+  const result = await prisma.order.updateMany({
+    where: { merchantId, id: { in: orderIds } },
+    data: { trackingNumber, deliveryProvider },
+  });
+  return result.count;
 };
