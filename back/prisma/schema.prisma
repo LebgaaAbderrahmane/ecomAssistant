@@ -207,7 +207,7 @@ model Message {
   sender MessageSender
 
   text String
-
+  role           String
 
 
   rawPayload Json?

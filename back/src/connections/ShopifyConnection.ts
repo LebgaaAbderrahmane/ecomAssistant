@@ -367,21 +367,30 @@ export class ShopifyConnection extends AbstractStoreConnection {
             data: { merchantId: this.merchantId, phone: "", name: customerName },
           });
 
-      const created = await prisma.order.create({
-        data: {
-          merchantId: this.merchantId,
-          customerId: customer.id,
-          platformOrderId: String(o.id),
-          wilaya: o.shipping_address?.province ?? "",
-          commune: o.shipping_address?.city ?? null,
-          address: o.shipping_address?.address1 ?? "",
-          productId: product.id,
-          productName: firstItem.title,
-          quantity: firstItem.quantity,
-          totalAmount: parseFloat(o.total_price),
-          status: this.mapFinancialStatus(o.financial_status),
-        },
-      });
+      let created;
+      try {
+        created = await prisma.order.create({
+          data: {
+            merchantId: this.merchantId,
+            customerId: customer.id,
+            platformOrderId: String(o.id),
+            wilaya: o.shipping_address?.province ?? "",
+            commune: o.shipping_address?.city ?? null,
+            address: o.shipping_address?.address1 ?? "",
+            productId: product.id,
+            productName: firstItem.title,
+            quantity: firstItem.quantity,
+            totalAmount: parseFloat(o.total_price),
+            status: this.mapFinancialStatus(o.financial_status),
+          },
+        });
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          console.warn(`[Shopify] Order #${o.id} already exists for merchant ${this.merchantId} — skipping duplicate`);
+          continue;
+        }
+        throw err;
+      }
 
       saved.push({
         id: created.id,

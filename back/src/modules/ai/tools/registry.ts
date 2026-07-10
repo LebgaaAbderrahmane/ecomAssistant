@@ -134,11 +134,8 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
         status: order.status,
       },
     };
-  } catch (err) {
-    if (
-      err instanceof prisma.PrismaClientKnownRequestError &&
-      err.code === 'P2025'
-    ) {
+  } catch (err: any) {
+    if (err?.code === 'P2025') {
       return {
         success: false,
         error: 'Order not found',
@@ -207,11 +204,8 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
         status: order.status,
       },
     };
-  } catch (err) {
-    if (
-      err instanceof prisma.PrismaClientKnownRequestError &&
-      err.code === 'P2025'
-    ) {
+  } catch (err: any) {
+    if (err?.code === 'P2025') {
       return {
         success: false,
         error: 'Order not found',

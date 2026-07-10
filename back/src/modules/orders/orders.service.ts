@@ -114,21 +114,32 @@ export const ingestOrder = async (input: FakeOrderInput) => {
 
   const platformOrderId = input.platformOrderId ?? `FAKE-${Date.now()}`;
 
-  const order = await prisma.order.create({
-    data: {
-      merchantId: input.merchantId,
-      customerId: customer.id,
-      platformOrderId,
-      wilaya: input.wilaya,
-      commune: input.commune,
-      address: input.address,
-      productId: product.id,
-      productName: product.name, // snapshot at order time — product name/price can change later
-      quantity: input.quantity,
-      totalAmount,
-      deliveryCost: deliveryCostValue,
-    },
-  });
+  let order;
+  try {
+    order = await prisma.order.create({
+      data: {
+        merchantId: input.merchantId,
+        customerId: customer.id,
+        platformOrderId,
+        wilaya: input.wilaya,
+        commune: input.commune,
+        address: input.address,
+        productId: product.id,
+        productName: product.name, // snapshot at order time — product name/price can change later
+        quantity: input.quantity,
+        totalAmount,
+        deliveryCost: deliveryCostValue,
+      },
+    });
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      console.warn(`[orders] Order with platformOrderId "${platformOrderId}" already exists for merchant ${input.merchantId} — skipping duplicate`);
+      const duplicateError: any = new Error(`Order with platformOrderId "${platformOrderId}" already exists`);
+      duplicateError.status = 409;
+      throw duplicateError;
+    }
+    throw err;
+  }
 
   // TODO: duplicate of the conversation find-or-create logic in
   // fakeMessages.service.ts — collapse both onto conversation.service.ts's

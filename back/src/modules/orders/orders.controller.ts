@@ -22,7 +22,12 @@ export const listOrders = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const postFakeOrder = async (req: Request, res: Response) => {
-  const order = req.body;
-  const result = await ingestOrder(order);
-  return res.status(202).json(result);
+  try {
+    const order = req.body;
+    const result = await ingestOrder(order);
+    return res.status(202).json(result);
+  } catch (err: any) {
+    console.error('[orders] Failed to ingest order:', err.message || err);
+    return res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
+  }
 };
