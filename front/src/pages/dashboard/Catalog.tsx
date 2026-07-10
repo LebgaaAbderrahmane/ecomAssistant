@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Search, ImageOff, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '../../components/ui/Badge.js'
 import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
-import { Button } from '../../components/ui/Button.js'
 import { api } from '../../lib/api.js'
 
 interface Product {
@@ -21,7 +20,7 @@ interface Product {
 
 interface ProductsResponse {
   data: Product[]
-  pagination: { hasNextPage: boolean; nextCursor: string | null }
+  pagination: { total: number; hasNextPage: boolean; nextCursor: string | null }
 }
 
 const stockLabels: Record<string, string> = {
@@ -47,10 +46,14 @@ export function Catalog() {
   const [search, setSearch] = useState('')
   const [stockFilters, setStockFilters] = useState<string[]>([])
   const [hasMore, setHasMore] = useState(false)
+  const [total, setTotal] = useState(0)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   const fetchProducts = async (cursor?: string) => {
-    setLoading(true)
+    if (!cursor) setLoading(true)
+    else setLoadingMore(true)
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
@@ -66,10 +69,12 @@ export function Catalog() {
       }
       setHasMore(res.pagination.hasNextPage)
       setNextCursor(res.pagination.nextCursor)
+      if (!cursor) setTotal(res.pagination.total)
     } catch {
-      setProducts([])
+      if (!cursor) setProducts([])
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }
 
@@ -86,13 +91,28 @@ export function Catalog() {
     return () => window.removeEventListener('products:synced', handler)
   }, [])
 
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && nextCursor) {
+          fetchProducts(nextCursor)
+        }
+      },
+      { threshold: 0 },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, loading, loadingMore, nextCursor])
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Catalogue</h1>
-            <p className="mt-1 text-sm text-gray-500">{products.length} produits synchronisés depuis votre boutique</p>
+            <p className="mt-1 text-sm text-gray-500">{total} produits synchronisés depuis votre boutique</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -213,10 +233,12 @@ export function Catalog() {
         </div>
 
         {hasMore && (
-          <div className="p-3 text-center border-t border-gray-100">
-            <Button variant="ghost" size="sm" onClick={() => fetchProducts(nextCursor!)} loading={loading}>
-              Charger plus
-            </Button>
+          <div ref={sentinelRef} className="h-1">
+            {loadingMore && (
+              <div className="p-3 text-center">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto text-gray-400" />
+              </div>
+            )}
           </div>
         )}
       </div>

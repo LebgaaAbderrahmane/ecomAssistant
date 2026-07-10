@@ -59,14 +59,17 @@ export const getCustomers = async (
     };
   }
 
-  const customers = await prisma.customer.findMany({
-    where: { ...where, ...cursorWhere },
-    include: {
-      _count: { select: { orders: true } },
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: limit + 1,
-  });
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where: { ...where, ...cursorWhere },
+      include: {
+        _count: { select: { orders: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+    }),
+    prisma.customer.count({ where }),
+  ]);
 
   const hasNextPage = customers.length > limit;
   if (hasNextPage) customers.pop();
@@ -83,6 +86,7 @@ export const getCustomers = async (
   return {
     data: customers,
     pagination: {
+      total,
       hasNextPage,
       hasPrevPage: !!cursor,
       nextCursor,

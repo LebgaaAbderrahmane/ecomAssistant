@@ -50,11 +50,14 @@ export const getProducts = async (
     };
   }
 
-  const products = await prisma.product.findMany({
-    where: { ...where, ...cursorWhere },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: limit + 1,
-  });
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      where: { ...where, ...cursorWhere },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+    }),
+    prisma.product.count({ where }),
+  ]);
 
   const hasNextPage = products.length > limit;
   if (hasNextPage) products.pop();
@@ -71,6 +74,7 @@ export const getProducts = async (
   return {
     data: products,
     pagination: {
+      total,
       hasNextPage,
       hasPrevPage: !!cursor,
       nextCursor,

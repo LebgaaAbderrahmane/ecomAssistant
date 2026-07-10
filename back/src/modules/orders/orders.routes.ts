@@ -9,6 +9,7 @@ import { FakeOrderSchema } from '../../validators/order.validator';
 const router: Router = express.Router();
 
 router.get('/', authenticate, validate(getOrdersSchema), controller.listOrders);
+router.get('/ids', authenticate, controller.getOrderIds);
 router.post('/simulate-order', validate(FakeOrderSchema), controller.postFakeOrder);
 router.patch('/bulk-status', authenticate, controller.patchBulkStatus);
 router.patch('/bulk-hold', authenticate, controller.patchBulkHold);

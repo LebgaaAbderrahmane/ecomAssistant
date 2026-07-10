@@ -11,6 +11,7 @@ interface GetOrdersParams {
   cursor?: string;
   limit?: number | string; 
   status?: string;
+  search?: string;
   storeConnectionId?: string;
 }
 
@@ -26,12 +27,19 @@ const decodeCursor = (cursor: string): { createdAt: Date; id: string } => {
 export const getOrders = async (
   params: GetOrdersParams
 ): Promise<PaginatedResult<Order>> => {
-  const { merchantId, cursor, status, storeConnectionId } = params;
+  const { merchantId, cursor, status, search } = params;
   const limit = Math.min(Number(params.limit) || 20, 100);  
-  const where = {
+  const where: any = {
     merchantId,
     ...(status && { status: { in: status.split(',') } }),
   };
+  if (search) {
+    where.OR = [
+      { customer: { name: { contains: search, mode: 'insensitive' } } },
+      { customer: { phone: { contains: search } } },
+      { productName: { contains: search, mode: 'insensitive' } },
+    ];
+  }
 
   let cursorWhere = {};
   let decodedCursor: { createdAt: Date; id: string } | null = null;
@@ -51,12 +59,15 @@ export const getOrders = async (
     };
   }
 
-  const rawOrders = await prisma.order.findMany({
-    where: { ...where, ...cursorWhere },
-    include: { customer: true },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    take: limit + 1,
-  });
+  const [rawOrders, total] = await Promise.all([
+    prisma.order.findMany({
+      where: { ...where, ...cursorWhere },
+      include: { customer: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    }),
+    prisma.order.count({ where }),
+  ]);
 
   const orders = rawOrders.map((o) => ({
     ...o,
@@ -77,6 +88,7 @@ export const getOrders = async (
   return {
     data: orders,
     pagination: {
+      total,
       hasNextPage,
       hasPrevPage: !!cursor,
       nextCursor,
@@ -190,6 +202,32 @@ export const bulkHoldAgent = async (
     data: { takenOverByHuman: hold },
   });
   return result.count;
+};
+
+export const listOrderIds = async (
+  merchantId: string,
+  status?: string,
+  search?: string,
+): Promise<string[]> => {
+  const where: any = {
+    merchantId,
+    ...(status && { status: { in: status.split(',') } }),
+  };
+  if (search) {
+    where.OR = [
+      { customer: { name: { contains: search, mode: 'insensitive' } } },
+      { customer: { phone: { contains: search } } },
+      { productName: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const orders = await prisma.order.findMany({
+    where,
+    select: { id: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  });
+
+  return orders.map(o => o.id);
 };
 
 export const bulkUpdateTracking = async (

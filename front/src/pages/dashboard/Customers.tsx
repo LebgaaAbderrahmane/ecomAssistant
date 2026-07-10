@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Search, Users, Loader2 } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge.js'
-import { Button } from '../../components/ui/Button.js'
 import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
 import { api } from '../../lib/api.js'
 import { toast } from 'sonner'
@@ -17,6 +16,7 @@ interface Customer {
 interface CustomersResponse {
   data: Customer[]
   pagination: {
+    total: number
     hasNextPage: boolean
     hasPrevPage: boolean
     nextCursor: string | null
@@ -31,9 +31,13 @@ export function Customers() {
   const [orderFilters, setOrderFilters] = useState<string[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   const fetchCustomers = async (cursor?: string) => {
-    setLoading(true)
+    if (!cursor) setLoading(true)
+    else setLoadingMore(true)
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
@@ -49,10 +53,12 @@ export function Customers() {
       }
       setHasMore(res.pagination.hasNextPage)
       setNextCursor(res.pagination.nextCursor)
+      if (!cursor) setTotal(res.pagination.total)
     } catch {
-      setCustomers([])
+      if (!cursor) setCustomers([])
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }
 
@@ -69,13 +75,28 @@ export function Customers() {
     return () => window.removeEventListener('order:created', handler)
   }, [])
 
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && nextCursor) {
+          fetchCustomers(nextCursor)
+        }
+      },
+      { threshold: 0 },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, loading, loadingMore, nextCursor])
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
-            <p className="mt-1 text-sm text-gray-500">{customers.length} client{customers.length > 1 ? 's' : ''}</p>
+            <p className="mt-1 text-sm text-gray-500">{total} client{total !== 1 ? 's' : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -180,10 +201,12 @@ export function Customers() {
         </div>
 
         {hasMore && (
-          <div className="p-3 text-center border-t border-gray-100">
-            <Button variant="ghost" size="sm" onClick={() => fetchCustomers(nextCursor!)} loading={loading}>
-              Charger plus
-            </Button>
+          <div ref={sentinelRef} className="h-1">
+            {loadingMore && (
+              <div className="p-3 text-center">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto text-gray-400" />
+              </div>
+            )}
           </div>
         )}
       </div>

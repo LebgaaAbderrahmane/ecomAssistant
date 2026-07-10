@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getOrders, bulkUpdateStatus, bulkHoldAgent, bulkUpdateTracking } from './orders.service';
+import { getOrders, bulkUpdateStatus, bulkHoldAgent, bulkUpdateTracking, listOrderIds } from './orders.service';
 import { GetOrdersQuery } from '../../validators/order.validator';
 import { AuthenticatedRequest } from '../../middlwares/auth.middlware';
 import { ingestOrder } from './orders.service';
@@ -8,13 +8,14 @@ import { ingestOrder } from './orders.service';
 export const listOrders = async (req: AuthenticatedRequest, res: Response) => {
   const merchantId = req.merchant!.merchantId;
 
-  const { cursor, limit, status, storeConnectionId } = req.query as unknown as GetOrdersQuery;
+  const { cursor, limit, status, search, storeConnectionId } = req.query as unknown as GetOrdersQuery;
 
   const result = await getOrders({
     merchantId,
     cursor,
     limit,
     status,
+    search,
     storeConnectionId,
   });
 
@@ -64,4 +65,12 @@ export const patchBulkTracking = async (req: AuthenticatedRequest, res: Response
 
   const count = await bulkUpdateTracking(merchantId, orderIds, trackingNumber, deliveryProvider);
   res.json({ count });
+};
+
+export const getOrderIds = async (req: AuthenticatedRequest, res: Response) => {
+  const merchantId = req.merchant!.merchantId;
+  const { status, search } = req.query as { status?: string; search?: string };
+
+  const ids = await listOrderIds(merchantId, status, search);
+  res.json({ ids });
 };

@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, Loader2, Package, MessageCircle, Check, XCircle, Pause, Play, Hash } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge.js'
-import { Button } from '../../components/ui/Button.js'
 import { SelectionBar } from '../../components/ui/SelectionBar.js'
 import { TrackingModal } from '../../components/ui/TrackingModal.js'
 import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
@@ -31,6 +30,7 @@ interface Order {
 interface OrdersResponse {
   data: Order[]
   pagination: {
+    total: number
     hasNextPage: boolean
     hasPrevPage: boolean
     nextCursor: string | null
@@ -64,19 +64,31 @@ function formatWhatsAppUrl(phone: string): string {
 export function Orders() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const allSelected = orders.length > 0 && orders.every(o => selectedOrders.has(o.id))
+  const allSelected = total > 0 && selectedOrders.size === total
 
-  const toggleSelectAll = () => {
+  const toggleSelectAll = async () => {
     if (allSelected) {
       setSelectedOrders(new Set())
     } else {
-      setSelectedOrders(new Set(orders.map(o => o.id)))
+      try {
+        const params = new URLSearchParams()
+        if (statusFilters.length > 0) params.set('status', statusFilters.join(','))
+        if (search) params.set('search', search)
+        const res = await api.get<{ ids: string[] }>(`/orders/ids?${params}`)
+        setSelectedOrders(new Set(res.ids))
+      } catch {
+        // fallback: select only loaded
+        setSelectedOrders(new Set(orders.map(o => o.id)))
+      }
     }
   }
 
@@ -137,43 +149,39 @@ export function Orders() {
   }
 
   const fetchOrders = async (cursor?: string) => {
-    setLoading(true)
+    if (!cursor) setLoading(true)
+    else setLoadingMore(true)
     try {
       const params = new URLSearchParams()
       if (statusFilters.length > 0) params.set('status', statusFilters.join(','))
+      if (search) params.set('search', search)
       if (cursor) params.set('cursor', cursor)
       params.set('limit', '20')
 
       const res = await api.get<OrdersResponse>(`/orders?${params}`)
-      let data = res.data
-      if (search) {
-        const q = search.toLowerCase()
-        data = data.filter(
-          (o) =>
-            o.customerName.toLowerCase().includes(q) ||
-            o.customerPhone.includes(q) ||
-            o.productName.toLowerCase().includes(q),
-        )
-      }
       if (cursor) {
-        setOrders((prev) => [...prev, ...data])
+        setOrders((prev) => [...prev, ...res.data])
       } else {
-        setOrders(data)
+        setOrders(res.data)
       }
       setHasMore(res.pagination.hasNextPage)
       setNextCursor(res.pagination.nextCursor)
+      if (!cursor) setTotal(res.pagination.total)
     } catch {
-      setOrders([])
+      if (!cursor) setOrders([])
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }
 
   useEffect(() => {
+    setSelectedOrders(new Set())
     fetchOrders()
   }, [statusFilters])
 
   useEffect(() => {
+    setSelectedOrders(new Set())
     const timer = setTimeout(() => {
       fetchOrders()
     }, 300)
@@ -189,13 +197,28 @@ export function Orders() {
     return () => window.removeEventListener('order:created', handler)
   }, [])
 
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && nextCursor) {
+          fetchOrders(nextCursor)
+        }
+      },
+      { threshold: 0 },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, loading, loadingMore, nextCursor])
+
   return (
     <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Commandes</h1>
-            <p className="mt-1 text-sm text-gray-500">{orders.length} commande{orders.length > 1 ? 's' : ''}</p>
+            <p className="mt-1 text-sm text-gray-500">{total} commande{total !== 1 ? 's' : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -358,10 +381,12 @@ export function Orders() {
         </div>
 
         {hasMore && (
-          <div className="p-3 text-center border-t border-gray-100">
-            <Button variant="ghost" size="sm" onClick={() => fetchOrders(nextCursor!)} loading={loading}>
-              Charger plus
-            </Button>
+          <div ref={sentinelRef} className="h-1">
+            {loadingMore && (
+              <div className="p-3 text-center">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto text-gray-400" />
+              </div>
+            )}
           </div>
         )}
       </div>
