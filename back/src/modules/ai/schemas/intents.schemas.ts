@@ -6,6 +6,7 @@ export const IntentSchema = z.enum([
   // Product
   'SEARCH_PRODUCT',
   'ASK_PRODUCT_DETAILS',
+  'RECALL_PREVIOUS_PRODUCT',
   'CHECK_PRICE',
   'CHECK_STOCK',
   // Order
