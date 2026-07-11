@@ -422,6 +422,79 @@ export async function deleteSession(
   }
 }
 
+export async function requestPairingCode(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const merchantId = req.merchant!.merchantId;
+    const { phoneNumber } = req.body as { phoneNumber?: string };
+
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "phoneNumber is required" });
+    }
+
+    const existing = await prisma.whatsAppSession.findUnique({
+      where: { merchantId },
+    });
+
+    let sessionId: string;
+
+    if (existing) {
+      try { await openwaService.stopSession(existing.sessionId); } catch {}
+      try { await openwaService.logoutSession(existing.sessionId); } catch {}
+      try { await openwaService.deleteSession(existing.sessionId); } catch {}
+      await prisma.whatsAppSession.delete({ where: { id: existing.id } });
+    }
+
+    try {
+      const all = await openwaService.listSessions();
+      const stale = all.find((s) => s.name === merchantId);
+      if (stale) {
+        try { await openwaService.stopSession(stale.id); } catch {}
+        try { await openwaService.logoutSession(stale.id); } catch {}
+        await openwaService.deleteSession(stale.id);
+      }
+    } catch {}
+
+    const session = await openwaService.createSession(merchantId);
+    await openwaService.startSession(session.id);
+    sessionId = session.id;
+
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const code = await openwaService.getPairingCode(sessionId, phoneNumber);
+
+    const webhookUrl = `${config.internalUrl.replace(/\/+$/, "")}/whatsapp/webhook`;
+    await openwaService.registerWebhook(
+      sessionId,
+      webhookUrl,
+      WEBHOOK_EVENTS,
+      config.openwaWebhookSecret,
+    );
+
+    await prisma.whatsAppSession.create({
+      data: {
+        merchantId,
+        sessionId,
+        status: "connecting",
+        phoneNumber,
+      },
+    });
+
+    notificationService.emitSessionStatus({
+      merchantId,
+      status: "connecting",
+      phoneNumber,
+    });
+
+    return res.status(201).json({ code, sessionId });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function sendOrderNotification(order: {
   id: string;
   merchantId: string;
@@ -472,16 +545,35 @@ export async function sendOrderNotification(order: {
     customerPhone,
   );
 
-  const text = [
-    `Bonjour ${customerName},`,
-    "",
-    `Votre commande #${platformOrderId} pour "${productName}" a bien été reçue.`,
-    "",
-    `Montant: ${totalAmount.toLocaleString("fr-FR")} DA`,
-    `Wilaya: ${wilaya}`,
-    "",
-    "Merci pour votre confiance !",
-  ].join("\n");
+  // Load merchant templates from AgentConfig
+  const agentConfig = await prisma.agentConfig.findUnique({
+    where: { merchantId },
+  });
+
+  const templates = (agentConfig?.templates as Record<string, string> | null) ?? {};
+  const shopifyConnection = await prisma.shopifyConnection.findFirst({
+    where: { storeConnection: { merchantId } },
+  });
+
+  const template =
+    templates.orderConfirmation ||
+    [
+      "Bonjour {clientName},",
+      "",
+      "Votre commande #{orderId} pour \"{productName}\" a bien été reçue.",
+      "",
+      "Montant: {totalAmount} DA",
+      "Wilaya: {wilaya}",
+      "",
+      "Merci pour votre confiance !",
+    ].join("\n");
+
+  const text = template
+    .replace(/\{clientName\}/g, customerName || "Client")
+    .replace(/\{orderId\}/g, platformOrderId)
+    .replace(/\{productName\}/g, productName)
+    .replace(/\{totalAmount\}/g, totalAmount.toLocaleString("fr-FR"))
+    .replace(/\{wilaya\}/g, wilaya);
 
   try {
     await openwaService.sendText(waSession.sessionId, customerPhone, text);

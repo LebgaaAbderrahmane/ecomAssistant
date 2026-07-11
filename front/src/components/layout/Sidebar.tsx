@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom'
-import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User, Users, X } from 'lucide-react'
+import { useState } from 'react'
+import { NavLink, useLocation, useSearchParams } from 'react-router-dom'
+import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User, Users, X, ChevronDown, Smartphone, Phone, MapPin, Store } from 'lucide-react'
 import { useNotifications } from '../../lib/notifications.js'
 import { useMobileMenu } from '../../lib/mobileMenu.js'
 import { useTranslation } from 'react-i18next'
@@ -8,6 +9,12 @@ export function Sidebar() {
   const { unreadCount } = useNotifications()
   const { isOpen, close } = useMobileMenu()
   const { t } = useTranslation('layout')
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+
+  const isSettingsPage = location.pathname === '/dashboard/settings'
+  const currentTab = searchParams.get('tab') || 'agent'
+  const [settingsOpen, setSettingsOpen] = useState(isSettingsPage)
 
   const mainItems = [
     { to: '/dashboard', label: t('sidebar.home'), icon: Home },
@@ -20,9 +27,33 @@ export function Sidebar() {
   const utilityItems = [
     { to: '/dashboard/notifications', label: t('sidebar.notifications'), icon: Bell, badge: unreadCount },
     { to: '/dashboard/profile', label: t('sidebar.profile'), icon: User },
-    { to: '/dashboard/settings', label: t('sidebar.settings'), icon: Settings },
     { to: '/dashboard/billing', label: t('sidebar.billing'), icon: CreditCard },
   ]
+
+  const settingsSubItems = [
+    { tab: 'agent', label: t('sidebar.settingsAgent'), icon: Smartphone },
+    { tab: 'store', label: t('sidebar.settingsStore'), icon: Store },
+    { tab: 'whatsapp', label: t('sidebar.settingsWhatsapp'), icon: Phone },
+    { tab: 'wilaya', label: t('sidebar.settingsWilaya'), icon: MapPin },
+  ]
+
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-3 rounded-md px-3 py-[10px] text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400'
+        : 'text-on-muted hover:bg-surface-secondary hover:text-on-secondary'
+    }`
+
+  const subLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-3 rounded-md px-3 py-[7px] text-[13px] font-medium transition-colors ${
+      isActive
+        ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400'
+        : 'text-on-muted hover:bg-surface-secondary hover:text-on-secondary'
+    }`
+
+  const handleSettingsClick = () => {
+    setSettingsOpen(prev => !prev)
+  }
 
   const sidebarContent = (
     <>
@@ -44,13 +75,7 @@ export function Sidebar() {
             to={item.to}
             end={item.to === '/dashboard'}
             onClick={close}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-[10px] text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400'
-                  : 'text-on-muted hover:bg-surface-secondary hover:text-on-secondary'
-              }`
-            }
+            className={navLinkClass}
           >
             <item.icon className="h-[18px] w-[18px]" />
             <span>{item.label}</span>
@@ -65,13 +90,7 @@ export function Sidebar() {
             key={item.to}
             to={item.to}
             onClick={close}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-[10px] text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400'
-                  : 'text-on-muted hover:bg-surface-secondary hover:text-on-secondary'
-              }`
-            }
+            className={navLinkClass}
           >
             <item.icon className="h-[18px] w-[18px]" />
             <span>{item.label}</span>
@@ -82,6 +101,42 @@ export function Sidebar() {
             )}
           </NavLink>
         ))}
+
+        {/* Settings with expandable sub-items */}
+        <div className="mt-0.5">
+          <NavLink
+            to="/dashboard/settings?tab=agent"
+            onClick={(e) => {
+              handleSettingsClick()
+              close()
+            }}
+            className={navLinkClass({ isActive: isSettingsPage })}
+          >
+            <Settings className="h-[18px] w-[18px]" />
+            <span>{t('sidebar.settings')}</span>
+            <ChevronDown
+              className={`ml-auto h-4 w-4 transition-transform duration-200 ${
+                settingsOpen ? '' : '-rotate-90'
+              }`}
+            />
+          </NavLink>
+
+          {settingsOpen && (
+            <div className="ml-5 mt-0.5 space-y-0.5 border-l border-on-light pl-3">
+              {settingsSubItems.map((sub) => (
+                <NavLink
+                  key={sub.tab}
+                  to={`/dashboard/settings?tab=${sub.tab}`}
+                  onClick={close}
+                  className={subLinkClass({ isActive: isSettingsPage && currentTab === sub.tab })}
+                >
+                  <sub.icon className="h-4 w-4" />
+                  <span>{sub.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
       </nav>
 
       <div className="px-3 pb-5">

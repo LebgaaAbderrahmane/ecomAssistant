@@ -11,9 +11,13 @@
   "columns": {
     "image": "الصورة",
     "product": "المنتج",
+    "sku": "المرجع",
     "price": "السعر",
     "stock": "المخزون",
-    "category": "الفئة"
+    "stockQty": "الكمية",
+    "category": "الفئة",
+    "variants": "المتغيرات",
+    "agent": "الوكيل"
   },
   "actions": {
     "viewOnShopify": "عرض على شوبيفاي",

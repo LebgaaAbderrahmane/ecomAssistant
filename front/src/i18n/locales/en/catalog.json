@@ -11,9 +11,13 @@
   "columns": {
     "image": "Image",
     "product": "Product",
+    "sku": "SKU",
     "price": "Price",
     "stock": "Stock",
-    "category": "Category"
+    "stockQty": "Qty",
+    "category": "Category",
+    "variants": "Variants",
+    "agent": "Agent"
   },
   "actions": {
     "viewOnShopify": "View on Shopify",

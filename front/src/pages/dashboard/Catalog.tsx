@@ -46,6 +46,24 @@ function getImageUrl(images: string[]): string | null {
   return images[0]
 }
 
+function getSku(variants: any[]): string {
+  if (!variants || variants.length === 0) return '—'
+  const skus = variants.map((v: any) => v.sku).filter(Boolean)
+  if (skus.length === 0) return '—'
+  return skus.join(', ')
+}
+
+function getTotalStock(variants: any[]): number {
+  if (!variants || variants.length === 0) return 0
+  return variants.reduce((sum: number, v: any) => sum + (v.inventory_quantity ?? 0), 0)
+}
+
+function stockQtyColor(qty: number): string {
+  if (qty === 0) return 'text-red-600'
+  if (qty <= 10) return 'text-amber-600'
+  return 'text-green-600'
+}
+
 export function Catalog() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -229,70 +247,90 @@ export function Catalog() {
                 </th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-16">{t('columns.image')}</th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted max-w-[200px]">{t('columns.product')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-28">{t('columns.sku')}</th>
                 <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted w-24">{t('columns.price')}</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-28">{t('columns.stock')}</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted w-28">{t('columns.stockQty')}</th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-32">{t('columns.category')}</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted w-10">Action</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted w-20">{t('columns.variants')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted w-16">{t('columns.agent')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted w-10">⋮</th>
               </tr>
             </thead>
             <tbody>
               {loading && products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
+                  <td colSpan={10} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     {t('loading', { ns: 'common' })}
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
+                  <td colSpan={10} className="px-4 py-12 text-center text-sm text-on-muted">
                     <ImageOff className="h-8 w-8 mx-auto mb-2 text-on-faint" />
                     {t('noResults', { ns: 'common' })}
                   </td>
                 </tr>
               ) : (
-                products.map((product) => (
-                  <tr key={product.id} className={`border-b border-on-light last:border-0 hover:bg-surface-secondary ${selectedProducts.has(product.id) ? 'bg-green-50/80 dark:bg-green-900/20' : ''}`}>
-                    <td className="px-4 py-3 w-10">
-                      <input
-                        type="checkbox"
-                        checked={selectedProducts.has(product.id)}
-                        onChange={() => toggleSelect(product.id)}
-                        className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
-                      />
-                    </td>
-                    <td className="px-4 py-3 w-16">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-surface-secondary overflow-hidden">
-                        {getImageUrl(product.images) ? (
-                          <img src={getImageUrl(product.images)!} alt="" className="h-12 w-12 object-cover" />
-                        ) : (
-                          <ImageOff className="h-[18px] w-[18px] text-on-faint" />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 max-w-[200px]">
-                      <p className="text-sm font-medium text-on truncate">{product.name}</p>
-                      <p className="truncate text-xs text-on-muted max-w-[200px]">{product.description}</p>
-                      {!product.agentEnabled && (
-                        <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-amber-600">
-                          <BotOff className="h-3 w-3" /> {t('agentDisabled')}
+                products.map((product) => {
+                  const totalStock = getTotalStock(product.variants)
+                  const variantCount = product.variants?.length ?? 0
+                  return (
+                    <tr key={product.id} className={`border-b border-on-light last:border-0 hover:bg-surface-secondary ${selectedProducts.has(product.id) ? 'bg-green-50/80 dark:bg-green-900/20' : ''}`}>
+                      <td className="px-4 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedProducts.has(product.id)}
+                          onChange={() => toggleSelect(product.id)}
+                          className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
+                        />
+                      </td>
+                      <td className="px-4 py-3 w-16">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-md bg-surface-secondary overflow-hidden">
+                          {getImageUrl(product.images) ? (
+                            <img src={getImageUrl(product.images)!} alt="" className="h-12 w-12 object-cover" />
+                          ) : (
+                            <ImageOff className="h-[18px] w-[18px] text-on-faint" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 max-w-[200px]">
+                        <p className="text-sm font-medium text-on truncate">{product.name}</p>
+                        <p className="truncate text-xs text-on-muted max-w-[200px]">{product.description}</p>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-on-muted font-mono w-28">{getSku(product.variants)}</td>
+                      <td className="px-4 py-3 text-right text-sm text-on w-24">{product.price.toLocaleString('fr-FR')} DA</td>
+                      <td className="px-4 py-3 text-right w-28">
+                        <span className={`text-sm font-medium ${stockQtyColor(totalStock)}`}>
+                          {totalStock}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-on w-24">{product.price.toLocaleString('fr-FR')} DA</td>
-                    <td className="px-4 py-3 w-28">
-                      <Badge variant={stockVariants[product.stockStatus] || 'neutral'}>
-                        {stockLabels[product.stockStatus] || product.stockStatus}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-on-muted w-32">{product.category || '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center">
-                        <DropdownMenu items={getRowActions(product)} />
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3 text-sm text-on-muted w-32">{product.category || '—'}</td>
+                      <td className="px-4 py-3 text-center text-sm text-on-muted w-20">
+                        {variantCount > 1 ? variantCount : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-center w-16">
+                        <button
+                          onClick={() => handleBulkAgent(!product.agentEnabled, [product.id])}
+                          disabled={actionLoading}
+                          title={product.agentEnabled ? t('actions.disableAgent') : t('actions.enableAgent')}
+                          className={`inline-flex items-center justify-center h-7 w-7 rounded-full transition-colors disabled:opacity-40 ${
+                            product.agentEnabled
+                              ? 'text-green-600 bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400'
+                              : 'text-amber-600 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400'
+                          }`}
+                        >
+                          {product.agentEnabled ? <Bot className="h-4 w-4" /> : <BotOff className="h-4 w-4" />}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center">
+                          <DropdownMenu items={getRowActions(product)} />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -311,37 +349,49 @@ export function Catalog() {
             </div>
           ) : (
             <div className="divide-y divide-on-light">
-              {products.map((product) => (
-                <div key={product.id} className="p-4 flex gap-3">
-                  <div className="shrink-0 flex h-14 w-14 items-center justify-center rounded-md bg-surface-secondary overflow-hidden">
-                    {getImageUrl(product.images) ? (
-                      <img src={getImageUrl(product.images)!} alt="" className="h-14 w-14 object-cover" />
-                    ) : (
-                      <ImageOff className="h-5 w-5 text-on-faint" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1 max-w-[200px]">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-on truncate">{product.name}</p>
-                        <p className="text-xs text-on-muted truncate">{product.description}</p>
-                      </div>
-                      <DropdownMenu items={getRowActions(product)} />
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <p className="text-sm font-medium text-on">{product.price.toLocaleString('fr-FR')} DA</p>
-                      <Badge variant={stockVariants[product.stockStatus] || 'neutral'}>
-                        {stockLabels[product.stockStatus] || product.stockStatus}
-                      </Badge>
-                      {!product.agentEnabled && (
-                        <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-amber-600">
-                          <BotOff className="h-3 w-3" />
-                        </span>
+              {products.map((product) => {
+                const totalStock = getTotalStock(product.variants)
+                return (
+                  <div key={product.id} className="p-4 flex gap-3">
+                    <div className="shrink-0 flex h-14 w-14 items-center justify-center rounded-md bg-surface-secondary overflow-hidden">
+                      {getImageUrl(product.images) ? (
+                        <img src={getImageUrl(product.images)!} alt="" className="h-14 w-14 object-cover" />
+                      ) : (
+                        <ImageOff className="h-5 w-5 text-on-faint" />
                       )}
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-on truncate">{product.name}</p>
+                          <p className="text-xs text-on-muted truncate font-mono">{getSku(product.variants)}</p>
+                        </div>
+                        <DropdownMenu items={getRowActions(product)} />
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <p className="text-sm font-medium text-on">{product.price.toLocaleString('fr-FR')} DA</p>
+                        <span className={`text-xs font-medium ${stockQtyColor(totalStock)}`}>
+                          {totalStock} {t('columns.stockQty').toLowerCase()}
+                        </span>
+                        <Badge variant={stockVariants[product.stockStatus] || 'neutral'}>
+                          {stockLabels[product.stockStatus] || product.stockStatus}
+                        </Badge>
+                        <button
+                          onClick={() => handleBulkAgent(!product.agentEnabled, [product.id])}
+                          disabled={actionLoading}
+                          className={`inline-flex items-center justify-center h-6 w-6 rounded-full transition-colors disabled:opacity-40 ${
+                            product.agentEnabled
+                              ? 'text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-400'
+                              : 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400'
+                          }`}
+                        >
+                          {product.agentEnabled ? <Bot className="h-3.5 w-3.5" /> : <BotOff className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

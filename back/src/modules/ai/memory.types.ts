@@ -5,5 +5,6 @@ export interface ConversationMemory {
   lastIntent?: string;
   lastConversationAct?: string;
   entities?: Record<string, string | number | boolean | null>;
+  recentIntents?: string[];
   updatedAt?: string;
 }

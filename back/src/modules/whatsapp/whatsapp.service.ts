@@ -170,6 +170,15 @@ export const openwaService = {
     }
   },
 
+  getPairingCode: async (sessionId: string, phoneNumber: string): Promise<string> => {
+    const result = await request<{ code: string }>(
+      "POST",
+      `/sessions/${sessionId}/pairing-code`,
+      { phoneNumber: stripSuffix(phoneNumber) },
+    );
+    return result.code;
+  },
+
   stripSuffix,
   addSuffix,
 };

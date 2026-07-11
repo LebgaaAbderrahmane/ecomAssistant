@@ -72,15 +72,17 @@ enum Source {
 }
 
 model AgentConfig {
-  id               String   @id @default(cuid())
-  merchantId       String   @unique
-  defaultLanguage  String   @default("auto")
-  tone             String   @default("friendly")
-  followUpDelays   Json
-  maxFollowUps     Int      @default(3)
-  deliveryProvider String?
-  isActive         Boolean  @default(false)
-  updatedAt        DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  merchantId           String   @unique
+  defaultLanguage      String   @default("auto")
+  tone                 String   @default("friendly")
+  followUpDelays       Json
+  maxFollowUps         Int      @default(3)
+  deliveryProvider     String?
+  isActive             Boolean  @default(false)
+  templates            Json?
+  escalationThreshold  Int      @default(3)
+  updatedAt            DateTime @updatedAt
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 }
