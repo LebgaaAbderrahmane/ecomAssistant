@@ -1,0 +1,36 @@
+{
+  "title": "الطلبات",
+  "subtitle": "{{count}} order(s)",
+  "placeholders": {
+    "confirmed": "مؤكد",
+    "pending": "قيد الانتظار",
+    "cancelled": "ملغى",
+    "shipped": "تم الشحن",
+    "delivered": "تم التوصيل"
+  },
+  "filters": {
+    "status": "الحالة",
+    "allStatuses": "جميع الحالات"
+  },
+  "columns": {
+    "client": "العميل",
+    "product": "المنتج",
+    "amount": "المبلغ",
+    "wilaya": "الولاية",
+    "date": "التاريخ"
+  },
+  "actions": {
+    "confirm": "تأكيد",
+    "cancel": "إلغاء",
+    "pauseAgent": "إيقاف الوكيل مؤقتاً",
+    "resumeAgent": "استئناف",
+    "tracking": "التتبع",
+    "openWhatsApp": "فتح واتساب"
+  },
+  "toast": {
+    "bulkStatusSuccess": "تم تحديث {{count}} order(s)",
+    "bulkHoldSuccess": "تم إيقاف/استئناف الوكيل لـ {{count}} order(s)",
+    "trackingSuccess": "تم تعيين التتبع لـ {{count}} order(s)",
+    "newOrder": "تم استلام طلب جديد"
+  }
+}

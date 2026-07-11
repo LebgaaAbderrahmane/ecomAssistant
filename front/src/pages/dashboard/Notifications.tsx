@@ -10,6 +10,7 @@ import {
 import { Badge } from "../../components/ui/Badge.js";
 import { Button } from "../../components/ui/Button.js";
 import { api } from "../../lib/api.js";
+import { useTranslation } from 'react-i18next';
 
 interface Notification {
   id: string;
@@ -49,6 +50,7 @@ export function Notifications() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const { t } = useTranslation('notifications');
 
   const fetchNotifications = useCallback(
     async (reset = false) => {
@@ -111,13 +113,13 @@ export function Notifications() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-on">Notifications</h1>
+          <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
           <p className="mt-1 text-sm text-on-muted">
-            Restez informé des événements importants
+            {t('subtitle')}
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={markAllAsRead}>
-          Tout marquer comme lu
+          {t('markAllRead')}
         </Button>
       </div>
 
@@ -130,7 +132,7 @@ export function Notifications() {
               : "text-on-muted hover:bg-gray-100"
           }`}
         >
-          Toutes
+          {t('tabs.all')}
         </button>
         <button
           onClick={() => setUnreadOnly(true)}
@@ -140,7 +142,7 @@ export function Notifications() {
               : "text-on-muted hover:bg-gray-100"
           }`}
         >
-          Non lues
+          {t('tabs.unread')}
         </button>
       </div>
 
@@ -148,12 +150,12 @@ export function Notifications() {
         {loading && notifications.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-on-muted">
             <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-            Chargement...
+            {t('loading', { ns: 'common' })}
           </div>
         ) : notifications.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-on-muted">
             <Inbox className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-            Aucune notification
+            {t('empty')}
           </div>
         ) : (
           <>
@@ -190,7 +192,7 @@ export function Notifications() {
                 </div>
                 {notif.link && (
                   <Badge variant="info" className="shrink-0">
-                    Voir
+                    {t('view')}
                   </Badge>
                 )}
               </button>
@@ -203,7 +205,7 @@ export function Notifications() {
                   onClick={() => fetchNotifications(false)}
                   loading={loading}
                 >
-                  Charger plus
+                  {t('loadMore', { ns: 'common' })}
                 </Button>
               </div>
             )}

@@ -5,6 +5,7 @@ import { Input } from '../../components/ui/Input.js'
 import { Card } from '../../components/ui/Card.js'
 import { ShoppingBag, Globe, AlertTriangle } from 'lucide-react'
 import { api } from '../../lib/api.js'
+import { useTranslation } from 'react-i18next'
 
 type Platform = 'shopify' | 'woocommerce' | null
 
@@ -16,6 +17,7 @@ export function StoreConnection() {
   const [error, setError] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { t } = useTranslation('onboarding')
 
   const cleanup = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -41,8 +43,7 @@ export function StoreConnection() {
     if (!popup) {
       setConnecting(false)
       setError(
-        "Le popup a été bloqué par votre navigateur. Autorisez les popups pour ce site et réessayez, " +
-        "ou connectez votre boutique depuis les paramètres plus tard.",
+        t('store.popupBlocked'),
       )
       return
     }
@@ -64,8 +65,7 @@ export function StoreConnection() {
         clearInterval(checkClosed)
         cleanup()
         setError(
-          "Fenêtre Shopify fermée. Si l'application est en cours de validation par Shopify, " +
-          "vous ne pourrez pas l'installer. Vous pouvez réessayer ou passer cette étape.",
+          t('store.windowClosed'),
         )
       }
     }, 500)
@@ -74,15 +74,15 @@ export function StoreConnection() {
     timeoutRef.current = setTimeout(() => {
       clearInterval(checkClosed)
       cleanup()
-      setError("La connexion a pris trop de temps. Vérifiez que l'application Shopify est autorisée à s'installer.")
+      setError(t('store.timedOut'))
     }, 120000)
   }, [domain, cleanup, navigate])
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-12">
-      <h2 className="text-2xl font-bold text-on">Connectez votre boutique</h2>
+      <h2 className="text-2xl font-bold text-on">{t('store.title')}</h2>
       <p className="mt-1 text-sm text-on-muted">
-        Choisissez votre plateforme e-commerce pour synchroniser vos produits et commandes
+        {t('store.description')}
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-4">
@@ -96,7 +96,7 @@ export function StoreConnection() {
         >
           <ShoppingBag className="mx-auto h-10 w-10 text-on-secondary" />
           <p className="mt-3 font-semibold text-on">Shopify</p>
-          <p className="mt-1 text-xs text-on-muted">Via OAuth</p>
+          <p className="mt-1 text-xs text-on-muted">{t('store.oauth')}</p>
         </button>
 
         <button
@@ -109,22 +109,22 @@ export function StoreConnection() {
         >
           <Globe className="mx-auto h-10 w-10 text-on-secondary" />
           <p className="mt-3 font-semibold text-on">WooCommerce</p>
-          <p className="mt-1 text-xs text-on-muted">Via clé API</p>
+          <p className="mt-1 text-xs text-on-muted">{t('store.apiKey')}</p>
         </button>
       </div>
 
       {platform === 'shopify' && (
         <Card className="mt-6 space-y-4">
           <Input
-            label="Nom de votre boutique Shopify"
+            label={t('store.shopifyName')}
             type="text"
-            placeholder="ma-boutique"
+            placeholder={t('store.shopifyPlaceholder')}
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
           />
-          <p className="text-xs text-on-faint">Exemple : ma-boutique → ma-boutique.myshopify.com</p>
+          <p className="text-xs text-on-faint">{t('store.shopifyHint')}</p>
           <Button onClick={handleConnectShopify} loading={connecting} disabled={!domain}>
-            {connecting ? 'Connexion en cours...' : 'Connecter Shopify'}
+            {connecting ? t('store.connecting') : t('store.connectShopify')}
           </Button>
         </Card>
       )}
@@ -137,10 +137,10 @@ export function StoreConnection() {
               <p className="text-sm text-amber-900">{error}</p>
               <div className="flex gap-3">
                 <Button variant="secondary" size="sm" onClick={handleConnectShopify}>
-                  Réessayer
+                  {t('store.retry')}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => navigate('/onboarding/whatsapp')}>
-                  Continuer sans boutique →
+                  {t('store.skip')}
                 </Button>
               </div>
             </div>
@@ -150,7 +150,7 @@ export function StoreConnection() {
 
       {!platform && !error && (
         <div className="mt-8 text-center text-sm text-on-faint">
-          Sélectionnez une plateforme pour continuer
+          {t('store.selectPlatform')}
         </div>
       )}
     </div>

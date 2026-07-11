@@ -1,0 +1,55 @@
+{
+  "loading": "جاري التحميل...",
+  "cancel": "إلغاء",
+  "confirm": "تأكيد",
+  "save": "حفظ",
+  "search": "بحث...",
+  "noResults": "لا توجد نتائج",
+  "retry": "إعادة المحاولة",
+  "ignore": "تجاهل",
+  "reconnect": "إعادة الاتصال",
+  "disconnect": "قطع الاتصال",
+  "saveError": "خطأ أثناء الحفظ",
+  "updateError": "خطأ أثناء التحديث",
+  "selectAll": "تحديد الكل",
+  "selected": "محدد",
+  "selected_plural": "محددة",
+  "deselect": "إلغاء التحديد",
+  "action": "إجراء",
+  "actions": "إجراءات",
+  "client": "عميل",
+  "product": "منتج",
+  "total": "الإجمالي",
+  "status": "الحالة",
+  "date": "التاريخ",
+  "since": "منذ",
+  "amount": "المبلغ",
+  "whatsapp": "واتساب",
+  "loadMore": "تحميل المزيد",
+  "timeAgo": {
+    "justNow": "الآن",
+    "minutes": "منذ {{count}} دقيقة",
+    "hours": "منذ {{count}} ساعة",
+    "days": "منذ {{count}} يوم"
+  },
+  "dateRange": {
+    "today": "اليوم",
+    "thisWeek": "هذا الأسبوع",
+    "thisMonth": "هذا الشهر",
+    "thisYear": "هذا العام",
+    "allDates": "جميع التواريخ",
+    "label": "التاريخ"
+  },
+  "tracking": {
+    "title": "تعيين التتبع",
+    "description": "أدخل معلومات التتبع لل_orders المحددة.",
+    "provider": "شركة الشحن",
+    "number": "رقم التتبع",
+    "success": "تم تعيين التتبع لـ {{count}} order(s)",
+    "error": "خطأ أثناء تعيين التتبع"
+  },
+  "disconnectModal": {
+    "title": "تم قطع اتصال واتساب",
+    "description": "تم قطع اتصال جلسة واتساب. يرجى إعادة الاتصال لمواصلة استلام وإرسال الرسائل."
+  }
+}

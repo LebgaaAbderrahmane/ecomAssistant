@@ -4,6 +4,7 @@ import { Check, XCircle, Loader2 } from 'lucide-react'
 import { Button } from '../../components/ui/Button.js'
 import { Card } from '../../components/ui/Card.js'
 import { api } from '../../lib/api.js'
+import { useTranslation } from 'react-i18next'
 
 type Stage = 'idle' | 'loading' | 'qr' | 'connecting' | 'connected' | 'error'
 
@@ -13,6 +14,7 @@ export function WhatsAppSetup() {
   const [qrBase64, setQrBase64] = useState('')
   const [error, setError] = useState('')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const { t } = useTranslation('onboarding')
 
   const stopPolling = () => {
     if (intervalRef.current) {
@@ -56,9 +58,9 @@ export function WhatsAppSetup() {
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-12">
-      <h2 className="text-2xl font-bold text-on">Connectez WhatsApp</h2>
+      <h2 className="text-2xl font-bold text-on">{t('whatsapp.title')}</h2>
       <p className="mt-1 text-sm text-on-muted">
-        Liez votre numéro WhatsApp Business pour que l'agent puisse communiquer avec vos clients
+        {t('whatsapp.description')}
       </p>
 
       <Card className="mt-8">
@@ -71,10 +73,10 @@ export function WhatsAppSetup() {
                 </svg>
               </div>
               <p className="text-sm text-gray-600">
-                Utilisez le bouton ci-dessous pour connecter votre numéro WhatsApp.
+                {t('whatsapp.instruction')}
               </p>
               <Button size="lg" className="mt-6 bg-green-600 hover:bg-green-700" onClick={connect}>
-                Connecter WhatsApp
+                {t('whatsapp.connectButton')}
               </Button>
             </>
           )}
@@ -82,25 +84,25 @@ export function WhatsAppSetup() {
           {stage === 'loading' && (
             <div className="flex flex-col items-center gap-4 py-8">
               <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-              <p className="text-sm text-on-muted">Configuration de la session...</p>
+              <p className="text-sm text-on-muted">{t('whatsapp.configuring')}</p>
             </div>
           )}
 
           {(stage === 'qr' || stage === 'connecting') && (
             <div className="flex flex-col items-center gap-4">
               <p className="text-sm font-medium text-on-secondary">
-                Scannez ce code QR avec WhatsApp
+                {t('whatsapp.scanQR')}
               </p>
               <div className="rounded-lg border-2 border-dashed border-on p-4">
                 <img
                   src={`data:image/png;base64,${qrBase64}`}
-                  alt="QR Code WhatsApp"
+                  alt={t('whatsapp.qrLabel')}
                   className="h-64 w-64"
                 />
               </div>
               <div className="flex items-center gap-2 text-sm text-on-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                En attente de scan...
+                {t('whatsapp.waitingScan')}
               </div>
             </div>
           )}
@@ -110,8 +112,8 @@ export function WhatsAppSetup() {
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
                 <Check className="h-8 w-8 text-green-600" />
               </div>
-              <p className="text-lg font-semibold text-green-700">WhatsApp connecté !</p>
-              <p className="text-sm text-on-muted">Redirection...</p>
+              <p className="text-lg font-semibold text-green-700">{t('whatsapp.connected')}</p>
+              <p className="text-sm text-on-muted">{t('whatsapp.redirecting')}</p>
             </div>
           )}
 
@@ -122,7 +124,7 @@ export function WhatsAppSetup() {
               </div>
               <p className="text-sm text-red-600">{error}</p>
               <Button variant="secondary" onClick={connect}>
-                Réessayer
+                {t('whatsapp.retry')}
               </Button>
             </div>
           )}
@@ -131,7 +133,7 @@ export function WhatsAppSetup() {
 
       <div className="mt-6 flex justify-end">
         <Button variant="ghost" onClick={() => navigate('/onboarding/agent')}>
-          Passer cette étape
+          {t('whatsapp.skip')}
         </Button>
       </div>
     </div>

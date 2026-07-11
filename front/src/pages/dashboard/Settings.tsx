@@ -15,6 +15,7 @@ import { Badge } from "../../components/ui/Badge.js";
 import { api } from "../../lib/api.js";
 import { Input } from "../../components/ui/Input.js";
 import { useNotifications } from "../../lib/notifications.js";
+import { useTranslation } from 'react-i18next';
 
 type SettingsTab = "agent" | "store" | "whatsapp" | "wilaya";
 
@@ -54,6 +55,7 @@ function SegmentControl({
 }
 
 function AgentConfigTab() {
+  const { t } = useTranslation('settings');
   const [language, setLanguage] = useState("auto");
   const [tone, setTone] = useState("friendly");
   const [delay1, setDelay1] = useState("2");
@@ -94,24 +96,24 @@ function AgentConfigTab() {
           parseInt(delay3, 10),
         ],
       });
-      toast.success("Configuration sauvegardée");
+      toast.success(t('agent.saved'));
     } catch {
-      toast.error("Erreur de sauvegarde");
+      toast.error(t('agent.saveError'));
     }
     setSaving(false);
   };
 
-  const languageOpts = ["Auto-détection", "Derja", "Français", "Arabe"];
-  const toneOpts = ["Amical", "Formel"];
+  const languageOpts = [t('agent.autoDetect'), "Derja", t('agent.french'), "Arabe"];
+  const toneOpts = [t('agent.friendly'), t('agent.formal')];
   const languageToValue: Record<string, string> = {
-    "Auto-détection": "auto",
+    [t('agent.autoDetect')]: "auto",
     Derja: "derdja",
-    Français: "french",
+    [t('agent.french')]: "french",
     Arabe: "arabic",
   };
   const toneToValue: Record<string, string> = {
-    Amical: "friendly",
-    Formel: "formal",
+    [t('agent.friendly')]: "friendly",
+    [t('agent.formal')]: "formal",
   };
   const valueToLanguage: Record<string, string> = Object.fromEntries(
     Object.entries(languageToValue).map(([k, v]) => [v, k]),
@@ -121,17 +123,17 @@ function AgentConfigTab() {
   );
 
   if (loading)
-    return <div className="text-sm text-on-muted py-4">Chargement...</div>;
+    return <div className="text-sm text-on-muted py-4">{t('loading', { ns: 'common' })}</div>;
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-on">
-        Configuration agent
+        {t('tabs.agent')}
       </h2>
 
       <div>
         <label className="block text-sm font-medium text-on-secondary mb-2">
-          Mode linguistique
+          {t('agent.language')}
         </label>
         <SegmentControl
           options={languageOpts}
@@ -142,7 +144,7 @@ function AgentConfigTab() {
 
       <div>
         <label className="block text-sm font-medium text-on-secondary mb-2">
-          Ton
+          {t('agent.tone')}
         </label>
         <SegmentControl
           options={toneOpts}
@@ -153,7 +155,7 @@ function AgentConfigTab() {
 
       <div>
         <label className="block text-sm font-medium text-on-secondary mb-2">
-          Délais de relance
+          {t('agent.followUpDelays')}
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -162,7 +164,7 @@ function AgentConfigTab() {
             onChange={(e) => setDelay1(e.target.value)}
             className="w-20 h-10 rounded-md border border-on bg-surface text-on px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
           />
-          <span className="text-sm text-on-muted">heures</span>
+          <span className="text-sm text-on-muted">{t('agent.hours')}</span>
           <span className="text-on-faint text-lg">→</span>
           <input
             type="number"
@@ -170,7 +172,7 @@ function AgentConfigTab() {
             onChange={(e) => setDelay2(e.target.value)}
             className="w-20 h-10 rounded-md border border-on bg-surface text-on px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
           />
-          <span className="text-sm text-on-muted">heures</span>
+          <span className="text-sm text-on-muted">{t('agent.hours')}</span>
           <span className="text-on-faint text-lg">→</span>
           <input
             type="number"
@@ -178,9 +180,9 @@ function AgentConfigTab() {
             onChange={(e) => setDelay3(e.target.value)}
             className="w-20 h-10 rounded-md border border-on bg-surface text-on px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
           />
-          <span className="text-sm text-on-muted">heures</span>
+          <span className="text-sm text-on-muted">{t('agent.hours')}</span>
         </div>
-        <p className="mt-1 text-[13px] text-on-muted">Relances max : 3</p>
+        <p className="mt-1 text-[13px] text-on-muted">{t('agent.maxFollowUps')}</p>
       </div>
 
       <div className="flex gap-3 pt-2">
@@ -191,7 +193,7 @@ function AgentConfigTab() {
           loading={saving}
         >
           <Save className="h-4 w-4" />
-          Enregistrer
+          {t('save', { ns: 'common' })}
         </Button>
       </div>
     </div>
@@ -199,6 +201,7 @@ function AgentConfigTab() {
 }
 
 function StoreConnectionTab() {
+  const { t } = useTranslation('settings');
   const [store, setStore] = useState<{
     connected: boolean;
     source?: string;
@@ -261,7 +264,7 @@ function StoreConnectionTab() {
     if (!popup) {
       setConnecting(false);
       setError(
-        "Le popup a été bloqué par votre navigateur. Autorisez les popups pour ce site et réessayez.",
+        t('store.popupBlocked'),
       );
       return;
     }
@@ -286,8 +289,7 @@ function StoreConnectionTab() {
         clearInterval(checkClosed);
         cleanup();
         setError(
-          "Fenêtre Shopify fermée. Si l'application est en cours de validation par Shopify, " +
-          "l'installation ne peut pas continuer.",
+          t('store.windowClosed'),
         );
       }
     }, 500);
@@ -296,18 +298,18 @@ function StoreConnectionTab() {
       clearInterval(checkClosed);
       cleanup();
       setError(
-        "La connexion a pris trop de temps. Vérifiez que l'application Shopify est autorisée.",
+        t('store.timedOut'),
       );
     }, 120000);
   };
 
   if (loading)
-    return <div className="text-sm text-on-muted py-4">Chargement...</div>;
+    return <div className="text-sm text-on-muted py-4">{t('loading', { ns: 'common' })}</div>;
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-on">
-        Connexion boutique
+        {t('tabs.store')}
       </h2>
       <div className="rounded-md border border-on p-4">
         <div className="flex items-center justify-between">
@@ -320,11 +322,11 @@ function StoreConnectionTab() {
                 <p className="text-[13px] text-on-muted">{store.storeUrl}</p>
               </>
             ) : (
-              <p className="text-sm text-on-muted">Aucune boutique connectée</p>
+              <p className="text-sm text-on-muted">{t('store.noStore')}</p>
             )}
           </div>
           <Badge variant={store?.connected ? "success" : "neutral"}>
-            {store?.connected ? "Connecté" : "Déconnecté"}
+            {store?.connected ? t('store.connected') : t('store.disconnected')}
           </Badge>
         </div>
         {!store?.connected && (
@@ -337,8 +339,7 @@ function StoreConnectionTab() {
           <div>
             <p className="text-sm text-amber-900">{error}</p>
             <p className="text-xs text-amber-600 mt-1">
-              L'application Shopify est en cours de validation. Vous pouvez
-              réessayer plus tard.
+              {t('store.pendingValidation')}
             </p>
           </div>
         </div>
@@ -354,6 +355,7 @@ function ConnectButton({
   connecting: boolean;
   onConnect: (shop: string) => void;
 }) {
+  const { t } = useTranslation('settings');
   const [shop, setShop] = useState("");
   const [showInput, setShowInput] = useState(false);
 
@@ -364,7 +366,7 @@ function ConnectButton({
         className="mt-4"
         onClick={() => setShowInput(true)}
       >
-        Connecter une boutique
+        {t('store.connectStore')}
       </Button>
     );
   }
@@ -373,7 +375,7 @@ function ConnectButton({
     <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
       <div className="flex-1">
         <Input
-          label="Nom de la boutique Shopify"
+          label={t('store.shopifyName')}
           type="text"
           placeholder="ma-boutique"
           value={shop}
@@ -385,13 +387,14 @@ function ConnectButton({
         loading={connecting}
         disabled={!shop || connecting}
       >
-        Connecter
+        {t('store.connect', { ns: 'common' })}
       </Button>
     </div>
   );
 }
 
 function WhatsAppTab() {
+  const { t } = useTranslation('settings');
   const { whatsappConnected, whatsappPhoneNumber, suppressDisconnectModal } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
@@ -410,7 +413,7 @@ function WhatsAppTab() {
       );
       if (res.connected) {
         setConnecting(false);
-        toast.success("WhatsApp connecté");
+        toast.success(t('whatsapp.connected'));
         return;
       }
       setQrBase64(res.qrBase64 ?? null);
@@ -425,7 +428,7 @@ function WhatsAppTab() {
             clearInterval(poll);
             setQrBase64(null);
             setConnecting(false);
-            toast.success("WhatsApp connecté");
+            toast.success(t('whatsapp.connected'));
           }
         } catch {
           /* keep polling */
@@ -433,7 +436,7 @@ function WhatsAppTab() {
       }, 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur");
-      toast.error("Erreur de connexion WhatsApp");
+      toast.error(t('whatsapp.connectionError'));
       setConnecting(false);
     }
   };
@@ -444,25 +447,25 @@ function WhatsAppTab() {
     suppressDisconnectModal();
     try {
       await api.delete("/whatsapp/session");
-      toast.success("WhatsApp déconnecté");
+      toast.success(t('whatsapp.disconnected'));
     } catch {
-      toast.error("Erreur lors de la déconnexion");
+      toast.error(t('whatsapp.disconnectionError'));
     }
     setDisconnecting(false);
   };
 
   if (loading)
-    return <div className="text-sm text-on-muted py-4">Chargement...</div>;
+    return <div className="text-sm text-on-muted py-4">{t('loading', { ns: 'common' })}</div>;
 
   if (qrBase64) {
     return (
       <div className="space-y-6">
         <h2 className="text-lg font-semibold text-on">
-          Connecter WhatsApp
+          {t('whatsapp.connectWhatsApp')}
         </h2>
         <div className="flex flex-col items-center gap-4 rounded-md border border-on p-6">
           <p className="text-sm font-medium text-on-secondary">
-            Scannez ce code QR avec WhatsApp
+            {t('whatsapp.scanQR')}
           </p>
           <img
             src={`data:image/png;base64,${qrBase64}`}
@@ -471,7 +474,7 @@ function WhatsAppTab() {
           />
           <div className="flex items-center gap-2 text-sm text-on-muted">
             <Loader2 className="h-4 w-4 animate-spin" />
-            En attente de scan...
+            {t('whatsapp.waitingScan')}
           </div>
           <Button
             variant="ghost"
@@ -481,7 +484,7 @@ function WhatsAppTab() {
               setConnecting(false);
             }}
           >
-            Annuler
+            {t('cancel', { ns: 'common' })}
           </Button>
         </div>
       </div>
@@ -491,24 +494,24 @@ function WhatsAppTab() {
   return (
     <>
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-on">WhatsApp</h2>
+      <h2 className="text-lg font-semibold text-on">{t('tabs.whatsapp')}</h2>
       <div className="rounded-md border border-on p-4">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-on">
-              {whatsappPhoneNumber || "Aucun numéro connecté"}
+              {whatsappPhoneNumber || t('whatsapp.noNumber')}
             </p>
             {whatsappPhoneNumber && (
-              <p className="text-[13px] text-on-muted">WhatsApp Business</p>
+              <p className="text-[13px] text-on-muted">{t('whatsapp.businessApp')}</p>
             )}
           </div>
           <Badge variant={whatsappConnected ? "success" : "danger"}>
-            {whatsappConnected ? "Connecté" : "Déconnecté"}
+            {whatsappConnected ? t('whatsapp.connected') : t('whatsapp.disconnected')}
           </Badge>
         </div>
         {whatsappConnected ? (
           <Button variant="secondary" className="mt-4" onClick={() => setShowDisconnectConfirm(true)} loading={disconnecting}>
-            Déconnecter
+            {t('whatsapp.disconnectBtn')}
           </Button>
         ) : (
           <Button
@@ -517,7 +520,7 @@ function WhatsAppTab() {
             onClick={connect}
             loading={connecting}
           >
-            Connecter WhatsApp
+            {t('whatsapp.connectWhatsApp')}
           </Button>
         )}
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
@@ -525,13 +528,13 @@ function WhatsAppTab() {
 
       <div>
         <h3 className="text-sm font-medium text-on-secondary mb-3">
-          Modèles de message
+          {t('whatsapp.messageTemplates')}
         </h3>
         <div className="space-y-2">
           {[
-            { name: "Confirmation de commande", status: "approved" as const },
-            { name: "Mise à jour de livraison", status: "pending" as const },
-            { name: "Relance panier abandonné", status: "approved" as const },
+            { name: t('whatsapp.orderConfirmation'), status: "approved" as const },
+            { name: t('whatsapp.deliveryUpdate'), status: "pending" as const },
+            { name: t('whatsapp.cartFollowUp'), status: "approved" as const },
           ].map((tmpl) => (
             <div
               key={tmpl.name}
@@ -541,7 +544,7 @@ function WhatsAppTab() {
               <Badge
                 variant={tmpl.status === "approved" ? "success" : "warning"}
               >
-                {tmpl.status === "approved" ? "Approuvé" : "En attente"}
+                {tmpl.status === "approved" ? t('whatsapp.approved') : "En attente"}
               </Badge>
             </div>
           ))}
@@ -559,19 +562,19 @@ function WhatsAppTab() {
             </div>
             <div className="flex-1">
               <h2 className="text-lg font-semibold text-on">
-                Déconnecter WhatsApp ?
+                {t('whatsapp.disconnectTitle')}
               </h2>
               <p className="mt-2 text-sm text-on-muted">
-                Vous ne pourrez plus envoyer ni recevoir de messages tant que la session n'est pas reconnectée.
+                {t('whatsapp.disconnectDesc')}
               </p>
             </div>
           </div>
           <div className="mt-6 flex justify-end gap-3">
             <Button variant="secondary" size="sm" onClick={() => setShowDisconnectConfirm(false)}>
-              Annuler
+              {t('cancel', { ns: 'common' })}
             </Button>
             <Button size="sm" variant="danger" onClick={disconnect} loading={disconnecting}>
-              Déconnecter
+              {t('whatsapp.disconnectBtn')}
             </Button>
           </div>
         </div>
@@ -582,20 +585,30 @@ function WhatsAppTab() {
 }
 
 function WilayaPricingTab() {
+  const { t } = useTranslation('settings');
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-on">Wilaya pricing</h2>
+      <h2 className="text-lg font-semibold text-on">{t('tabs.wilaya')}</h2>
       <p className="text-sm text-on-muted">
-        Tableau des frais de livraison par wilaya (à implémenter)
+        {t('wilaya.title')}
       </p>
     </div>
   );
 }
 
 export function Settings() {
+  const { t } = useTranslation('settings');
   const [searchParams, setSearchParams] = useSearchParams();
   const urlTab = searchParams.get("tab") as SettingsTab | null;
-  const activeTab = urlTab && tabs.some((t) => t.id === urlTab) ? urlTab : "agent";
+
+  const translatedTabs: { id: SettingsTab; label: string; icon: typeof Store }[] = [
+    { id: "agent", label: t('tabs.agent'), icon: Smartphone },
+    { id: "store", label: t('tabs.store'), icon: Store },
+    { id: "whatsapp", label: t('tabs.whatsapp'), icon: Phone },
+    { id: "wilaya", label: t('tabs.wilaya'), icon: MapPin },
+  ];
+
+  const activeTab = urlTab && translatedTabs.some((tab) => tab.id === urlTab) ? urlTab : "agent";
 
   const setActiveTab = (tab: SettingsTab) => {
     setSearchParams({ tab });
@@ -610,15 +623,15 @@ export function Settings() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-on">Paramètres</h1>
+      <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
       <p className="mt-1 text-sm text-on-muted">
-        Gérez votre boutique, votre agent et vos paramètres de livraison
+        {t('subtitle')}
       </p>
 
       <div className="mt-6 lg:flex lg:gap-6">
         <div className="lg:w-[220px] lg:shrink-0 mb-4 lg:mb-0">
           <div className="lg:rounded-lg lg:border lg:border-on lg:bg-surface lg:p-2 flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1 lg:gap-1 -mx-4 px-4 lg:mx-0 lg:px-0">
-            {tabs.map((tab) => (
+            {translatedTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}

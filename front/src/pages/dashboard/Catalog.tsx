@@ -6,6 +6,7 @@ import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
 import { DropdownMenu, DropdownMenuItem } from '../../components/ui/DropdownMenu.js'
 import { SelectionBar } from '../../components/ui/SelectionBar.js'
 import { api } from '../../lib/api.js'
+import { useTranslation } from 'react-i18next'
 
 interface Product {
   id: string
@@ -57,6 +58,7 @@ export function Catalog() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation('catalog')
 
   const allSelected = total > 0 && selectedProducts.size === total
 
@@ -90,11 +92,11 @@ export function Catalog() {
     setActionLoading(true)
     try {
       const res = await api.patch<{ count: number }>('/products/bulk-agent', { productIds: targetIds, agentEnabled })
-      toast.success(`Agent ${agentEnabled ? 'activé' : 'désactivé'} pour ${res.count} produit(s)`)
+      toast.success(agentEnabled ? t('toast.agentEnabled', { count: res.count }) : t('toast.agentDisabled', { count: res.count }))
       if (!ids) setSelectedProducts(new Set())
       fetchProducts()
     } catch {
-      toast.error('Erreur lors de la mise à jour')
+      toast.error(t('updateError', { ns: 'common' }))
     } finally {
       setActionLoading(false)
     }
@@ -102,7 +104,7 @@ export function Catalog() {
 
   const getRowActions = (product: Product): DropdownMenuItem[] => [
     {
-      label: 'Voir sur Shopify',
+      label: t('actions.viewOnShopify'),
       icon: <ExternalLink className="h-4 w-4" />,
       onClick: () => {
         if (product.shopDomain) {
@@ -112,7 +114,7 @@ export function Catalog() {
       disabled: !product.shopDomain,
     },
     {
-      label: product.agentEnabled ? 'Désactiver agent' : 'Activer agent',
+      label: product.agentEnabled ? t('actions.disableAgent') : t('actions.enableAgent'),
       icon: product.agentEnabled ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />,
       onClick: () => handleBulkAgent(!product.agentEnabled, [product.id]),
       disabled: actionLoading,
@@ -154,7 +156,7 @@ export function Catalog() {
   useEffect(() => {
     const handler = () => {
       fetchProducts()
-      toast.success('Catalogue mis à jour')
+      toast.success(t('toast.synced'))
     }
     window.addEventListener('products:synced', handler)
     return () => window.removeEventListener('products:synced', handler)
@@ -184,8 +186,8 @@ export function Catalog() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-bold text-on">Catalogue</h1>
-            <p className="mt-1 text-sm text-on-muted">{total} produit{total !== 1 ? 's' : ''} synchronisé{total !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
+            <p className="mt-1 text-sm text-on-muted">{t('subtitle', { count: total })}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -200,14 +202,14 @@ export function Catalog() {
           </div>
           <FilterDropdown
             options={[
-              { value: 'in_stock', label: 'En stock' },
-              { value: 'low_stock', label: 'Stock faible' },
-              { value: 'out_of_stock', label: 'Rupture' },
+              { value: 'in_stock', label: t('stock.inStock') },
+              { value: 'low_stock', label: t('stock.lowStock') },
+              { value: 'out_of_stock', label: t('stock.outOfStock') },
             ]}
             selected={stockFilters}
             onChange={setStockFilters}
-            label="Stock"
-            placeholder="Tous les stocks"
+            label={t('stock.label')}
+            placeholder={t('stock.allStocks')}
           />
         </div>
       </div>
@@ -225,11 +227,11 @@ export function Catalog() {
                     className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-16">Image</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted max-w-[200px]">Produit</th>
-                <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted w-24">Prix</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-28">Stock</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-32">Catégorie</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-16">{t('columns.image')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted max-w-[200px]">{t('columns.product')}</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted w-24">{t('columns.price')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-28">{t('columns.stock')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-32">{t('columns.category')}</th>
                 <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted w-10">Action</th>
               </tr>
             </thead>
@@ -238,14 +240,14 @@ export function Catalog() {
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                    Chargement...
+                    {t('loading', { ns: 'common' })}
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
                     <ImageOff className="h-8 w-8 mx-auto mb-2 text-on-faint" />
-                    Aucun produit trouvé.
+                    {t('noResults', { ns: 'common' })}
                   </td>
                 </tr>
               ) : (
@@ -273,7 +275,7 @@ export function Catalog() {
                       <p className="truncate text-xs text-on-muted max-w-[200px]">{product.description}</p>
                       {!product.agentEnabled && (
                         <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-amber-600">
-                          <BotOff className="h-3 w-3" /> Agent désactivé
+                          <BotOff className="h-3 w-3" /> {t('agentDisabled')}
                         </span>
                       )}
                     </td>
@@ -300,12 +302,12 @@ export function Catalog() {
           {loading && products.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-              Chargement...
+              {t('loading', { ns: 'common' })}
             </div>
           ) : products.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-on-muted">
               <ImageOff className="h-8 w-8 mx-auto mb-2 text-on-faint" />
-              Aucun produit trouvé.
+              {t('noResults', { ns: 'common' })}
             </div>
           ) : (
             <div className="divide-y divide-on-light">
@@ -357,18 +359,16 @@ export function Catalog() {
 
       <SelectionBar
         count={selectedProducts.size}
-        singularLabel="sélectionné"
-        pluralLabel="sélectionnés"
         onClear={() => setSelectedProducts(new Set())}
         actions={[
           {
-            label: majorityAgentDisabled ? 'Activer agent' : 'Désactiver agent',
+            label: majorityAgentDisabled ? t('actions.enableAgent') : t('actions.disableAgent'),
             icon: majorityAgentDisabled ? <Bot className="h-4 w-4" /> : <BotOff className="h-4 w-4" />,
             onClick: () => handleBulkAgent(majorityAgentDisabled),
             disabled: actionLoading,
           },
           {
-            label: 'Voir sur Shopify',
+            label: t('actions.viewOnShopify'),
             icon: <ExternalLink className="h-4 w-4" />,
             onClick: () => {
               const product = products.find(p => selectedProducts.has(p.id))

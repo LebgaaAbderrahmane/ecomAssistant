@@ -7,6 +7,7 @@ import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
 import { DateRangeFilter } from '../../components/ui/DateRangeFilter.js'
 import { DropdownMenu, DropdownMenuItem } from '../../components/ui/DropdownMenu.js'
 import { api } from '../../lib/api.js'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 interface Order {
@@ -76,6 +77,7 @@ export function Orders() {
   const [hasMore, setHasMore] = useState(false)
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation('orders')
 
   const allSelected = total > 0 && selectedOrders.size === total
 
@@ -117,11 +119,11 @@ export function Orders() {
     setActionLoading(true)
     try {
       const res = await api.patch<{ count: number }>('/orders/bulk-status', { orderIds: targetIds, status })
-      toast.success(`${res.count} commande(s) mise(s) à jour`)
+      toast.success(t('toast.bulkStatusSuccess', { count: res.count }))
       if (!ids) setSelectedOrders(new Set())
       fetchOrders()
     } catch {
-      toast.error('Erreur lors de la mise à jour')
+      toast.error(t('updateError', { ns: 'common' }))
     } finally {
       setActionLoading(false)
     }
@@ -132,10 +134,10 @@ export function Orders() {
     setActionLoading(true)
     try {
       const res = await api.patch<{ count: number }>('/orders/bulk-hold', { orderIds: targetIds, hold })
-      toast.success(`Agent ${hold ? 'mis en pause' : 'repris'} pour ${res.count} commande(s)`)
+      toast.success(t('toast.bulkHoldSuccess', { count: res.count }))
       if (!ids) setSelectedOrders(new Set())
     } catch {
-      toast.error('Erreur lors de la mise à jour')
+      toast.error(t('updateError', { ns: 'common' }))
     } finally {
       setActionLoading(false)
     }
@@ -145,12 +147,12 @@ export function Orders() {
     setActionLoading(true)
     try {
       const res = await api.patch<{ count: number }>('/orders/bulk-tracking', { orderIds: trackingIds, trackingNumber, deliveryProvider })
-      toast.success(`Suivi attribué à ${res.count} commande(s)`)
+      toast.success(t('toast.trackingSuccess', { count: res.count }))
       setTrackingOpen(false)
       setSelectedOrders(new Set())
       fetchOrders()
     } catch {
-      toast.error("Erreur lors de l'attribution du suivi")
+      toast.error(t('tracking.error', { ns: 'common' }))
     } finally {
       setActionLoading(false)
     }
@@ -162,13 +164,13 @@ export function Orders() {
 
     return [
       {
-        label: 'Confirmer',
+        label: t('actions.confirm'),
         icon: <Check className="h-4 w-4" />,
         onClick: () => handleBulkStatus('CONFIRMED', [order.id]),
         disabled: actionLoading || isConfirmed,
       },
       {
-        label: 'Annuler',
+        label: t('actions.cancel'),
         icon: <XCircle className="h-4 w-4" />,
         onClick: () => handleBulkStatus('CANCELLED', [order.id]),
         disabled: actionLoading || isConfirmed,
@@ -176,20 +178,20 @@ export function Orders() {
       },
       ...(isPaused
         ? [{
-            label: 'Reprendre',
+            label: t('actions.resumeAgent'),
             icon: <Play className="h-4 w-4" />,
             onClick: () => handleBulkHold(false, [order.id]),
             disabled: actionLoading,
           }]
         : [{
-            label: 'Pause agent',
+            label: t('actions.pauseAgent'),
             icon: <Pause className="h-4 w-4" />,
             onClick: () => handleBulkHold(true, [order.id]),
             disabled: actionLoading,
           }]
       ),
       {
-        label: 'Suivi',
+        label: t('actions.tracking'),
         icon: <Hash className="h-4 w-4" />,
         onClick: () => { setTrackingIds([order.id]); setTrackingOpen(true) },
         disabled: actionLoading,
@@ -241,7 +243,7 @@ export function Orders() {
   useEffect(() => {
     const handler = () => {
       fetchOrders()
-      toast.success('Nouvelle commande reçue')
+      toast.success(t('toast.newOrder'))
     }
     window.addEventListener('order:created', handler)
     return () => window.removeEventListener('order:created', handler)
@@ -267,8 +269,8 @@ export function Orders() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-bold text-on">Commandes</h1>
-            <p className="mt-1 text-sm text-on-muted">{total} commande{total !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
+            <p className="mt-1 text-sm text-on-muted">{t('subtitle', { count: total })}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -283,16 +285,16 @@ export function Orders() {
           </div>
           <FilterDropdown
             options={[
-              { value: 'CONFIRMED', label: 'Confirmée' },
-              { value: 'PENDING', label: 'En attente' },
-              { value: 'CANCELLED', label: 'Annulée' },
-              { value: 'SHIPPED', label: 'Expédiée' },
-              { value: 'DELIVERED', label: 'Livrée' },
+              { value: 'CONFIRMED', label: t('placeholders.confirmed') },
+              { value: 'PENDING', label: t('placeholders.pending') },
+              { value: 'CANCELLED', label: t('placeholders.cancelled') },
+              { value: 'SHIPPED', label: t('placeholders.shipped') },
+              { value: 'DELIVERED', label: t('placeholders.delivered') },
             ]}
             selected={statusFilters}
             onChange={setStatusFilters}
-            label="Statut"
-            placeholder="Tous les statuts"
+            label={t('filters.status')}
+            placeholder={t('filters.allStatuses')}
           />
           <DateRangeFilter value={dateRange} onChange={setDateRange} />
         </div>
@@ -311,13 +313,13 @@ export function Orders() {
                     className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Client</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Produit</th>
-                <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted">Montant</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Wilaya</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Statut</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Date</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Action</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.client')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.product')}</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted">{t('columns.amount')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.wilaya')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('filters.status')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.date')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">{t('actions.openWhatsApp')}</th>
               </tr>
             </thead>
             <tbody>
@@ -325,14 +327,14 @@ export function Orders() {
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                    Chargement...
+                    {t('loading', { ns: 'common' })}
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                    Aucune commande trouvée.
+                    {t('noResults', { ns: 'common' })}
                   </td>
                 </tr>
               ) : (
@@ -392,12 +394,12 @@ export function Orders() {
           {loading && orders.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-              Chargement...
+              {t('loading', { ns: 'common' })}
             </div>
           ) : orders.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-              Aucune commande trouvée.
+              {t('noResults', { ns: 'common' })}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -450,37 +452,35 @@ export function Orders() {
 
       <SelectionBar
         count={selectedOrders.size}
-        singularLabel="sélectionnée"
-        pluralLabel="sélectionnées"
         onClear={() => setSelectedOrders(new Set())}
         actions={[
           {
-            label: 'Confirmer',
+            label: t('actions.confirm'),
             icon: <Check className="h-4 w-4" />,
             onClick: () => handleBulkStatus('CONFIRMED'),
             disabled: actionLoading,
           },
           {
-            label: 'Annuler',
+            label: t('actions.cancel'),
             icon: <XCircle className="h-4 w-4" />,
             onClick: () => handleBulkStatus('CANCELLED'),
             disabled: actionLoading,
             variant: 'danger',
           },
           {
-            label: 'Pause agent',
+            label: t('actions.pauseAgent'),
             icon: <Pause className="h-4 w-4" />,
             onClick: () => handleBulkHold(true),
             disabled: actionLoading,
           },
           {
-            label: 'Reprendre',
+            label: t('actions.resumeAgent'),
             icon: <Play className="h-4 w-4" />,
             onClick: () => handleBulkHold(false),
             disabled: actionLoading,
           },
           {
-            label: 'Suivi',
+            label: t('actions.tracking'),
             icon: <Hash className="h-4 w-4" />,
             onClick: () => { setTrackingIds(selectedIds); setTrackingOpen(true) },
             disabled: actionLoading,

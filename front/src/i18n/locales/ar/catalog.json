@@ -1,0 +1,29 @@
+{
+  "title": "الكتالوج",
+  "subtitle": "{{count}} produit(s) synchronisé(s)",
+  "stock": {
+    "label": "المخزون",
+    "allStocks": "جميع المخزونات",
+    "inStock": "متوفر",
+    "lowStock": "مخزون منخفض",
+    "outOfStock": "نفذ من المخزون"
+  },
+  "columns": {
+    "image": "الصورة",
+    "product": "المنتج",
+    "price": "السعر",
+    "stock": "المخزون",
+    "category": "الفئة"
+  },
+  "actions": {
+    "viewOnShopify": "عرض على شوبيفاي",
+    "enableAgent": "تفعيل الوكيل",
+    "disableAgent": "تعطيل الوكيل"
+  },
+  "agentDisabled": "الوكيل معطّل",
+  "toast": {
+    "agentEnabled": "تم تفعيل الوكيل لـ {{count}} produit(s)",
+    "agentDisabled": "تم تعطيل الوكيل لـ {{count}} produit(s)",
+    "synced": "تم تحديث الكتالوج"
+  }
+}

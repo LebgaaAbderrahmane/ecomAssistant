@@ -1,0 +1,34 @@
+{
+  "sidebar": {
+    "menu": "القائمة",
+    "utilities": "الأدوات المساعدة",
+    "home": "الرئيسية",
+    "orders": "الطلبات",
+    "customers": "العملاء",
+    "catalog": "الكتالوج",
+    "escalations": "التصعيدات",
+    "notifications": "الإشعارات",
+    "profile": "الملف الشخصي",
+    "settings": "الإعدادات",
+    "billing": "الفوترة",
+    "planGrowth": "خطة النمو",
+    "expiresAt": "تنتهي في 11 يوليو 2026",
+    "manageSubscription": "إدارة الاشتراك"
+  },
+  "topbar": {
+    "theme": "المظهر",
+    "light": "فاتح",
+    "dark": "داكن",
+    "system": "النظام",
+    "notifications": "الإشعارات",
+    "markAllRead": "تحديد الكل كمقروء",
+    "noNotifications": "لا توجد إشعارات",
+    "viewAll": "عرض جميع الإشعارات",
+    "merchant": "التاجر",
+    "myProfile": "ملفي الشخصي",
+    "settings": "الإعدادات",
+    "billing": "الفوترة",
+    "logout": "تسجيل الخروج",
+    "mySpace": "مساحتي"
+  }
+}

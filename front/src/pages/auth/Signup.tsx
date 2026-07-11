@@ -6,6 +6,7 @@ import { Input } from "../../components/ui/Input.js";
 import { useAuth } from "../../lib/auth.js";
 import { getAuthErrorMessage } from "../../lib/auth-errors.js";
 import type { ApiError } from "../../lib/api.js";
+import { useTranslation } from 'react-i18next';
 
 export function Signup() {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export function Signup() {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [verificationError, setVerificationError] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const { t } = useTranslation('auth');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,18 +33,18 @@ export function Signup() {
     const fields: Record<string, string> = {};
 
     if (!shopName.trim()) {
-      fields.shopName = "Le nom du magasin est requis";
+      fields.shopName = t('signup.storeNameRequired');
     }
     if (password.length < 8) {
-      fields.password = "Le mot de passe doit contenir au moins 8 caractères";
+      fields.password = t('signup.passwordMinLength');
     }
     if (!/\d/.test(password)) {
       fields.password = fields.password
-        ? "8 caractères min. et au moins 1 chiffre"
-        : "Le mot de passe doit contenir au moins un chiffre";
+        ? t('signup.passwordHint')
+        : t('signup.passwordDigitRequired');
     }
     if (password !== confirmPassword) {
-      fields.confirmPassword = "Les mots de passe ne correspondent pas";
+      fields.confirmPassword = t('signup.passwordMismatch');
     }
 
     if (Object.keys(fields).length > 0) {
@@ -105,7 +107,7 @@ export function Signup() {
   const handleVerify = async () => {
     const fullCode = code.join("");
     if (fullCode.length !== 6) {
-      setVerificationError("Veuillez entrer le code à 6 chiffres");
+      setVerificationError(t('signup.enterCode'));
       return;
     }
     setVerificationError("");
@@ -123,7 +125,7 @@ export function Signup() {
       setCode(["", "", "", "", "", ""]);
       inputRefs.current[0]?.focus();
     } catch {
-      setVerificationError("Erreur lors de l'envoi du code");
+      setVerificationError(t('signup.sendCodeError'));
     }
   };
 
@@ -145,10 +147,10 @@ export function Signup() {
             <CheckCircle className="h-6 w-6 text-green-600" />
           </div>
           <h1 className="text-xl font-bold text-on">
-            Vérifiez votre email
+            {t('signup.verifyEmail')}
           </h1>
           <p className="mt-2 text-sm text-on-muted">
-            Un code de confirmation a été envoyé à <strong>{email}</strong>.
+            {t('signup.codeSent')} <strong>{email}</strong>.
           </p>
 
           <div
@@ -181,16 +183,16 @@ export function Signup() {
             loading={isLoading}
             className="mt-6 w-full h-11"
           >
-            Vérifier mon email
+            {t('signup.verifyButton')}
           </Button>
 
           <p className="mt-4 text-xs text-on-muted">
-            Code non reçu ?{" "}
+            {t('signup.codeNotReceived')}{" "}
             <button
               onClick={handleResend}
               className="font-medium text-brand-600 hover:underline"
             >
-              Renvoyer
+              {t('signup.resend')}
             </button>
           </p>
 
@@ -205,7 +207,7 @@ export function Signup() {
             className="mt-3 inline-flex items-center gap-1 text-sm text-on-faint hover:text-on-secondary"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Modifier l'adresse email
+            {t('signup.changeEmail')}
           </button>
         </div>
       </div>
@@ -227,9 +229,9 @@ export function Signup() {
 
       <div className="w-full max-w-[440px] rounded-xl border border-on bg-surface p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-on">Créer un compte</h1>
+          <h1 className="text-2xl font-bold text-on">{t('signup.title')}</h1>
           <p className="mt-1 text-sm text-on-muted">
-            Commencez votre essai gratuit de 14 jours
+            {t('signup.subtitle')}
           </p>
         </div>
 
@@ -241,7 +243,7 @@ export function Signup() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Nom du magasin"
+            label={t('signup.storeName')}
             type="text"
             placeholder="Mon Magasin"
             value={shopName}
@@ -250,7 +252,7 @@ export function Signup() {
             required
           />
           <Input
-            label="Email"
+            label={t('signup.email')}
             type="email"
             placeholder="vous@exemple.com"
             value={email}
@@ -261,13 +263,13 @@ export function Signup() {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <label className="text-[13px] font-medium text-on-secondary">
-                Mot de passe
+                {t('signup.password')}
               </label>
             </div>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
-                placeholder="Min. 8 caractères, 1 chiffre"
+                placeholder={t('signup.passwordHint2')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -299,13 +301,13 @@ export function Signup() {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <label className="text-[13px] font-medium text-on-secondary">
-                Confirmer le mot de passe
+                {t('signup.confirmPassword')}
               </label>
             </div>
             <div className="relative">
               <input
                 type={showConfirm ? "text" : "password"}
-                placeholder="Répétez le mot de passe"
+                placeholder={t('signup.confirmPasswordHint')}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -334,17 +336,17 @@ export function Signup() {
             )}
           </div>
           <Button type="submit" loading={isLoading} className="w-full h-11">
-            Créer mon compte
+            {t('signup.submit')}
           </Button>
         </form>
 
         <p className="mt-6 text-center text-sm text-on-muted">
-          Déjà un compte ?{" "}
+          {t('signup.hasAccount')}{" "}
           <Link
             to="/login"
             className="font-medium text-brand-600 hover:text-brand-500"
           >
-            Se connecter
+            {t('signup.login')}
           </Link>
         </p>
       </div>

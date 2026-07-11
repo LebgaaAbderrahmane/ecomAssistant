@@ -6,6 +6,7 @@ import { Input } from "../../components/ui/Input.js";
 import { useAuth } from "../../lib/auth.js";
 import { getAuthErrorMessage } from "../../lib/auth-errors.js";
 import type { ApiError } from "../../lib/api.js";
+import { useTranslation } from 'react-i18next';
 
 export function Login() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export function Login() {
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const { t } = useTranslation('auth');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,9 +54,9 @@ export function Login() {
 
       <div className="w-full max-w-[440px] rounded-xl border border-on bg-surface p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-on">Connexion</h1>
+          <h1 className="text-2xl font-bold text-on">{t('login.title')}</h1>
           <p className="mt-1 text-sm text-on-muted">
-            Connectez-vous pour gérer votre agent WhatsApp
+            {t('login.subtitle')}
           </p>
         </div>
 
@@ -66,9 +68,9 @@ export function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Email"
+            label={t('login.emailLabel')}
             type="email"
-            placeholder="vous@exemple.com"
+            placeholder={t('login.emailPlaceholder')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             error={fieldErrors.email}
@@ -78,13 +80,13 @@ export function Login() {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <label className="text-[13px] font-medium text-on-secondary">
-                Mot de passe
+                {t('login.passwordLabel')}
               </label>
               <Link
                 to="/forgot-password"
                 className="text-[13px] font-medium text-brand-600 hover:underline"
               >
-                Mot de passe oublié ?
+                {t('login.forgotPassword')}
               </Link>
             </div>
             <div className="relative">
@@ -120,13 +122,13 @@ export function Login() {
           </div>
 
           <Button type="submit" loading={isLoading} className="w-full h-11">
-            Se connecter
+            {t('login.submit')}
           </Button>
         </form>
 
         <div className="my-4 flex items-center gap-3">
           <div className="flex-1 border-t border-on" />
-          <span className="text-sm text-on-faint">ou</span>
+          <span className="text-sm text-on-faint">{t('login.or')}</span>
           <div className="flex-1 border-t border-on" />
         </div>
 
@@ -135,16 +137,16 @@ export function Login() {
           className="flex w-full h-11 items-center justify-center gap-2 rounded-md border border-on bg-surface text-sm font-medium text-on-secondary hover:bg-surface-secondary transition-colors"
         >
           <Globe className="h-4 w-4" />
-          Continuer avec Google
+          {t('login.google')}
         </button>
 
         <p className="mt-6 text-center text-sm text-on-muted">
-          Nouveau sur EcomAssistant ?{" "}
+          {t('login.noAccount')}{" "}
           <Link
             to="/signup"
             className="font-medium text-brand-600 hover:text-brand-500"
           >
-            Créer un compte
+            {t('login.createAccount')}
           </Link>
         </p>
       </div>

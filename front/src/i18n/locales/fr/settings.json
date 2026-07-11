@@ -1,0 +1,58 @@
+{
+  "title": "Paramètres",
+  "subtitle": "Gérez votre boutique, votre agent et vos paramètres de livraison",
+  "tabs": {
+    "agent": "Configuration agent",
+    "store": "Connexion boutique",
+    "whatsapp": "WhatsApp",
+    "wilaya": "Wilaya pricing"
+  },
+  "agent": {
+    "language": "Mode linguistique",
+    "autoDetect": "Auto-détection",
+    "french": "Français",
+    "tone": "Ton",
+    "friendly": "Amical",
+    "formal": "Formel",
+    "followUpDelays": "Délais de relance",
+    "hours": "heures",
+    "maxFollowUps": "Relances max : 3",
+    "saved": "Configuration sauvegardée",
+    "saveError": "Erreur de sauvegarde"
+  },
+  "store": {
+    "noStore": "Aucune boutique connectée",
+    "connected": "Connecté",
+    "disconnected": "Déconnecté",
+    "connectStore": "Connecter une boutique",
+    "shopifyName": "Nom de la boutique Shopify",
+    "connect": "Connecter",
+    "popupBlocked": "Le popup a été bloqué par votre navigateur. Autorisez les popups pour ce site et réessayez.",
+    "windowClosed": "Fenêtre Shopify fermée. Si l'application est en cours de validation par Shopify, l'installation ne peut pas continuer.",
+    "timedOut": "La connexion a pris trop de temps. Vérifiez que l'application Shopify est autorisée.",
+    "pendingValidation": "L'application Shopify est en cours de validation. Vous pouvez réessayer plus tard."
+  },
+  "whatsapp": {
+    "connected": "WhatsApp connecté",
+    "disconnected": "WhatsApp déconnecté",
+    "error": "Erreur",
+    "connectionError": "Erreur de connexion WhatsApp",
+    "disconnectionError": "Erreur lors de la déconnexion",
+    "connectWhatsApp": "Connecter WhatsApp",
+    "scanQR": "Scannez ce code QR avec WhatsApp",
+    "waitingScan": "En attente de scan...",
+    "noNumber": "Aucun numéro connecté",
+    "businessApp": "WhatsApp Business",
+    "disconnectBtn": "Déconnecter",
+    "disconnectTitle": "Déconnecter WhatsApp ?",
+    "disconnectDesc": "Vous ne pourrez plus envoyer ni recevoir de messages tant que la session n'est pas reconnectée.",
+    "messageTemplates": "Modèles de message",
+    "orderConfirmation": "Confirmation de commande",
+    "deliveryUpdate": "Mise à jour de livraison",
+    "cartFollowUp": "Relance panier abandonné",
+    "approved": "Approuvé"
+  },
+  "wilaya": {
+    "title": "Tableau des frais de livraison par wilaya (à implémenter)"
+  }
+}

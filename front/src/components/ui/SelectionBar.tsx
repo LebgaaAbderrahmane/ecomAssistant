@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 export interface SelectionAction {
   label: string
@@ -18,18 +19,19 @@ interface SelectionBarProps {
 
 export function SelectionBar({
   count,
-  singularLabel = 'sélectionnée',
-  pluralLabel = 'sélectionnées',
+  singularLabel,
+  pluralLabel,
   actions,
   onClear,
 }: SelectionBarProps) {
+  const { t } = useTranslation('common')
   if (count === 0) return null
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
       <div className="flex items-center gap-2 rounded-full border border-on bg-surface px-2 py-1.5 shadow-lg">
         <span className="pl-3 text-sm font-semibold text-on whitespace-nowrap">
-          {count} {count === 1 ? singularLabel : pluralLabel}
+          {count} {count === 1 ? (singularLabel ?? t('selected')) : (pluralLabel ?? t('selected_plural'))}
         </span>
 
         <div className="mx-1 h-5 w-px bg-on-light" />
@@ -54,7 +56,7 @@ export function SelectionBar({
 
         <button
           onClick={onClear}
-          title="Désélectionner"
+          title={t('deselect')}
           className="inline-flex items-center justify-center h-8 w-8 rounded-full text-on-faint hover:text-on-muted hover:bg-surface-tertiary transition-colors"
         >
           <X className="h-4 w-4" />

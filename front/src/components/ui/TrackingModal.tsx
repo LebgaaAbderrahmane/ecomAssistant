@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from './Button.js'
 
 interface TrackingModalProps {
@@ -9,6 +10,7 @@ interface TrackingModalProps {
 }
 
 export function TrackingModal({ open, onClose, onConfirm, loading }: TrackingModalProps) {
+  const { t } = useTranslation('common')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [deliveryProvider, setDeliveryProvider] = useState('yalidine')
 
@@ -29,14 +31,14 @@ export function TrackingModal({ open, onClose, onConfirm, loading }: TrackingMod
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative z-10 w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl border border-on">
-        <h2 className="text-lg font-semibold text-on">Attribuer un suivi</h2>
+        <h2 className="text-lg font-semibold text-on">{t('tracking.title')}</h2>
         <p className="mt-1 text-sm text-on-muted">
-          Entrez les informations de suivi pour les commandes sélectionnées.
+          {t('tracking.description')}
         </p>
 
         <div className="mt-4 space-y-3">
           <div>
-            <label className="block text-sm font-medium text-on-secondary mb-1">Transporteur</label>
+            <label className="block text-sm font-medium text-on-secondary mb-1">{t('tracking.provider')}</label>
             <select
               value={deliveryProvider}
               onChange={(e) => setDeliveryProvider(e.target.value)}
@@ -47,7 +49,7 @@ export function TrackingModal({ open, onClose, onConfirm, loading }: TrackingMod
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-on-secondary mb-1">Numéro de suivi</label>
+            <label className="block text-sm font-medium text-on-secondary mb-1">{t('tracking.number')}</label>
             <input
               value={trackingNumber}
               onChange={(e) => setTrackingNumber(e.target.value)}
@@ -59,10 +61,10 @@ export function TrackingModal({ open, onClose, onConfirm, loading }: TrackingMod
 
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="secondary" size="sm" onClick={handleClose} disabled={loading}>
-            Annuler
+            {t('cancel')}
           </Button>
           <Button size="sm" onClick={handleConfirm} loading={loading} disabled={!trackingNumber.trim()}>
-            Confirmer
+            {t('confirm')}
           </Button>
         </div>
       </div>

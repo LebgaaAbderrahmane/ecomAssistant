@@ -1,18 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { Calendar } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface DateRangeOption {
   value: string
   label: string
 }
-
-const defaultOptions: DateRangeOption[] = [
-  { value: 'today', label: "Aujourd'hui" },
-  { value: 'week', label: 'Cette semaine' },
-  { value: 'month', label: 'Ce mois-ci' },
-  { value: 'year', label: 'Cette année' },
-  { value: 'all', label: 'Toutes les dates' }
-]
 
 interface DateRangeFilterProps {
   value: string | null
@@ -20,8 +13,17 @@ interface DateRangeFilterProps {
 }
 
 export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
+  const { t } = useTranslation('common')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+
+  const defaultOptions: DateRangeOption[] = [
+    { value: 'today', label: t('dateRange.today') },
+    { value: 'week', label: t('dateRange.thisWeek') },
+    { value: 'month', label: t('dateRange.thisMonth') },
+    { value: 'year', label: t('dateRange.thisYear') },
+    { value: 'all', label: t('dateRange.allDates') }
+  ]
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -46,7 +48,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
         }`}
       >
         <Calendar className="h-4 w-4 shrink-0" />
-        <span className="hidden sm:inline">{active ? activeLabel : 'Date'}</span>
+        <span className="hidden sm:inline">{active ? activeLabel : t('dateRange.label')}</span>
         {active && (
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-semibold text-white">
             1

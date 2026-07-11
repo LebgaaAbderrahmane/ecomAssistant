@@ -1,0 +1,34 @@
+{
+  "sidebar": {
+    "menu": "Menu",
+    "utilities": "Utilitaires",
+    "home": "Accueil",
+    "orders": "Commandes",
+    "customers": "Clients",
+    "catalog": "Catalogue",
+    "escalations": "Escalades",
+    "notifications": "Notifications",
+    "profile": "Profil",
+    "settings": "Paramètres",
+    "billing": "Facturation",
+    "planGrowth": "Plan Growth",
+    "expiresAt": "Expire le 11 juil. 2026",
+    "manageSubscription": "Gérer l'abonnement"
+  },
+  "topbar": {
+    "theme": "Thème",
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système",
+    "notifications": "Notifications",
+    "markAllRead": "Tout marquer comme lu",
+    "noNotifications": "Aucune notification",
+    "viewAll": "Voir toutes les notifications",
+    "merchant": "Marchand",
+    "myProfile": "Mon profil",
+    "settings": "Paramètres",
+    "billing": "Facturation",
+    "logout": "Déconnexion",
+    "mySpace": "Mon Espace"
+  }
+}

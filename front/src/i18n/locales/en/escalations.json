@@ -1,0 +1,21 @@
+{
+  "title": "Escalations",
+  "openCount": "{{count}} open",
+  "resolveAll": "Mark all as resolved",
+  "resolved": "Escalation resolved",
+  "resolveError": "Error while resolving",
+  "allResolved": "All escalations have been resolved",
+  "columns": {
+    "client": "Customer",
+    "lastMessage": "Last message",
+    "status": "Status",
+    "since": "Since"
+  },
+  "status": {
+    "takenOver": "Taken over",
+    "pending": "Pending"
+  },
+  "resolve": "Resolve",
+  "empty": "No escalations",
+  "emptyDescription": "Conversations requiring your attention will appear here"
+}

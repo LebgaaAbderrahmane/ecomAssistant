@@ -1,0 +1,34 @@
+{
+  "sidebar": {
+    "menu": "Menu",
+    "utilities": "Utilities",
+    "home": "Home",
+    "orders": "Orders",
+    "customers": "Customers",
+    "catalog": "Catalog",
+    "escalations": "Escalations",
+    "notifications": "Notifications",
+    "profile": "Profile",
+    "settings": "Settings",
+    "billing": "Billing",
+    "planGrowth": "Growth Plan",
+    "expiresAt": "Expires on Jul 11, 2026",
+    "manageSubscription": "Manage subscription"
+  },
+  "topbar": {
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "notifications": "Notifications",
+    "markAllRead": "Mark all as read",
+    "noNotifications": "No notifications",
+    "viewAll": "View all notifications",
+    "merchant": "Merchant",
+    "myProfile": "My profile",
+    "settings": "Settings",
+    "billing": "Billing",
+    "logout": "Logout",
+    "mySpace": "My Space"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "title": "Orders",
+  "subtitle": "{{count}} order(s)",
+  "placeholders": {
+    "confirmed": "Confirmed",
+    "pending": "Pending",
+    "cancelled": "Cancelled",
+    "shipped": "Shipped",
+    "delivered": "Delivered"
+  },
+  "filters": {
+    "status": "Status",
+    "allStatuses": "All statuses"
+  },
+  "columns": {
+    "client": "Customer",
+    "product": "Product",
+    "amount": "Amount",
+    "wilaya": "Wilaya",
+    "date": "Date"
+  },
+  "actions": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "pauseAgent": "Pause agent",
+    "resumeAgent": "Resume",
+    "tracking": "Tracking",
+    "openWhatsApp": "Open WhatsApp"
+  },
+  "toast": {
+    "bulkStatusSuccess": "{{count}} order(s) updated",
+    "bulkHoldSuccess": "Agent paused / resumed for {{count}} order(s)",
+    "trackingSuccess": "Tracking assigned to {{count}} order(s)",
+    "newOrder": "New order received"
+  }
+}

@@ -6,6 +6,7 @@ import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
 import { DropdownMenu, DropdownMenuItem } from '../../components/ui/DropdownMenu.js'
 import { SelectionBar } from '../../components/ui/SelectionBar.js'
 import { api } from '../../lib/api.js'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 interface Customer {
@@ -48,6 +49,7 @@ export function Customers() {
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation('customers')
 
   const allSelected = total > 0 && selectedCustomers.size === total
 
@@ -81,11 +83,11 @@ export function Customers() {
     setActionLoading(true)
     try {
       const res = await api.patch<{ count: number }>('/customers/bulk-block', { customerIds: targetIds, blocked })
-      toast.success(`${res.count} client(s) ${blocked ? 'bloqué(s)' : 'débloqué(s)'}`)
+      toast.success(blocked ? t('toast.blocked', { count: res.count }) : t('toast.unblocked', { count: res.count }))
       if (!ids) setSelectedCustomers(new Set())
       fetchCustomers()
     } catch {
-      toast.error('Erreur lors de la mise à jour')
+      toast.error(t('updateError', { ns: 'common' }))
     } finally {
       setActionLoading(false)
     }
@@ -98,12 +100,12 @@ export function Customers() {
       onClick: () => window.open(formatWhatsAppUrl(customer.phone), '_blank'),
     },
     {
-      label: 'Voir commandes',
+      label: t('actions.viewOrders'),
       icon: <ShoppingBag className="h-4 w-4" />,
       onClick: () => navigate(`/dashboard/orders?search=${encodeURIComponent(customer.phone)}`),
     },
     {
-      label: customer.blocked ? 'Débloquer' : 'Bloquer',
+      label: customer.blocked ? t('actions.unblock') : t('actions.block'),
       icon: customer.blocked ? <Unlock className="h-4 w-4" /> : <Ban className="h-4 w-4" />,
       onClick: () => handleBulkBlock(!customer.blocked, [customer.id]),
       disabled: actionLoading,
@@ -146,7 +148,7 @@ export function Customers() {
   useEffect(() => {
     const handler = () => {
       fetchCustomers()
-      toast.success('Nouvelle commande reçue')
+      toast.success(t('toast.newOrder'))
     }
     window.addEventListener('order:created', handler)
     return () => window.removeEventListener('order:created', handler)
@@ -176,8 +178,8 @@ export function Customers() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-bold text-on">Clients</h1>
-            <p className="mt-1 text-sm text-on-muted">{total} client{total !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
+            <p className="mt-1 text-sm text-on-muted">{t('subtitle', { count: total })}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -192,13 +194,13 @@ export function Customers() {
           </div>
           <FilterDropdown
             options={[
-              { value: 'with_orders', label: 'Avec commandes' },
-              { value: 'without_orders', label: 'Sans commandes' },
+              { value: 'with_orders', label: t('filters.withOrders') },
+              { value: 'without_orders', label: t('filters.withoutOrders') },
             ]}
             selected={orderFilters}
             onChange={setOrderFilters}
-            label="Clients"
-            placeholder="Tous les clients"
+            label={t('filters.label')}
+            placeholder={t('filters.allClients')}
           />
         </div>
       </div>
@@ -216,12 +218,12 @@ export function Customers() {
                     className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Client</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Confirmées</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Annulées</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Total</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Client depuis</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Action</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.client')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">{t('columns.confirmed')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">{t('columns.cancelled')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">{t('columns.total')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.since')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">{t('actions.viewOrders')}</th>
               </tr>
             </thead>
             <tbody>
@@ -229,14 +231,14 @@ export function Customers() {
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                    Chargement...
+                    {t('loading', { ns: 'common' })}
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Users className="h-8 w-8 mx-auto mb-2 text-on" />
-                    Aucun client trouvé.
+                    {t('noResults', { ns: 'common' })}
                   </td>
                 </tr>
               ) : (
@@ -255,7 +257,7 @@ export function Customers() {
                       <p className="text-xs text-on-muted">{customer.phone}</p>
                       {customer.blocked && (
                         <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-red-600">
-                          <Ban className="h-3 w-3" /> Bloqué
+                          <Ban className="h-3 w-3" /> {t('blocked')}
                         </span>
                       )}
                     </td>
@@ -293,12 +295,12 @@ export function Customers() {
           {loading && customers.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-              Chargement...
+              {t('loading', { ns: 'common' })}
             </div>
           ) : customers.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Users className="h-8 w-8 mx-auto mb-2 text-on" />
-              Aucun client trouvé.
+              {t('noResults', { ns: 'common' })}
             </div>
           ) : (
             <div className="divide-y divide-on-light">
@@ -310,7 +312,7 @@ export function Customers() {
                       <p className="text-xs text-on-muted">{customer.phone}</p>
                       {customer.blocked && (
                         <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-red-600">
-                          <Ban className="h-3 w-3" /> Bloqué
+                          <Ban className="h-3 w-3" /> {t('blocked')}
                         </span>
                       )}
                     </div>
@@ -350,12 +352,10 @@ export function Customers() {
 
       <SelectionBar
         count={selectedCustomers.size}
-        singularLabel="sélectionné"
-        pluralLabel="sélectionnés"
         onClear={() => setSelectedCustomers(new Set())}
         actions={[
           {
-            label: majorityBlocked ? 'Débloquer' : 'Bloquer',
+            label: majorityBlocked ? t('actions.unblock') : t('actions.block'),
             icon: majorityBlocked ? <Unlock className="h-4 w-4" /> : <Ban className="h-4 w-4" />,
             onClick: () => handleBulkBlock(!majorityBlocked),
             disabled: actionLoading,

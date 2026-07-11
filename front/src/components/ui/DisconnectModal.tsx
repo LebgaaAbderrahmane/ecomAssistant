@@ -1,9 +1,11 @@
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
+import { useTranslation } from 'react-i18next';
 import { Button } from "./Button.js";
 import { useNotifications } from "../../lib/notifications.js";
 
 export function DisconnectModal() {
+  const { t } = useTranslation('common');
   const { showDisconnectModal, dismissDisconnectModal } = useNotifications();
   const navigate = useNavigate();
 
@@ -24,20 +26,19 @@ export function DisconnectModal() {
           </div>
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-on">
-              WhatsApp Déconnecté
+              {t('disconnectModal.title')}
             </h2>
             <p className="mt-2 text-sm text-on-muted">
-              Votre session WhatsApp est déconnectée. Veuillez la reconnecter
-              pour continuer à recevoir et envoyer des messages.
+              {t('disconnectModal.description')}
             </p>
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="secondary" size="sm" onClick={dismissDisconnectModal}>
-            Ignorer
+            {t('ignore')}
           </Button>
           <Button size="sm" onClick={handleReconnect}>
-            Reconnecter
+            {t('reconnect')}
           </Button>
         </div>
       </div>

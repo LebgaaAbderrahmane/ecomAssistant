@@ -1,16 +1,17 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Check } from 'lucide-react'
-
-const steps = [
-  { path: '/onboarding/store', label: 'Boutique' },
-  { path: '/onboarding/whatsapp', label: 'WhatsApp' },
-  { path: '/onboarding/agent', label: 'Agent' },
-  { path: '/onboarding/activate', label: 'Activation' },
-]
+import { useTranslation } from 'react-i18next'
 
 export function OnboardingLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation('onboarding')
+  const steps = [
+    { path: '/onboarding/store', label: t('layout.store') },
+    { path: '/onboarding/whatsapp', label: 'WhatsApp' },
+    { path: '/onboarding/agent', label: t('layout.agent') },
+    { path: '/onboarding/activate', label: t('layout.activation') },
+  ]
   const currentStep = steps.findIndex((s) => s.path === location.pathname)
   const progress = ((currentStep + 1) / steps.length) * 100
 

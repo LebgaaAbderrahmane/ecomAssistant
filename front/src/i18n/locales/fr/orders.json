@@ -1,0 +1,36 @@
+{
+  "title": "Commandes",
+  "subtitle": "{{count}} commande(s)",
+  "placeholders": {
+    "confirmed": "Confirmée",
+    "pending": "En attente",
+    "cancelled": "Annulée",
+    "shipped": "Expédiée",
+    "delivered": "Livrée"
+  },
+  "filters": {
+    "status": "Statut",
+    "allStatuses": "Tous les statuts"
+  },
+  "columns": {
+    "client": "Client",
+    "product": "Produit",
+    "amount": "Montant",
+    "wilaya": "Wilaya",
+    "date": "Date"
+  },
+  "actions": {
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "pauseAgent": "Pause agent",
+    "resumeAgent": "Reprendre",
+    "tracking": "Suivi",
+    "openWhatsApp": "Ouvrir WhatsApp"
+  },
+  "toast": {
+    "bulkStatusSuccess": "{{count}} commande(s) mise(s) à jour",
+    "bulkHoldSuccess": "Agent mis en pause / repris pour {{count}} commande(s)",
+    "trackingSuccess": "Suivi attribué à {{count}} commande(s)",
+    "newOrder": "Nouvelle commande reçue"
+  }
+}

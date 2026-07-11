@@ -1,0 +1,28 @@
+{
+  "title": "Clients",
+  "subtitle": "{{count}} client(s)",
+  "filters": {
+    "withOrders": "Avec commandes",
+    "withoutOrders": "Sans commandes",
+    "allClients": "Tous les clients",
+    "label": "Clients"
+  },
+  "columns": {
+    "client": "Client",
+    "confirmed": "Confirmées",
+    "cancelled": "Annulées",
+    "total": "Total",
+    "since": "Client depuis"
+  },
+  "actions": {
+    "viewOrders": "Voir commandes",
+    "block": "Bloquer",
+    "unblock": "Débloquer"
+  },
+  "blocked": "Bloqué",
+  "toast": {
+    "blocked": "{{count}} client(s) bloqué(s)",
+    "unblocked": "{{count}} client(s) débloqué(s)",
+    "newOrder": "Nouvelle commande reçue"
+  }
+}

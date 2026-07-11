@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
+import "./i18n/index.js";
 import { AuthProvider } from "./lib/auth.js";
 import { NotificationProvider } from "./lib/notifications.js";
 import { ThemeProvider } from "./lib/theme.js";

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface FilterDropdownProps {
   options: { value: string; label: string }[]
@@ -10,6 +11,7 @@ interface FilterDropdownProps {
 }
 
 export function FilterDropdown({ options, selected, onChange, label, placeholder }: FilterDropdownProps) {
+  const { t } = useTranslation('common')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -69,7 +71,7 @@ export function FilterDropdown({ options, selected, onChange, label, placeholder
               onChange={toggleAll}
               className="h-4 w-4 rounded border-on accent-green-600"
             />
-            Tout sélectionner
+            {t('selectAll')}
           </label>
           <div className="mx-3 border-t border-on-light" />
           {options.map(opt => (

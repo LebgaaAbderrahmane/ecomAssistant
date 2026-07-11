@@ -1,0 +1,55 @@
+{
+  "loading": "Loading...",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "save": "Save",
+  "search": "Search...",
+  "noResults": "No results",
+  "retry": "Retry",
+  "ignore": "Ignore",
+  "reconnect": "Reconnect",
+  "disconnect": "Disconnect",
+  "saveError": "Error while saving",
+  "updateError": "Error while updating",
+  "selectAll": "Select all",
+  "selected": "selected",
+  "selected_plural": "selected",
+  "deselect": "Deselect",
+  "action": "Action",
+  "actions": "Actions",
+  "client": "Customer",
+  "product": "Product",
+  "total": "Total",
+  "status": "Status",
+  "date": "Date",
+  "since": "Since",
+  "amount": "Amount",
+  "whatsapp": "WhatsApp",
+  "loadMore": "Load more",
+  "timeAgo": {
+    "justNow": "just now",
+    "minutes": "{{count}}min ago",
+    "hours": "{{count}}h ago",
+    "days": "{{count}}d ago"
+  },
+  "dateRange": {
+    "today": "Today",
+    "thisWeek": "This week",
+    "thisMonth": "This month",
+    "thisYear": "This year",
+    "allDates": "All dates",
+    "label": "Date"
+  },
+  "tracking": {
+    "title": "Assign tracking",
+    "description": "Enter tracking information for the selected orders.",
+    "provider": "Carrier",
+    "number": "Tracking number",
+    "success": "Tracking assigned to {{count}} order(s)",
+    "error": "Error while assigning tracking"
+  },
+  "disconnectModal": {
+    "title": "WhatsApp Disconnected",
+    "description": "Your WhatsApp session is disconnected. Please reconnect it to continue receiving and sending messages."
+  }
+}

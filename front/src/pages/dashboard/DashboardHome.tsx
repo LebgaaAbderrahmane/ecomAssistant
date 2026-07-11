@@ -1,12 +1,6 @@
 import { ShoppingCart, CheckCircle, Clock, Bell, ArrowUp, AlertTriangle, MessageSquare } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge.js'
-
-const kpis = [
-  { label: 'Commandes ce mois', value: '47', delta: '+12% vs mois dernier', deltaType: 'positive', icon: ShoppingCart },
-  { label: 'Taux de confirmation', value: '72%', delta: '+5% vs mois dernier', deltaType: 'positive', icon: CheckCircle },
-  { label: 'Délai moyen', value: '4h 23m', delta: '-45m vs mois dernier', deltaType: 'positive', icon: Clock },
-  { label: 'Relances en attente', value: '8', delta: '3 nécessitent attention', deltaType: 'warning', icon: Bell },
-]
+import { useTranslation } from 'react-i18next'
 
 const recentOrders = [
   { id: '#0047', customer: 'Karim Bensalah', product: 'Montre Connectée SmartFit Pro', total: '12 900 DA', status: 'confirmed' as const },
@@ -34,10 +28,19 @@ const escalations = [
 ]
 
 export function DashboardHome() {
+  const { t } = useTranslation('dashboard')
+
+  const kpis = [
+    { label: t('kpi.ordersThisMonth'), value: '47', delta: '+12% vs mois dernier', deltaType: 'positive', icon: ShoppingCart },
+    { label: t('kpi.confirmationRate'), value: '72%', delta: '+5% vs mois dernier', deltaType: 'positive', icon: CheckCircle },
+    { label: t('kpi.avgDelay'), value: '4h 23m', delta: '-45m vs mois dernier', deltaType: 'positive', icon: Clock },
+    { label: t('kpi.pendingFollowUps'), value: '8', delta: '3 nécessitent attention', deltaType: 'warning', icon: Bell },
+  ]
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-on">Tableau de bord</h1>
-      <p className="mt-1 text-sm text-on-muted">Aperçu des performances de votre agent WhatsApp IA</p>
+      <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
+      <p className="mt-1 text-sm text-on-muted">{t('subtitle')}</p>
 
       <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {kpis.map((kpi) => (
@@ -61,8 +64,8 @@ export function DashboardHome() {
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
         <div className="rounded-lg border border-on bg-surface p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-on">Confirmations vs Annulations</h3>
-            <span className="text-xs text-on-muted">14 derniers jours</span>
+            <h3 className="text-base font-semibold text-on">{t('chart.title')}</h3>
+            <span className="text-xs text-on-muted">{t('chart.period')}</span>
           </div>
           <div className="flex items-end gap-2 h-[200px]">
             {Array.from({ length: 14 }, (_, i) => (
@@ -75,24 +78,24 @@ export function DashboardHome() {
           <div className="flex justify-center gap-4 mt-3">
             <span className="flex items-center gap-1.5 text-xs text-on-muted">
               <span className="h-2.5 w-2.5 rounded-sm bg-brand-500" />
-              Confirmées
+              {t('chart.confirmed')}
             </span>
             <span className="flex items-center gap-1.5 text-xs text-on-muted">
               <span className="h-2.5 w-2.5 rounded-sm bg-red-400" />
-              Annulées
+              {t('chart.cancelled')}
             </span>
           </div>
         </div>
 
         <div className="rounded-lg border border-on bg-surface p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-on">Escalades récentes</h3>
-            <button className="text-[13px] font-medium text-brand-600 hover:underline">Voir tout</button>
+            <h3 className="text-base font-semibold text-on">{t('recentEscalations')}</h3>
+            <button className="text-[13px] font-medium text-brand-600 hover:underline">{t('viewAll')}</button>
           </div>
           {escalations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-[200px] text-on-faint">
               <CheckCircle className="h-8 w-8 mb-2 text-green-500" />
-              <p className="text-sm">Aucune escalade ouverte</p>
+              <p className="text-sm">{t('noEscalations')}</p>
             </div>
           ) : (
             <div className="space-y-0">
@@ -103,7 +106,7 @@ export function DashboardHome() {
                     <p className="text-sm font-semibold text-on">{esc.customer}</p>
                     <p className="text-[13px] text-on-muted truncate">{esc.product}</p>
                   </div>
-                  <Badge variant="danger" className="shrink-0 ml-auto">Escaladée</Badge>
+                  <Badge variant="danger" className="shrink-0 ml-auto">{t('escalated')}</Badge>
                 </div>
               ))}
             </div>
@@ -112,7 +115,7 @@ export function DashboardHome() {
       </div>
 
       <div className="mt-6 rounded-lg border border-on bg-surface p-4 sm:p-5">
-        <h3 className="text-base font-semibold text-on mb-4">Commandes récentes</h3>
+        <h3 className="text-base font-semibold text-on mb-4">{t('recentOrders')}</h3>
 
         <div className="hidden lg:block">
           <table className="w-full">
