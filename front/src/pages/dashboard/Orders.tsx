@@ -267,18 +267,18 @@ export function Orders() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Commandes</h1>
-            <p className="mt-1 text-sm text-gray-500">{total} commande{total !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-bold text-on">Commandes</h1>
+            <p className="mt-1 text-sm text-on-muted">{total} commande{total !== 1 ? 's' : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-faint" />
             <input
               placeholder="Rechercher..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
+              className="block w-full h-10 rounded-md border border-on bg-surface text-on pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-on-faint focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             />
           </div>
           <FilterDropdown
@@ -298,64 +298,64 @@ export function Orders() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-lg border border-gray-200 bg-white">
+      <div className="mt-6 rounded-lg border border-on bg-surface">
         <div className="hidden lg:block">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200">
+              <tr className="border-b border-on">
                 <th className="px-4 py-3 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                    className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Produit</th>
-                <th className="px-4 py-3 text-right text-[13px] font-medium text-gray-500">Montant</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Wilaya</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Statut</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Date</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Action</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Client</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Produit</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted">Montant</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Wilaya</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Statut</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Date</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading && orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     Chargement...
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                     Aucune commande trouvée.
                   </td>
                 </tr>
               ) : (
                 orders.map((order) => (
-                  <tr key={order.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedOrders.has(order.id) ? 'bg-brand-50' : ''}`}>
+                  <tr key={order.id} className={`border-b border-on-light last:border-0 hover:bg-surface-secondary ${selectedOrders.has(order.id) ? 'bg-green-50/80 dark:bg-green-900/20' : ''}`}>
                     <td className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
                         checked={selectedOrders.has(order.id)}
                         onChange={() => toggleSelect(order.id)}
-                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                        className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{order.customerName}</p>
-                      <p className="text-xs text-gray-500">{order.customerPhone}</p>
+                      <p className="text-sm font-medium text-on">{order.customerName}</p>
+                      <p className="text-xs text-on-muted">{order.customerPhone}</p>
                     </td>
                     <td className="px-4 py-3 max-w-[180px]">
-                      <p className="text-sm text-gray-900 truncate">{order.productName}</p>
-                      <p className="text-xs text-gray-500">x{order.quantity}</p>
+                      <p className="text-sm text-on truncate">{order.productName}</p>
+                      <p className="text-xs text-on-muted">x{order.quantity}</p>
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-gray-900">{order.totalAmount.toLocaleString('fr-FR')} DA</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
+                    <td className="px-4 py-3 text-right text-sm text-on">{order.totalAmount.toLocaleString('fr-FR')} DA</td>
+                    <td className="px-4 py-3 text-sm text-on-muted">
                       {order.wilaya}
                       {order.commune && <span>, {order.commune}</span>}
                     </td>
@@ -364,7 +364,7 @@ export function Orders() {
                         {statusLabels[order.status] || order.status}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
+                    <td className="px-4 py-3 text-sm text-on-muted">
                       {new Date(order.createdAt).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3">
@@ -373,7 +373,7 @@ export function Orders() {
                           href={formatWhatsAppUrl(order.customerPhone)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-on-faint hover:text-green-600 hover:bg-green-50 transition-colors"
                           title="Ouvrir WhatsApp"
                         >
                           <MessageCircle className="h-4 w-4" />
@@ -390,12 +390,12 @@ export function Orders() {
 
         <div className="lg:hidden">
           {loading && orders.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
               Chargement...
             </div>
           ) : orders.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
               Aucune commande trouvée.
             </div>
@@ -405,25 +405,25 @@ export function Orders() {
                 <div key={order.id} className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{order.customerName}</p>
-                      <p className="text-xs text-gray-500">{order.customerPhone}</p>
+                      <p className="text-sm font-medium text-on">{order.customerName}</p>
+                      <p className="text-xs text-on-muted">{order.customerPhone}</p>
                     </div>
                     <Badge variant={statusVariant[order.status] || 'neutral'}>
                       {statusLabels[order.status] || order.status}
                     </Badge>
                   </div>
-                  <p className="text-sm text-gray-700 truncate">{order.productName} x{order.quantity}</p>
+                  <p className="text-sm text-on-secondary truncate">{order.productName} x{order.quantity}</p>
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-3">
-                      <p className="text-sm font-medium text-gray-900">{order.totalAmount.toLocaleString('fr-FR')} DA</p>
-                      <span className="text-xs text-gray-400">{order.wilaya}</span>
+                      <p className="text-sm font-medium text-on">{order.totalAmount.toLocaleString('fr-FR')} DA</p>
+                      <span className="text-xs text-on-faint">{order.wilaya}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <a
                         href={formatWhatsAppUrl(order.customerPhone)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-on-faint hover:text-green-600 hover:bg-green-50 transition-colors"
                         title="Ouvrir WhatsApp"
                       >
                         <MessageCircle className="h-4 w-4" />
@@ -441,7 +441,7 @@ export function Orders() {
           <div ref={sentinelRef} className="h-1">
             {loadingMore && (
               <div className="p-3 text-center">
-                <Loader2 className="h-4 w-4 animate-spin mx-auto text-gray-400" />
+                <Loader2 className="h-4 w-4 animate-spin mx-auto text-on-faint" />
               </div>
             )}
           </div>

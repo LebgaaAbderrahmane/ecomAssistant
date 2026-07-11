@@ -32,18 +32,18 @@ export function AgentConfig() {
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-12">
-      <h2 className="text-2xl font-bold text-gray-900">Configurez votre agent</h2>
-      <p className="mt-1 text-sm text-gray-500">
+      <h2 className="text-2xl font-bold text-on">Configurez votre agent</h2>
+      <p className="mt-1 text-sm text-on-muted">
         Personnalisez le comportement de l'agent IA
       </p>
 
       <Card className="mt-8 space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Langue par défaut</label>
+          <label className="block text-sm font-medium text-on-secondary">Langue par défaut</label>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="mt-1 block w-full rounded-lg border border-on bg-surface text-on px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="auto">Détection automatique</option>
             <option value="derdja">Derdja</option>
@@ -53,7 +53,7 @@ export function AgentConfig() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Ton de l'agent</label>
+          <label className="block text-sm font-medium text-on-secondary">Ton de l'agent</label>
           <div className="mt-2 flex gap-4">
             {['friendly', 'formal'].map((t) => (
               <label key={t} className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export function AgentConfig() {
                   onChange={(e) => setTone(e.target.value)}
                   className="text-brand-600"
                 />
-                <span className="text-sm text-gray-700">{t === 'friendly' ? 'Amical' : 'Formel'}</span>
+                <span className="text-sm text-on-secondary">{t === 'friendly' ? 'Amical' : 'Formel'}</span>
               </label>
             ))}
           </div>

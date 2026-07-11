@@ -30,14 +30,14 @@ export function DropdownMenu({ items }: DropdownMenuProps) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-on-faint hover:text-on-muted hover:bg-surface-tertiary transition-colors"
         title="Plus d'actions"
       >
         <MoreVertical className="h-4 w-4" />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg z-30 py-1">
+        <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-on bg-surface shadow-lg z-30 py-1">
           {items.map((item, i) => (
             <button
               key={i}
@@ -48,8 +48,8 @@ export function DropdownMenu({ items }: DropdownMenuProps) {
               disabled={item.disabled}
               className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 item.variant === 'danger'
-                  ? 'text-red-600 hover:bg-red-50'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                  : 'text-on-secondary hover:bg-surface-secondary'
               }`}
             >
               {item.icon && <span className="shrink-0">{item.icon}</span>}

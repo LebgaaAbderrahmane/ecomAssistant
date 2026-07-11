@@ -184,18 +184,18 @@ export function Catalog() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Catalogue</h1>
-            <p className="mt-1 text-sm text-gray-500">{total} produit{total !== 1 ? 's' : ''} synchronisé{total !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-bold text-on">Catalogue</h1>
+            <p className="mt-1 text-sm text-on-muted">{total} produit{total !== 1 ? 's' : ''} synchronisé{total !== 1 ? 's' : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-faint" />
             <input
               placeholder="Rechercher..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
+              className="block w-full h-10 rounded-md border border-on bg-surface text-on pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-on-faint focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             />
           </div>
           <FilterDropdown
@@ -212,78 +212,78 @@ export function Catalog() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-lg border border-gray-200 bg-white">
+      <div className="mt-6 rounded-lg border border-on bg-surface">
         <div className="hidden lg:block">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200">
+              <tr className="border-b border-on">
                 <th className="px-4 py-3 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                    className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 w-16">Image</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 max-w-[200px]">Produit</th>
-                <th className="px-4 py-3 text-right text-[13px] font-medium text-gray-500 w-24">Prix</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 w-28">Stock</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500 w-32">Catégorie</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500 w-10">Action</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-16">Image</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted max-w-[200px]">Produit</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted w-24">Prix</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-28">Stock</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted w-32">Catégorie</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted w-10">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading && products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     Chargement...
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
-                    <ImageOff className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
+                    <ImageOff className="h-8 w-8 mx-auto mb-2 text-on-faint" />
                     Aucun produit trouvé.
                   </td>
                 </tr>
               ) : (
                 products.map((product) => (
-                  <tr key={product.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedProducts.has(product.id) ? 'bg-brand-50' : ''}`}>
+                  <tr key={product.id} className={`border-b border-on-light last:border-0 hover:bg-surface-secondary ${selectedProducts.has(product.id) ? 'bg-green-50/80 dark:bg-green-900/20' : ''}`}>
                     <td className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
                         checked={selectedProducts.has(product.id)}
                         onChange={() => toggleSelect(product.id)}
-                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                        className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                       />
                     </td>
                     <td className="px-4 py-3 w-16">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-gray-50 overflow-hidden">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-surface-secondary overflow-hidden">
                         {getImageUrl(product.images) ? (
                           <img src={getImageUrl(product.images)!} alt="" className="h-12 w-12 object-cover" />
                         ) : (
-                          <ImageOff className="h-[18px] w-[18px] text-gray-400" />
+                          <ImageOff className="h-[18px] w-[18px] text-on-faint" />
                         )}
                       </div>
                     </td>
                     <td className="px-4 py-3 max-w-[200px]">
-                      <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                      <p className="truncate text-xs text-gray-500 max-w-[200px]">{product.description}</p>
+                      <p className="text-sm font-medium text-on truncate">{product.name}</p>
+                      <p className="truncate text-xs text-on-muted max-w-[200px]">{product.description}</p>
                       {!product.agentEnabled && (
                         <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-amber-600">
                           <BotOff className="h-3 w-3" /> Agent désactivé
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-gray-900 w-24">{product.price.toLocaleString('fr-FR')} DA</td>
+                    <td className="px-4 py-3 text-right text-sm text-on w-24">{product.price.toLocaleString('fr-FR')} DA</td>
                     <td className="px-4 py-3 w-28">
                       <Badge variant={stockVariants[product.stockStatus] || 'neutral'}>
                         {stockLabels[product.stockStatus] || product.stockStatus}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500 w-32">{product.category || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-on-muted w-32">{product.category || '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center">
                         <DropdownMenu items={getRowActions(product)} />
@@ -298,36 +298,36 @@ export function Catalog() {
 
         <div className="lg:hidden">
           {loading && products.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
               Chargement...
             </div>
           ) : products.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
-              <ImageOff className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
+              <ImageOff className="h-8 w-8 mx-auto mb-2 text-on-faint" />
               Aucun produit trouvé.
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-on-light">
               {products.map((product) => (
                 <div key={product.id} className="p-4 flex gap-3">
-                  <div className="shrink-0 flex h-14 w-14 items-center justify-center rounded-md bg-gray-50 overflow-hidden">
+                  <div className="shrink-0 flex h-14 w-14 items-center justify-center rounded-md bg-surface-secondary overflow-hidden">
                     {getImageUrl(product.images) ? (
                       <img src={getImageUrl(product.images)!} alt="" className="h-14 w-14 object-cover" />
                     ) : (
-                      <ImageOff className="h-5 w-5 text-gray-400" />
+                      <ImageOff className="h-5 w-5 text-on-faint" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1 max-w-[200px]">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{product.description}</p>
+                        <p className="text-sm font-medium text-on truncate">{product.name}</p>
+                        <p className="text-xs text-on-muted truncate">{product.description}</p>
                       </div>
                       <DropdownMenu items={getRowActions(product)} />
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <p className="text-sm font-medium text-gray-900">{product.price.toLocaleString('fr-FR')} DA</p>
+                      <p className="text-sm font-medium text-on">{product.price.toLocaleString('fr-FR')} DA</p>
                       <Badge variant={stockVariants[product.stockStatus] || 'neutral'}>
                         {stockLabels[product.stockStatus] || product.stockStatus}
                       </Badge>
@@ -348,7 +348,7 @@ export function Catalog() {
           <div ref={sentinelRef} className="h-1">
             {loadingMore && (
               <div className="p-3 text-center">
-                <Loader2 className="h-4 w-4 animate-spin mx-auto text-gray-400" />
+                <Loader2 className="h-4 w-4 animate-spin mx-auto text-on-faint" />
               </div>
             )}
           </div>

@@ -176,18 +176,18 @@ export function Customers() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="shrink-0 flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
-            <p className="mt-1 text-sm text-gray-500">{total} client{total !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-bold text-on">Clients</h1>
+            <p className="mt-1 text-sm text-on-muted">{total} client{total !== 1 ? 's' : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-faint" />
             <input
               placeholder="Rechercher..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="block w-full h-10 rounded-md border border-gray-300 pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
+              className="block w-full h-10 rounded-md border border-on bg-surface text-on pl-[38px] pr-[10px] py-[10px] text-sm placeholder:text-on-faint focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             />
           </div>
           <FilterDropdown
@@ -203,56 +203,56 @@ export function Customers() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-lg border border-gray-200 bg-white">
+      <div className="mt-6 rounded-lg border border-on bg-surface">
         <div className="hidden lg:block">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200">
+              <tr className="border-b border-on">
                 <th className="px-4 py-3 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                    className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Confirmées</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Annulées</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Total</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client depuis</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Action</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Client</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Confirmées</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Annulées</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Total</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">Client depuis</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     Chargement...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
-                    <Users className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-on-muted">
+                    <Users className="h-8 w-8 mx-auto mb-2 text-on" />
                     Aucun client trouvé.
                   </td>
                 </tr>
               ) : (
                 customers.map((customer) => (
-                  <tr key={customer.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedCustomers.has(customer.id) ? 'bg-brand-50' : ''}`}>
+                  <tr key={customer.id} className={`border-b border-on-light last:border-0 hover:bg-surface-secondary ${selectedCustomers.has(customer.id) ? 'bg-green-50/80 dark:bg-brand-900/20' : ''}`}>
                     <td className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
                         checked={selectedCustomers.has(customer.id)}
                         onChange={() => toggleSelect(customer.id)}
-                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                        className="h-4 w-4 rounded border-on accent-green-600 focus:ring-brand-600"
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{customer.name || '—'}</p>
-                      <p className="text-xs text-gray-500">{customer.phone}</p>
+                      <p className="text-sm font-medium text-on">{customer.name || '—'}</p>
+                      <p className="text-xs text-on-muted">{customer.phone}</p>
                       {customer.blocked && (
                         <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-red-600">
                           <Ban className="h-3 w-3" /> Bloqué
@@ -274,7 +274,7 @@ export function Customers() {
                         {customer._count.orders}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
+                    <td className="px-4 py-3 text-sm text-on-muted">
                       {new Date(customer.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
                     <td className="px-4 py-3">
@@ -291,23 +291,23 @@ export function Customers() {
 
         <div className="lg:hidden">
           {loading && customers.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
               Chargement...
             </div>
           ) : customers.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
-              <Users className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
+              <Users className="h-8 w-8 mx-auto mb-2 text-on" />
               Aucun client trouvé.
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-on-light">
               {customers.map((customer) => (
                 <div key={customer.id} className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{customer.name || '—'}</p>
-                      <p className="text-xs text-gray-500">{customer.phone}</p>
+                      <p className="text-sm font-medium text-on">{customer.name || '—'}</p>
+                      <p className="text-xs text-on-muted">{customer.phone}</p>
                       {customer.blocked && (
                         <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-red-600">
                           <Ban className="h-3 w-3" /> Bloqué
@@ -327,7 +327,7 @@ export function Customers() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-1">
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-on-muted">
                       {customer._count.orders} commande{customer._count.orders !== 1 ? 's' : ''} · {new Date(customer.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                   </div>
@@ -341,7 +341,7 @@ export function Customers() {
           <div ref={sentinelRef} className="h-1">
             {loadingMore && (
               <div className="p-3 text-center">
-                <Loader2 className="h-4 w-4 animate-spin mx-auto text-gray-400" />
+                <Loader2 className="h-4 w-4 animate-spin mx-auto text-on-faint" />
               </div>
             )}
           </div>

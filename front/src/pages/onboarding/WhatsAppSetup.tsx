@@ -56,8 +56,8 @@ export function WhatsAppSetup() {
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-12">
-      <h2 className="text-2xl font-bold text-gray-900">Connectez WhatsApp</h2>
-      <p className="mt-1 text-sm text-gray-500">
+      <h2 className="text-2xl font-bold text-on">Connectez WhatsApp</h2>
+      <p className="mt-1 text-sm text-on-muted">
         Liez votre numéro WhatsApp Business pour que l'agent puisse communiquer avec vos clients
       </p>
 
@@ -82,23 +82,23 @@ export function WhatsAppSetup() {
           {stage === 'loading' && (
             <div className="flex flex-col items-center gap-4 py-8">
               <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-              <p className="text-sm text-gray-500">Configuration de la session...</p>
+              <p className="text-sm text-on-muted">Configuration de la session...</p>
             </div>
           )}
 
           {(stage === 'qr' || stage === 'connecting') && (
             <div className="flex flex-col items-center gap-4">
-              <p className="text-sm font-medium text-gray-700">
+              <p className="text-sm font-medium text-on-secondary">
                 Scannez ce code QR avec WhatsApp
               </p>
-              <div className="rounded-lg border-2 border-dashed border-gray-300 p-4">
+              <div className="rounded-lg border-2 border-dashed border-on p-4">
                 <img
                   src={`data:image/png;base64,${qrBase64}`}
                   alt="QR Code WhatsApp"
                   className="h-64 w-64"
                 />
               </div>
-              <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="flex items-center gap-2 text-sm text-on-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 En attente de scan...
               </div>
@@ -111,7 +111,7 @@ export function WhatsAppSetup() {
                 <Check className="h-8 w-8 text-green-600" />
               </div>
               <p className="text-lg font-semibold text-green-700">WhatsApp connecté !</p>
-              <p className="text-sm text-gray-500">Redirection...</p>
+              <p className="text-sm text-on-muted">Redirection...</p>
             </div>
           )}
 

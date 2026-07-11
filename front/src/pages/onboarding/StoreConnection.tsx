@@ -80,8 +80,8 @@ export function StoreConnection() {
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-12">
-      <h2 className="text-2xl font-bold text-gray-900">Connectez votre boutique</h2>
-      <p className="mt-1 text-sm text-gray-500">
+      <h2 className="text-2xl font-bold text-on">Connectez votre boutique</h2>
+      <p className="mt-1 text-sm text-on-muted">
         Choisissez votre plateforme e-commerce pour synchroniser vos produits et commandes
       </p>
 
@@ -91,12 +91,12 @@ export function StoreConnection() {
           className={`rounded-xl border-2 p-6 text-center transition-all hover:shadow-md ${
             platform === 'shopify'
               ? 'border-brand-600 bg-brand-50'
-              : 'border-gray-200 bg-white'
+              : 'border-on bg-surface'
           }`}
         >
-          <ShoppingBag className="mx-auto h-10 w-10 text-gray-700" />
-          <p className="mt-3 font-semibold text-gray-900">Shopify</p>
-          <p className="mt-1 text-xs text-gray-500">Via OAuth</p>
+          <ShoppingBag className="mx-auto h-10 w-10 text-on-secondary" />
+          <p className="mt-3 font-semibold text-on">Shopify</p>
+          <p className="mt-1 text-xs text-on-muted">Via OAuth</p>
         </button>
 
         <button
@@ -104,12 +104,12 @@ export function StoreConnection() {
           className={`rounded-xl border-2 p-6 text-center transition-all hover:shadow-md ${
             platform === 'woocommerce'
               ? 'border-brand-600 bg-brand-50'
-              : 'border-gray-200 bg-white'
+              : 'border-on bg-surface'
           }`}
         >
-          <Globe className="mx-auto h-10 w-10 text-gray-700" />
-          <p className="mt-3 font-semibold text-gray-900">WooCommerce</p>
-          <p className="mt-1 text-xs text-gray-500">Via clé API</p>
+          <Globe className="mx-auto h-10 w-10 text-on-secondary" />
+          <p className="mt-3 font-semibold text-on">WooCommerce</p>
+          <p className="mt-1 text-xs text-on-muted">Via clé API</p>
         </button>
       </div>
 
@@ -122,7 +122,7 @@ export function StoreConnection() {
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
           />
-          <p className="text-xs text-gray-400">Exemple : ma-boutique → ma-boutique.myshopify.com</p>
+          <p className="text-xs text-on-faint">Exemple : ma-boutique → ma-boutique.myshopify.com</p>
           <Button onClick={handleConnectShopify} loading={connecting} disabled={!domain}>
             {connecting ? 'Connexion en cours...' : 'Connecter Shopify'}
           </Button>
@@ -149,7 +149,7 @@ export function StoreConnection() {
       )}
 
       {!platform && !error && (
-        <div className="mt-8 text-center text-sm text-gray-400">
+        <div className="mt-8 text-center text-sm text-on-faint">
           Sélectionnez une plateforme pour continuer
         </div>
       )}

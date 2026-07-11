@@ -42,7 +42,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
         className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors ${
           active
             ? 'border-brand-600 bg-brand-50 text-brand-600'
-            : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+            : 'border-on text-on-secondary hover:bg-surface-secondary'
         }`}
       >
         <Calendar className="h-4 w-4 shrink-0" />
@@ -55,7 +55,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-200 bg-white shadow-lg z-20 py-1">
+        <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-on bg-surface shadow-lg z-20 py-1">
           {defaultOptions.map(opt => (
             <button
               key={opt.value}
@@ -66,7 +66,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
               className={`w-full text-left px-3 py-2 text-sm transition-colors ${
                 value === opt.value || (opt.value === 'all' && value === null)
                   ? 'text-brand-600 font-medium bg-brand-50'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  : 'text-on-secondary hover:bg-surface-secondary'
               }`}
             >
               {opt.label}

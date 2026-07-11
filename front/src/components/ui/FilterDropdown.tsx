@@ -48,7 +48,7 @@ export function FilterDropdown({ options, selected, onChange, label, placeholder
         className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors ${
           active
             ? 'border-brand-600 bg-brand-50 text-brand-600'
-            : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+            : 'border-on text-on-secondary hover:bg-surface-secondary'
         }`}
       >
         <SlidersHorizontal className="h-4 w-4 shrink-0" />
@@ -61,27 +61,27 @@ export function FilterDropdown({ options, selected, onChange, label, placeholder
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-gray-200 bg-white shadow-lg z-20 py-1">
-          <label className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer select-none">
+        <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-on bg-surface shadow-lg z-20 py-1">
+          <label className="flex items-center gap-2 px-3 py-2 text-sm text-on-secondary hover:bg-surface-secondary cursor-pointer select-none">
             <input
               type="checkbox"
               checked={allSelected}
               onChange={toggleAll}
-              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+              className="h-4 w-4 rounded border-on accent-green-600"
             />
             Tout sélectionner
           </label>
-          <div className="mx-3 border-t border-gray-100" />
+          <div className="mx-3 border-t border-on-light" />
           {options.map(opt => (
             <label
               key={opt.value}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer select-none"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-on-secondary hover:bg-surface-secondary cursor-pointer select-none"
             >
               <input
                 type="checkbox"
                 checked={selected.includes(opt.value)}
                 onChange={() => toggle(opt.value)}
-                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                className="h-4 w-4 rounded border-on accent-green-600"
               />
               {opt.label}
             </label>

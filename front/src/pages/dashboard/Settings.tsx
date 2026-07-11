@@ -35,15 +35,15 @@ function SegmentControl({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="inline-flex flex-wrap rounded-md border border-gray-200">
+    <div className="inline-flex flex-wrap rounded-md border border-on">
       {options.map((opt) => (
         <button
           key={opt}
           onClick={() => onChange(opt)}
           className={`px-4 sm:px-5 py-2 text-sm font-medium transition-colors ${
             value === opt
-              ? "border-2 border-brand-600 bg-white text-brand-600 -m-[1px] z-10"
-              : "bg-white text-gray-700 hover:bg-gray-50"
+              ? "border-2 border-brand-600 bg-surface text-brand-600 -m-[1px] z-10"
+              : "bg-surface text-on-secondary hover:bg-surface-secondary"
           }`}
         >
           {opt}
@@ -121,16 +121,16 @@ function AgentConfigTab() {
   );
 
   if (loading)
-    return <div className="text-sm text-gray-500 py-4">Chargement...</div>;
+    return <div className="text-sm text-on-muted py-4">Chargement...</div>;
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-900">
+      <h2 className="text-lg font-semibold text-on">
         Configuration agent
       </h2>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-on-secondary mb-2">
           Mode linguistique
         </label>
         <SegmentControl
@@ -141,7 +141,7 @@ function AgentConfigTab() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-on-secondary mb-2">
           Ton
         </label>
         <SegmentControl
@@ -152,7 +152,7 @@ function AgentConfigTab() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-on-secondary mb-2">
           Délais de relance
         </label>
         <div className="flex flex-wrap items-center gap-2">
@@ -160,27 +160,27 @@ function AgentConfigTab() {
             type="number"
             value={delay1}
             onChange={(e) => setDelay1(e.target.value)}
-            className="w-20 h-10 rounded-md border border-gray-300 px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
+            className="w-20 h-10 rounded-md border border-on bg-surface text-on px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
           />
-          <span className="text-sm text-gray-500">heures</span>
-          <span className="text-gray-300 text-lg">→</span>
+          <span className="text-sm text-on-muted">heures</span>
+          <span className="text-on-faint text-lg">→</span>
           <input
             type="number"
             value={delay2}
             onChange={(e) => setDelay2(e.target.value)}
-            className="w-20 h-10 rounded-md border border-gray-300 px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
+            className="w-20 h-10 rounded-md border border-on bg-surface text-on px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
           />
-          <span className="text-sm text-gray-500">heures</span>
-          <span className="text-gray-300 text-lg">→</span>
+          <span className="text-sm text-on-muted">heures</span>
+          <span className="text-on-faint text-lg">→</span>
           <input
             type="number"
             value={delay3}
             onChange={(e) => setDelay3(e.target.value)}
-            className="w-20 h-10 rounded-md border border-gray-300 px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
+            className="w-20 h-10 rounded-md border border-on bg-surface text-on px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-600"
           />
-          <span className="text-sm text-gray-500">heures</span>
+          <span className="text-sm text-on-muted">heures</span>
         </div>
-        <p className="mt-1 text-[13px] text-gray-500">Relances max : 3</p>
+        <p className="mt-1 text-[13px] text-on-muted">Relances max : 3</p>
       </div>
 
       <div className="flex gap-3 pt-2">
@@ -302,25 +302,25 @@ function StoreConnectionTab() {
   };
 
   if (loading)
-    return <div className="text-sm text-gray-500 py-4">Chargement...</div>;
+    return <div className="text-sm text-on-muted py-4">Chargement...</div>;
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-900">
+      <h2 className="text-lg font-semibold text-on">
         Connexion boutique
       </h2>
-      <div className="rounded-md border border-gray-200 p-4">
+      <div className="rounded-md border border-on p-4">
         <div className="flex items-center justify-between">
           <div>
             {store?.connected ? (
               <>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-on">
                   {store.source} — {store.storeName}
                 </p>
-                <p className="text-[13px] text-gray-500">{store.storeUrl}</p>
+                <p className="text-[13px] text-on-muted">{store.storeUrl}</p>
               </>
             ) : (
-              <p className="text-sm text-gray-500">Aucune boutique connectée</p>
+              <p className="text-sm text-on-muted">Aucune boutique connectée</p>
             )}
           </div>
           <Badge variant={store?.connected ? "success" : "neutral"}>
@@ -452,16 +452,16 @@ function WhatsAppTab() {
   };
 
   if (loading)
-    return <div className="text-sm text-gray-500 py-4">Chargement...</div>;
+    return <div className="text-sm text-on-muted py-4">Chargement...</div>;
 
   if (qrBase64) {
     return (
       <div className="space-y-6">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className="text-lg font-semibold text-on">
           Connecter WhatsApp
         </h2>
-        <div className="flex flex-col items-center gap-4 rounded-md border border-gray-200 p-6">
-          <p className="text-sm font-medium text-gray-700">
+        <div className="flex flex-col items-center gap-4 rounded-md border border-on p-6">
+          <p className="text-sm font-medium text-on-secondary">
             Scannez ce code QR avec WhatsApp
           </p>
           <img
@@ -469,7 +469,7 @@ function WhatsAppTab() {
             alt="QR"
             className="h-64 w-64"
           />
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-on-muted">
             <Loader2 className="h-4 w-4 animate-spin" />
             En attente de scan...
           </div>
@@ -491,15 +491,15 @@ function WhatsAppTab() {
   return (
     <>
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-900">WhatsApp</h2>
-      <div className="rounded-md border border-gray-200 p-4">
+      <h2 className="text-lg font-semibold text-on">WhatsApp</h2>
+      <div className="rounded-md border border-on p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-900">
+            <p className="text-sm font-medium text-on">
               {whatsappPhoneNumber || "Aucun numéro connecté"}
             </p>
             {whatsappPhoneNumber && (
-              <p className="text-[13px] text-gray-500">WhatsApp Business</p>
+              <p className="text-[13px] text-on-muted">WhatsApp Business</p>
             )}
           </div>
           <Badge variant={whatsappConnected ? "success" : "danger"}>
@@ -524,7 +524,7 @@ function WhatsAppTab() {
       </div>
 
       <div>
-        <h3 className="text-sm font-medium text-gray-700 mb-3">
+        <h3 className="text-sm font-medium text-on-secondary mb-3">
           Modèles de message
         </h3>
         <div className="space-y-2">
@@ -535,9 +535,9 @@ function WhatsAppTab() {
           ].map((tmpl) => (
             <div
               key={tmpl.name}
-              className="flex items-center justify-between rounded-md border border-gray-200 px-4 py-3"
+              className="flex items-center justify-between rounded-md border border-on px-4 py-3"
             >
-              <span className="text-sm text-gray-900">{tmpl.name}</span>
+              <span className="text-sm text-on">{tmpl.name}</span>
               <Badge
                 variant={tmpl.status === "approved" ? "success" : "warning"}
               >
@@ -552,16 +552,16 @@ function WhatsAppTab() {
     {showDisconnectConfirm && (
       <div className="fixed inset-0 z-[90] flex items-center justify-center">
         <div className="fixed inset-0 bg-black/50" onClick={() => setShowDisconnectConfirm(false)} />
-        <div className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <div className="relative z-10 w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
           <div className="flex items-start gap-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
               <AlertTriangle className="h-5 w-5 text-amber-600" />
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-on">
                 Déconnecter WhatsApp ?
               </h2>
-              <p className="mt-2 text-sm text-gray-500">
+              <p className="mt-2 text-sm text-on-muted">
                 Vous ne pourrez plus envoyer ni recevoir de messages tant que la session n'est pas reconnectée.
               </p>
             </div>
@@ -584,8 +584,8 @@ function WhatsAppTab() {
 function WilayaPricingTab() {
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-900">Wilaya pricing</h2>
-      <p className="text-sm text-gray-500">
+      <h2 className="text-lg font-semibold text-on">Wilaya pricing</h2>
+      <p className="text-sm text-on-muted">
         Tableau des frais de livraison par wilaya (à implémenter)
       </p>
     </div>
@@ -610,14 +610,14 @@ export function Settings() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900">Paramètres</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <h1 className="text-2xl font-bold text-on">Paramètres</h1>
+      <p className="mt-1 text-sm text-on-muted">
         Gérez votre boutique, votre agent et vos paramètres de livraison
       </p>
 
       <div className="mt-6 lg:flex lg:gap-6">
         <div className="lg:w-[220px] lg:shrink-0 mb-4 lg:mb-0">
-          <div className="lg:rounded-lg lg:border lg:border-gray-200 lg:bg-white lg:p-2 flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1 lg:gap-1 -mx-4 px-4 lg:mx-0 lg:px-0">
+          <div className="lg:rounded-lg lg:border lg:border-on lg:bg-surface lg:p-2 flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1 lg:gap-1 -mx-4 px-4 lg:mx-0 lg:px-0">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -625,7 +625,7 @@ export function Settings() {
                 className={`flex items-center gap-2 rounded-md px-4 py-[10px] text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === tab.id
                     ? "bg-brand-600 text-white"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 lg:hover:bg-gray-50"
+                    : "text-on-muted hover:bg-surface-secondary hover:text-on-secondary lg:hover:bg-surface-secondary"
                 }`}
               >
                 <tab.icon className="h-[18px] w-[18px]" />
@@ -634,7 +634,7 @@ export function Settings() {
             ))}
           </div>
         </div>
-        <div className="flex-1 rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
+        <div className="flex-1 rounded-lg border border-on bg-surface p-4 sm:p-5">
           {content[activeTab]}
         </div>
       </div>

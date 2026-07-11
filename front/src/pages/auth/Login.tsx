@@ -38,22 +38,22 @@ export function Login() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-secondary px-4">
       <div className="mb-8 flex flex-col items-center gap-2">
         <img
           src="/ecomAssistantLogo.svg"
           alt="EcomAssistant"
           className="h-9 w-9"
         />
-        <span className="text-lg font-semibold text-gray-900">
+        <span className="text-lg font-semibold text-on">
           EcomAssistant
         </span>
       </div>
 
-      <div className="w-full max-w-[440px] rounded-xl border border-gray-200 bg-white p-8">
+      <div className="w-full max-w-[440px] rounded-xl border border-on bg-surface p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Connexion</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-on">Connexion</h1>
+          <p className="mt-1 text-sm text-on-muted">
             Connectez-vous pour gérer votre agent WhatsApp
           </p>
         </div>
@@ -77,7 +77,7 @@ export function Login() {
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[13px] font-medium text-gray-700">
+              <label className="text-[13px] font-medium text-on-secondary">
                 Mot de passe
               </label>
               <Link
@@ -94,16 +94,16 @@ export function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className={`block w-full h-10 rounded-md border px-[10px] py-[10px] text-sm transition-colors placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600 pr-10 ${
+                className={`block w-full h-10 rounded-md border px-[10px] py-[10px] text-sm transition-colors bg-surface text-on placeholder:text-on-faint focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600 pr-10 ${
                   fieldErrors.password
                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                    : "border-gray-300"
+                    : "border-on"
                 }`}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-faint hover:text-on-secondary"
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -125,20 +125,20 @@ export function Login() {
         </form>
 
         <div className="my-4 flex items-center gap-3">
-          <div className="flex-1 border-t border-gray-200" />
-          <span className="text-sm text-gray-400">ou</span>
-          <div className="flex-1 border-t border-gray-200" />
+          <div className="flex-1 border-t border-on" />
+          <span className="text-sm text-on-faint">ou</span>
+          <div className="flex-1 border-t border-on" />
         </div>
 
         <button
           type="button"
-          className="flex w-full h-11 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="flex w-full h-11 items-center justify-center gap-2 rounded-md border border-on bg-surface text-sm font-medium text-on-secondary hover:bg-surface-secondary transition-colors"
         >
           <Globe className="h-4 w-4" />
           Continuer avec Google
         </button>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
+        <p className="mt-6 text-center text-sm text-on-muted">
           Nouveau sur EcomAssistant ?{" "}
           <Link
             to="/signup"

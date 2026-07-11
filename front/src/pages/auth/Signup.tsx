@@ -129,25 +129,25 @@ export function Signup() {
 
   if (isSuccess) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-surface-secondary px-4">
         <div className="mb-8 flex flex-col items-center gap-2">
           <img
             src="/ecomAssistantLogo.svg"
             alt="EcomAssistant"
             className="h-9 w-9"
           />
-          <span className="text-lg font-semibold text-gray-900">
+          <span className="text-lg font-semibold text-on">
             EcomAssistant
           </span>
         </div>
-        <div className="w-full max-w-[440px] rounded-xl border border-gray-200 bg-white p-8 text-center">
+        <div className="w-full max-w-[440px] rounded-xl border border-on bg-surface p-8 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
             <CheckCircle className="h-6 w-6 text-green-600" />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-xl font-bold text-on">
             Vérifiez votre email
           </h1>
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-on-muted">
             Un code de confirmation a été envoyé à <strong>{email}</strong>.
           </p>
 
@@ -167,7 +167,7 @@ export function Signup() {
                 value={digit}
                 onChange={(e) => handleCodeChange(i, e.target.value)}
                 onKeyDown={(e) => handleCodeKeyDown(i, e)}
-                className="h-12 w-11 rounded-md border border-gray-300 text-center text-lg font-semibold focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600"
+                className="h-12 w-11 rounded-md border border-on bg-surface text-on text-center text-lg font-semibold focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600"
               />
             ))}
           </div>
@@ -184,7 +184,7 @@ export function Signup() {
             Vérifier mon email
           </Button>
 
-          <p className="mt-4 text-xs text-gray-500">
+          <p className="mt-4 text-xs text-on-muted">
             Code non reçu ?{" "}
             <button
               onClick={handleResend}
@@ -202,7 +202,7 @@ export function Signup() {
               setPassword("");
               setConfirmPassword("");
             }}
-            className="mt-3 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600"
+            className="mt-3 inline-flex items-center gap-1 text-sm text-on-faint hover:text-on-secondary"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Modifier l'adresse email
@@ -213,22 +213,22 @@ export function Signup() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-secondary px-4">
       <div className="mb-8 flex flex-col items-center gap-2">
         <img
           src="/ecomAssistantLogo.svg"
           alt="EcomAssistant"
           className="h-9 w-9"
         />
-        <span className="text-lg font-semibold text-gray-900">
+        <span className="text-lg font-semibold text-on">
           EcomAssistant
         </span>
       </div>
 
-      <div className="w-full max-w-[440px] rounded-xl border border-gray-200 bg-white p-8">
+      <div className="w-full max-w-[440px] rounded-xl border border-on bg-surface p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Créer un compte</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-on">Créer un compte</h1>
+          <p className="mt-1 text-sm text-on-muted">
             Commencez votre essai gratuit de 14 jours
           </p>
         </div>
@@ -260,7 +260,7 @@ export function Signup() {
           />
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[13px] font-medium text-gray-700">
+              <label className="text-[13px] font-medium text-on-secondary">
                 Mot de passe
               </label>
             </div>
@@ -272,16 +272,16 @@ export function Signup() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
-                className={`block w-full h-10 rounded-md border px-[10px] py-[10px] text-sm transition-colors placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600 pr-10 ${
+                className={`block w-full h-10 rounded-md border px-[10px] py-[10px] text-sm transition-colors bg-surface text-on placeholder:text-on-faint focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600 pr-10 ${
                   fieldErrors.password
                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                    : "border-gray-300"
+                    : "border-on"
                 }`}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-faint hover:text-on-secondary"
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -298,7 +298,7 @@ export function Signup() {
           </div>
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[13px] font-medium text-gray-700">
+              <label className="text-[13px] font-medium text-on-secondary">
                 Confirmer le mot de passe
               </label>
             </div>
@@ -309,16 +309,16 @@ export function Signup() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className={`block w-full h-10 rounded-md border px-[10px] py-[10px] text-sm transition-colors placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600 pr-10 ${
+                className={`block w-full h-10 rounded-md border px-[10px] py-[10px] text-sm transition-colors bg-surface text-on placeholder:text-on-faint focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600 pr-10 ${
                   fieldErrors.confirmPassword
                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                    : "border-gray-300"
+                    : "border-on"
                 }`}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-faint hover:text-on-secondary"
               >
                 {showConfirm ? (
                   <EyeOff className="h-4 w-4" />
@@ -338,7 +338,7 @@ export function Signup() {
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
+        <p className="mt-6 text-center text-sm text-on-muted">
           Déjà un compte ?{" "}
           <Link
             to="/login"

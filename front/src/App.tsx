@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider } from "./lib/auth.js";
 import { NotificationProvider } from "./lib/notifications.js";
+import { ThemeProvider } from "./lib/theme.js";
 import { DisconnectModal } from "./components/ui/DisconnectModal.js";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute.js";
 import { AppLayout } from "./components/layout/AppLayout.js";
@@ -24,38 +25,40 @@ import { Customers } from "./pages/dashboard/Customers.js";
 
 export function App() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route element={<ProtectedRoute />}>
-              <Route path="/onboarding" element={<OnboardingLayout />}>
-                <Route index element={<Navigate to="store" replace />} />
-                <Route path="store" element={<StoreConnection />} />
-                <Route path="whatsapp" element={<WhatsAppSetup />} />
-                <Route path="agent" element={<AgentConfig />} />
-                <Route path="activate" element={<Activation />} />
+    <ThemeProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/onboarding" element={<OnboardingLayout />}>
+                  <Route index element={<Navigate to="store" replace />} />
+                  <Route path="store" element={<StoreConnection />} />
+                  <Route path="whatsapp" element={<WhatsAppSetup />} />
+                  <Route path="agent" element={<AgentConfig />} />
+                  <Route path="activate" element={<Activation />} />
+                </Route>
+                <Route path="/dashboard" element={<AppLayout />}>
+                  <Route index element={<DashboardHome />} />
+                  <Route path="orders" element={<Orders />} />
+                  <Route path="customers" element={<Customers />} />
+                  <Route path="catalog" element={<Catalog />} />
+                  <Route path="escalations" element={<Escalations />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="profile" element={<Profile />} />
+                  <Route path="billing" element={<Billing />} />
+                  <Route path="notifications" element={<Notifications />} />
+                </Route>
               </Route>
-              <Route path="/dashboard" element={<AppLayout />}>
-                <Route index element={<DashboardHome />} />
-                <Route path="orders" element={<Orders />} />
-                <Route path="customers" element={<Customers />} />
-                <Route path="catalog" element={<Catalog />} />
-                <Route path="escalations" element={<Escalations />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="profile" element={<Profile />} />
-                <Route path="billing" element={<Billing />} />
-                <Route path="notifications" element={<Notifications />} />
-              </Route>
-            </Route>
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-          <DisconnectModal />
-          <Toaster position="bottom-right" richColors />
-        </BrowserRouter>
-      </NotificationProvider>
-    </AuthProvider>
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+            <DisconnectModal />
+            <Toaster position="bottom-right" richColors />
+          </BrowserRouter>
+        </NotificationProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

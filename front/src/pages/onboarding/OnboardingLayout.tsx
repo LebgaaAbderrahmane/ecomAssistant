@@ -15,8 +15,8 @@ export function OnboardingLayout() {
   const progress = ((currentStep + 1) / steps.length) * 100
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
-      <div className="border-b border-gray-200 bg-white">
+    <div className="flex min-h-screen flex-col bg-surface-secondary">
+      <div className="border-b border-on bg-surface">
         <div className="mx-auto max-w-3xl px-8 pt-4 pb-6">
           <div className="mb-8 flex items-center justify-center">
             {steps.map((step, index) => (
@@ -27,15 +27,15 @@ export function OnboardingLayout() {
                       index < currentStep
                         ? 'bg-brand-600 text-white'
                         : index === currentStep
-                          ? 'border-2 border-brand-600 bg-white text-brand-600'
-                          : 'border-2 border-gray-300 bg-white text-gray-400'
+                          ? 'border-2 border-brand-600 bg-surface text-brand-600'
+                          : 'border-2 border-on bg-surface text-on-faint'
                     }`}
                   >
                     {index < currentStep ? <Check className="h-4 w-4" /> : index + 1}
                   </div>
                   <span
                     className={`hidden text-sm font-medium sm:inline ${
-                      index <= currentStep ? 'text-gray-900' : 'text-gray-400'
+                      index <= currentStep ? 'text-on' : 'text-on-faint'
                     }`}
                   >
                     {step.label}
