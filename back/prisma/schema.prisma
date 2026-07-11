@@ -56,6 +56,8 @@ model ShopifyConnection {
   tokenExpiresAt        DateTime?
   refreshTokenExpiresAt DateTime?
   scopes                String?
+  currency              String    @default("DZD")
+  defaultOrderStatus    String    @default("PENDING")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 

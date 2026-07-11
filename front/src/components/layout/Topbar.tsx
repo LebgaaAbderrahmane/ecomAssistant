@@ -120,7 +120,7 @@ export function Topbar() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         {/* Language toggle */}
         <div ref={langRef} className="relative">
           <button
@@ -281,7 +281,7 @@ export function Topbar() {
         </div>
 
         {/* Profile */}
-        <div ref={profileRef} className="relative">
+        <div ref={profileRef} className="relative ml-1">
           <button
             onClick={() => setProfileOpen(!profileOpen)}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white hover:ring-2 hover:ring-brand-300 transition-all"

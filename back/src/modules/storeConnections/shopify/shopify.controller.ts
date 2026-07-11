@@ -6,6 +6,7 @@ import { AuthenticatedRequest } from "../../../middlwares/auth.middlware";
 import { sendOrderNotification } from "../../whatsapp/whatsapp.controller";
 import * as ordersService from "../../orders/orders.service";
 import * as productsService from "../../products/products.service";
+import prisma from "../../../config/db.config";
 const { APP_URL } = process.env;
 
 export async function authenticateShopify(
@@ -114,6 +115,95 @@ export async function handleProductWebhook(
   } catch (err) {
     console.error("Product webhook processing error:", err);
     res.status(500).send("Error");
+  }
+}
+
+export async function getShopInfo(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const merchantId = req.merchant!.merchantId;
+  try {
+    const connection = await StoreConnectionFactory.createForMerchant(merchantId);
+    const shopInfo = await connection.getShopInfo();
+    res.json(shopInfo);
+  } catch (err) {
+    console.error("Error fetching shop info:", err);
+    res.status(500).json({ error: "Failed to fetch shop info" });
+  }
+}
+
+export async function listWebhooks(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const merchantId = req.merchant!.merchantId;
+  try {
+    const connection = await StoreConnectionFactory.createForMerchant(merchantId);
+    const webhooks = await connection.listWebhooks();
+    res.json(webhooks);
+  } catch (err) {
+    console.error("Error listing webhooks:", err);
+    res.status(500).json({ error: "Failed to list webhooks" });
+  }
+}
+
+export async function reRegisterWebhooks(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const merchantId = req.merchant!.merchantId;
+  try {
+    const connection = await StoreConnectionFactory.createForMerchant(merchantId);
+    await connection.registerWebhooks();
+    res.json({ success: true, message: "Webhooks re-registered" });
+  } catch (err) {
+    console.error("Error re-registering webhooks:", err);
+    res.status(500).json({ error: "Failed to re-register webhooks" });
+  }
+}
+
+export async function getStoreSettings(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const merchantId = req.merchant!.merchantId;
+  try {
+    const storeConn = await prisma.storeConnection.findFirst({
+      where: { merchantId, source: "SHOPIFY" },
+      include: { shopifyConnection: { select: { currency: true, defaultOrderStatus: true } } },
+    });
+    if (!storeConn?.shopifyConnection) {
+      res.status(404).json({ error: "No Shopify connection" });
+      return;
+    }
+    res.json(storeConn.shopifyConnection);
+  } catch (err) {
+    console.error("Error fetching store settings:", err);
+    res.status(500).json({ error: "Failed to fetch store settings" });
+  }
+}
+
+export async function updateStoreSettings(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const merchantId = req.merchant!.merchantId;
+  const { currency, defaultOrderStatus } = req.body;
+  try {
+    const storeConn = await prisma.storeConnection.findFirst({
+      where: { merchantId, source: "SHOPIFY" },
+    });
+    if (!storeConn) {
+      res.status(404).json({ error: "No Shopify connection" });
+      return;
+    }
+    const connection = await StoreConnectionFactory.create(storeConn.id);
+    await connection.updateSettings({ currency, defaultOrderStatus });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error updating store settings:", err);
+    res.status(500).json({ error: "Failed to update store settings" });
   }
 }
 

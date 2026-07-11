@@ -265,6 +265,41 @@ export class ShopifyConnection extends AbstractStoreConnection {
   }
 
   // ─────────────────────────────────────────────
+  // Shop info & settings
+  // ─────────────────────────────────────────────
+
+  async getShopInfo(): Promise<Record<string, unknown>> {
+    const accessToken = await this.getValidAccessToken();
+    const { data } = await axios.get(
+      `https://${this.shopDomain}/admin/api/${API_VERSION}/shop.json`,
+      { headers: { "X-Shopify-Access-Token": accessToken } },
+    );
+    return data.shop;
+  }
+
+  async listWebhooks(): Promise<unknown[]> {
+    const accessToken = await this.getValidAccessToken();
+    const { data } = await axios.get(
+      `https://${this.shopDomain}/admin/api/${API_VERSION}/webhooks.json`,
+      { headers: { "X-Shopify-Access-Token": accessToken } },
+    );
+    return data.webhooks ?? [];
+  }
+
+  async updateSettings(settings: { currency?: string; defaultOrderStatus?: string }): Promise<void> {
+    const data: Record<string, unknown> = {};
+    if (settings.currency !== undefined) data.currency = settings.currency;
+    if (settings.defaultOrderStatus !== undefined) data.defaultOrderStatus = settings.defaultOrderStatus;
+    
+    if (Object.keys(data).length > 0) {
+      await prisma.shopifyConnection.update({
+        where: { storeConnectionId: this.storeConnectionId },
+        data,
+      });
+    }
+  }
+
+  // ─────────────────────────────────────────────
   // Private helpers
   // ─────────────────────────────────────────────
 

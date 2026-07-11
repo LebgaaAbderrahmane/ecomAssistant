@@ -8,14 +8,44 @@ import {
   MapPin,
   Loader2,
   AlertTriangle,
+  RefreshCw,
+  Globe,
+  CheckCircle2,
+  ExternalLink,
+  Unplug,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button.js";
 import { Badge } from "../../components/ui/Badge.js";
+import { Card } from "../../components/ui/Card.js";
 import { api } from "../../lib/api.js";
 import { Input } from "../../components/ui/Input.js";
 import { useNotifications } from "../../lib/notifications.js";
 import { useTranslation } from 'react-i18next';
+
+interface ShopInfo {
+  name: string;
+  email: string;
+  phone: string;
+  currency: string;
+  timezone: string;
+  plan_name: string;
+  domain: string;
+}
+
+interface WebhookInfo {
+  id: number;
+  topic: string;
+  address: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface StoreSettings {
+  currency: string;
+  defaultOrderStatus: string;
+}
 
 type SettingsTab = "agent" | "store" | "whatsapp" | "wilaya";
 
@@ -214,6 +244,18 @@ function StoreConnectionTab() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [shopInfo, setShopInfo] = useState<ShopInfo | null>(null);
+  const [shopInfoLoading, setShopInfoLoading] = useState(true);
+  const [webhooks, setWebhooks] = useState<WebhookInfo[]>([]);
+  const [webhooksLoading, setWebhooksLoading] = useState(true);
+  const [reRegistering, setReRegistering] = useState(false);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>({
+    currency: "DZD",
+    defaultOrderStatus: "PENDING",
+  });
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+
   const cleanup = useCallback(() => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -247,6 +289,35 @@ function StoreConnectionTab() {
   useEffect(() => {
     fetchStatus();
   }, []);
+
+  useEffect(() => {
+    if (!store?.connected) return;
+    setShopInfoLoading(true);
+    api.get<ShopInfo>("/store-connection/shopify/shop-info")
+      .then(setShopInfo)
+      .catch(() => {})
+      .finally(() => setShopInfoLoading(false));
+  }, [store?.connected]);
+
+  useEffect(() => {
+    if (!store?.connected) return;
+    setWebhooksLoading(true);
+    api.get<WebhookInfo[]>("/store-connection/shopify/webhooks")
+      .then(setWebhooks)
+      .catch(() => {})
+      .finally(() => setWebhooksLoading(false));
+  }, [store?.connected]);
+
+  useEffect(() => {
+    if (!store?.connected) return;
+    setSettingsLoading(true);
+    api.get<StoreSettings>("/store-connection/shopify/store-settings")
+      .then((s) => {
+        if (s) setStoreSettings(s);
+      })
+      .catch(() => {})
+      .finally(() => setSettingsLoading(false));
+  }, [store?.connected]);
 
   const handleConnect = async (shop: string) => {
     setError("");
@@ -303,47 +374,285 @@ function StoreConnectionTab() {
     }, 120000);
   };
 
+  const handleDisconnect = async () => {
+    try {
+      await api.post('/store-connection/shopify/disconnect', {});
+      await api.post('/auth/logout', {});
+      window.location.reload();
+    } catch {
+      toast.error(t('store.disconnectionError'));
+    }
+  };
+
+  const handleReConnect = () => {
+    const shop = store?.storeUrl || "";
+    const shopName = shop.replace("https://", "").replace(".myshopify.com", "").replace(".com", "").split("/")[0];
+    handleConnect(shopName);
+  };
+
+  const handleReRegisterWebhooks = async () => {
+    setReRegistering(true);
+    try {
+      await api.post('/store-connection/shopify/re-register-webhooks', {});
+      const updated = await api.get<WebhookInfo[]>("/store-connection/shopify/webhooks");
+      setWebhooks(updated);
+      toast.success(t('store.webhooksReRegistered'));
+    } catch {
+      toast.error(t('store.webhooksReRegisterError'));
+    }
+    setReRegistering(false);
+  };
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await api.patch('/store-connection/shopify/store-settings', {
+        currency: storeSettings.currency,
+        defaultOrderStatus: storeSettings.defaultOrderStatus,
+      });
+      toast.success(t('store.saved'));
+    } catch {
+      toast.error(t('store.saveError'));
+    }
+    setSavingSettings(false);
+  };
+
   if (loading)
     return <div className="text-sm text-on-muted py-4">{t('loading', { ns: 'common' })}</div>;
+
+  if (!store?.connected) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-lg font-semibold text-on">
+          {t('tabs.store')}
+        </h2>
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-on-muted">{t('store.noStore')}</p>
+            </div>
+            <Badge variant="neutral">
+              {t('store.disconnected')}
+            </Badge>
+          </div>
+          <ConnectButton connecting={connecting} onConnect={handleConnect} />
+        </Card>
+        {error && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-4">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-amber-900">{error}</p>
+              <p className="text-xs text-amber-600 mt-1">
+                {t('store.pendingValidation')}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const expectedTopics = ["orders/create", "products/create", "products/update", "products/delete"];
+  const registeredTopics = webhooks.map((w) => w.topic);
+  const missingProductWebhooks = ["products/create", "products/update", "products/delete"].filter(
+    (topic) => !registeredTopics.includes(topic)
+  );
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-on">
         {t('tabs.store')}
       </h2>
-      <div className="rounded-md border border-on p-4">
+
+      {/* Section 1: Connection Info */}
+      <Card>
+        <h3 className="text-sm font-semibold text-on mb-4">{t('store.connectionInfo')}</h3>
         <div className="flex items-center justify-between">
-          <div>
-            {store?.connected ? (
-              <>
-                <p className="text-sm font-medium text-on">
-                  {store.source} — {store.storeName}
-                </p>
-                <p className="text-[13px] text-on-muted">{store.storeUrl}</p>
-              </>
-            ) : (
-              <p className="text-sm text-on-muted">{t('store.noStore')}</p>
+          <div className="flex items-center gap-3">
+            <Badge variant="success">{t('store.connected')}</Badge>
+            <div>
+              <p className="text-sm font-medium text-on">{store.storeName}</p>
+              <p className="text-[13px] text-on-muted flex items-center gap-1">
+                <Globe className="h-3.5 w-3.5" />
+                {store.storeUrl}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {store.source && (
+              <span className="text-[13px] text-on-muted flex items-center gap-1">
+                <ExternalLink className="h-3.5 w-3.5" />
+                {store.source}
+              </span>
             )}
           </div>
-          <Badge variant={store?.connected ? "success" : "neutral"}>
-            {store?.connected ? t('store.connected') : t('store.disconnected')}
-          </Badge>
         </div>
-        {!store?.connected && (
-          <ConnectButton connecting={connecting} onConnect={handleConnect} />
-        )}
-      </div>
-      {error && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-4">
-          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm text-amber-900">{error}</p>
-            <p className="text-xs text-amber-600 mt-1">
-              {t('store.pendingValidation')}
-            </p>
+        <div className="flex items-center gap-2 mt-4">
+          <Button variant="secondary" className="gap-2" onClick={handleReConnect}>
+            <RefreshCw className="h-4 w-4" />
+            {t('store.reconnect')}
+          </Button>
+          <Button variant="secondary" className="gap-2 text-red-600 hover:text-red-700" onClick={handleDisconnect}>
+            <Unplug className="h-4 w-4" />
+            {t('store.disconnect')}
+          </Button>
+        </div>
+      </Card>
+
+      {/* Section 2: Shop Info */}
+      <Card>
+        <h3 className="text-sm font-semibold text-on mb-4">{t('store.shopInfo')}</h3>
+        {shopInfoLoading ? (
+          <div className="flex items-center gap-2 text-sm text-on-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('loading', { ns: 'common' })}
           </div>
-        </div>
-      )}
+        ) : shopInfo ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div>
+              <p className="text-[13px] text-on-muted">{t('store.shopName')}</p>
+              <p className="text-sm font-medium text-on">{shopInfo.name}</p>
+            </div>
+            <div>
+              <p className="text-[13px] text-on-muted">{t('store.email')}</p>
+              <p className="text-sm font-medium text-on">{shopInfo.email}</p>
+            </div>
+            <div>
+              <p className="text-[13px] text-on-muted">{t('store.phone')}</p>
+              <p className="text-sm font-medium text-on">{shopInfo.phone || "—"}</p>
+            </div>
+            <div>
+              <p className="text-[13px] text-on-muted">{t('store.currency')}</p>
+              <p className="text-sm font-medium text-on">{shopInfo.currency}</p>
+            </div>
+            <div>
+              <p className="text-[13px] text-on-muted">{t('store.timezone')}</p>
+              <p className="text-sm font-medium text-on">{shopInfo.timezone}</p>
+            </div>
+            <div>
+              <p className="text-[13px] text-on-muted">{t('store.plan')}</p>
+              <p className="text-sm font-medium text-on">{shopInfo.plan_name || "—"}</p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-on-muted">{t('store.noShopInfo')}</p>
+        )}
+      </Card>
+
+      {/* Section 3: Webhook Health */}
+      <Card>
+        <h3 className="text-sm font-semibold text-on mb-4">{t('store.webhookHealth')}</h3>
+        {webhooksLoading ? (
+          <div className="flex items-center gap-2 text-sm text-on-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('loading', { ns: 'common' })}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {missingProductWebhooks.length > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3">
+                <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                <p className="text-sm text-red-800">
+                  {t('store.webhookMissingWarning')}
+                </p>
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {expectedTopics.map((topic) => {
+                const isRegistered = registeredTopics.includes(topic);
+                return (
+                  <div
+                    key={topic}
+                    className="flex items-center justify-between rounded-md border border-on px-3 py-2"
+                  >
+                    <span className="text-sm text-on font-mono">{topic}</span>
+                    <Badge variant={isRegistered ? "success" : "danger"}>
+                      <span className="flex items-center gap-1">
+                        {isRegistered ? (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <Info className="h-3.5 w-3.5" />
+                        )}
+                        {isRegistered ? t('store.webhooksRegistered') : t('store.webhooksMissing')}
+                      </span>
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+            <Button
+              variant="secondary"
+              className="gap-2"
+              onClick={handleReRegisterWebhooks}
+              loading={reRegistering}
+            >
+              <RefreshCw className="h-4 w-4" />
+              {t('store.reRegisterWebhooks')}
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      {/* Section 4: Store Preferences */}
+      <Card>
+        <h3 className="text-sm font-semibold text-on mb-4">{t('store.preferences')}</h3>
+        {settingsLoading ? (
+          <div className="flex items-center gap-2 text-sm text-on-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('loading', { ns: 'common' })}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-on-secondary mb-1.5">
+                {t('store.currency')}
+              </label>
+              <select
+                value={storeSettings.currency}
+                onChange={(e) =>
+                  setStoreSettings((prev) => ({ ...prev, currency: e.target.value }))
+                }
+                className="h-10 w-full rounded-md border border-on bg-surface text-on px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600"
+              >
+                <option value="DZD">DZD - Dinar Algérien</option>
+                <option value="EUR">EUR - Euro</option>
+                <option value="USD">USD - Dollar Américain</option>
+                <option value="GBP">GBP - Livre Sterling</option>
+                <option value="MAD">MAD - Dirham Marocain</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-secondary mb-1.5">
+                {t('store.defaultOrderStatus')}
+              </label>
+              <select
+                value={storeSettings.defaultOrderStatus}
+                onChange={(e) =>
+                  setStoreSettings((prev) => ({
+                    ...prev,
+                    defaultOrderStatus: e.target.value,
+                  }))
+                }
+                className="h-10 w-full rounded-md border border-on bg-surface text-on px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600"
+              >
+                <option value="PENDING">PENDING</option>
+                <option value="CONFIRMED">CONFIRMED</option>
+              </select>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="primary"
+                className="gap-2"
+                onClick={handleSaveSettings}
+                loading={savingSettings}
+              >
+                <Save className="h-4 w-4" />
+                {t('store.save')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

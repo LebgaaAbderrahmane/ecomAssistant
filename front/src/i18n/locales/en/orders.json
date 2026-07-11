@@ -25,7 +25,7 @@
     "pauseAgent": "Pause agent",
     "resumeAgent": "Resume",
     "tracking": "Tracking",
-    "openWhatsApp": "Open WhatsApp"
+    "openWhatsApp": "Actions"
   },
   "toast": {
     "bulkStatusSuccess": "{{count}} order(s) updated",

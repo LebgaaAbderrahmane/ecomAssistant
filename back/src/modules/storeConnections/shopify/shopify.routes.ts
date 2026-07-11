@@ -15,4 +15,10 @@ router.post("/disconnect", authenticate, controller.disconnect);
 router.get('/sync-orders', authenticate, controller.syncOrders);
 router.get('/sync-all', authenticate, controller.syncStore);
 
+router.get("/shop-info", authenticate, controller.getShopInfo);
+router.get("/webhooks", authenticate, controller.listWebhooks);
+router.post("/re-register-webhooks", authenticate, controller.reRegisterWebhooks);
+router.get("/store-settings", authenticate, controller.getStoreSettings);
+router.patch("/store-settings", authenticate, controller.updateStoreSettings);
+
 export default router;
