@@ -2,6 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import path from 'path'
+import passport from './config/passport.js'
 import apiRouter from './routes/index.js'
 import { csrfProtection } from './middlwares/csrf.js'
 import swaggerUi from 'swagger-ui-express';
@@ -10,13 +11,13 @@ import { swaggerSpec } from './config/swagger';
 const app: Express = express()
 
 app.use(cors())
-// app.ts
 app.use(express.json({
   verify: (req: any, _res, buf) => {
-    req.rawBody = buf; // Buffer, stored before parsing
+    req.rawBody = buf;
   }
 }));
 app.use(cookieParser())
+app.use(passport.initialize())
 app.use(csrfProtection)
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

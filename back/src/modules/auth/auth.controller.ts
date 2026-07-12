@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, type CookieOptions } from "express";
 import * as authService from "./auth.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
+import { config } from "../../config";
 import crypto from "crypto";
 
 const COOKIE_OPTIONS: CookieOptions = {
@@ -234,6 +235,25 @@ export const resetPassword = async (
       return res.status(400).json({ message: error.message });
     }
 
+    next(error);
+  }
+};
+
+export const googleCallback = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const merchant = req.user as any;
+    const isNew = (req as any).user?.__isNew === true;
+
+    const result = await authService.googleAuth(merchant);
+
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
+    return res.redirect(`${config.frontendUrl}${isNew ? '/onboarding' : '/dashboard'}`);
+  } catch (error: any) {
     next(error);
   }
 };

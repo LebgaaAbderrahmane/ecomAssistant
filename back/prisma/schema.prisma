@@ -11,9 +11,10 @@ datasource db {
 model Merchant {
   id                         String    @id @default(cuid())
   email                      String    @unique
-  passwordHash               String
+  passwordHash               String    @default("")
   name                       String
   shopName                   String
+  googleId                   String?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
   isVerified                 Boolean   @default(false)

@@ -32,6 +32,7 @@ interface VerifyEmailResponse {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isCheckingAuth: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (shopName: string, email: string, password: string) => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => !!localStorage.getItem("user"),
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const devLogin = useCallback((email: string, name?: string) => {
     const { user } = createDevSession(email, name);
@@ -183,8 +185,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    if (import.meta.env.VITE_DEV_AUTH === "true") return;
+    if (import.meta.env.VITE_DEV_AUTH === "true") {
+      setIsCheckingAuth(false);
+      return;
+    }
 
     let cancelled = false;
     api
@@ -208,6 +212,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("user");
         setUser(null);
         setIsAuthenticated(false);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsCheckingAuth(false);
       });
     return () => {
       cancelled = true;
@@ -215,11 +223,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated,
-        login,
+      <AuthContext.Provider
+        value={{
+          user,
+          isAuthenticated,
+          isCheckingAuth,
+          login,
         signup,
         verifyEmail,
         logout,
