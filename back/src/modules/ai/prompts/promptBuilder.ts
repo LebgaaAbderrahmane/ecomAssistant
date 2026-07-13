@@ -49,33 +49,56 @@ export function buildIntentPrompt(ctx: AgentContext): string {
   return sections.join('\n');
 }
 
-export interface ReplyContext {
+export interface IntentContext {
   intent: string;
-  conversationAct: string;
   entities: Record<string, string | number | boolean | null>;
-  toolResult: ToolResult | null;
-  memory: ConversationMemory; // was Record<string, unknown> — same bug as AgentContext had
+  status: string;
+  candidates?: string[] | null;
+}
+
+export interface ReplyContext {
+  intents: IntentContext[];
+  conversationAct: string;
+  toolResults: Array<{ intent: string; result: ToolResult | null }>;
+  memory: ConversationMemory;
 }
 
 export function buildReplyPrompt(ctx: ReplyContext): string {
-  let toolSection: string;
-  if (!ctx.toolResult) {
-    toolSection = 'No tool result available — do not state facts you do not have.';
-  } else if (ctx.toolResult.success) {
-    const sanitized = stripInternalIds(ctx.toolResult.data);
-    toolSection = `Tool result:\n${JSON.stringify(sanitized, null, 2)}`;
-  } else {
-    toolSection = `Tool lookup failed: ${ctx.toolResult.error}. Do not guess — tell the customer you're checking, or ask a clarifying question.`;
+  // Build tool results section — one block per intent
+  const toolSections: string[] = [];
+  for (const tr of ctx.toolResults) {
+    if (!tr.result) {
+      toolSections.push(`[${tr.intent}] No tool was needed for this intent.`);
+    } else if (tr.result.success) {
+      const sanitized = stripInternalIds(tr.result.data);
+      toolSections.push(`[${tr.intent}] Result:\n${JSON.stringify(sanitized, null, 2)}`);
+    } else {
+      toolSections.push(`[${tr.intent}] Failed: ${tr.result.error}. Do not guess — tell the customer you're checking, or ask a clarifying question.`);
+    }
   }
+
+  // Build intents summary
+  const intentLines = ctx.intents.map(item => {
+    let line = `  - ${item.intent} (status: ${item.status})`;
+    if (item.candidates?.length) {
+      line += ` — candidates: ${item.candidates.join(', ')}`;
+    }
+    return line;
+  });
+
+  const toolSection = toolSections.length > 0
+    ? toolSections.join('\n\n')
+    : 'No tool was called for this message — do not state facts you do not have.';
 
   return [
     REPLY_GENERATION_RULES,
     '',
-    `Customer intent: ${ctx.intent}`,
-    `Conversation tone: ${ctx.conversationAct}`,
-    'Extracted entities:',
-    JSON.stringify(ctx.entities, null, 2),
+    'Customer intents (in execution order):',
+    intentLines.join('\n'),
     '',
+    `Conversation tone: ${ctx.conversationAct}`,
+    '',
+    'Tool results:',
     toolSection,
     '',
     'Context (memory):',

@@ -136,8 +136,8 @@ model Order {
   customerId       String
   platformOrderId  String
   wilaya           String
-  commune          String?
-  address          String
+  commune          String
+  address          String?
   productId        String
   productName      String
   quantity         Int         @default(1)
@@ -321,4 +321,15 @@ enum MessageSender {
   CUSTOMER
   AI
   MERCHANT
+}
+
+model Commune {
+  id        String @id @default(cuid())
+  name      String
+  wilaya    String
+  wilayaCode Int
+
+  @@unique([name, wilaya])
+  @@index([wilaya])
+  @@index([name])
 }

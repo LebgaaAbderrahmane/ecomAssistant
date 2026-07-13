@@ -3,14 +3,31 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema, ToolNameSchema } from './schemas/intents.schemas';
+import { IntentSchema, ToolNameSchema, resolveTool } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
-import type { ConversationMemory } from './memory.types';
+import type { ConversationMemory, IntentSummary } from './memory.types';
+import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 import { openwaService } from '../whatsapp/whatsapp.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
 const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
+
+// Hardcoded priority for safety-net sorting when LLM assigns wrong order.
+const INTENT_PRIORITY: Record<string, number> = {
+  PRODUCT_SEARCH: 1,
+  PRODUCT_SELECT: 1,
+  PRODUCT_DETAILS: 1,
+  ORDER_MODIFY: 2,
+  SHIPPING_CHECK: 3,
+  ORDER_CREATE: 4,
+  ORDER_CONFIRM: 4,
+  ORDER_CANCEL: 4,
+  STATUS_CHECK: 5,
+  ESCALATION: 5,
+  OUT_OF_SCOPE: 5,
+  GOODBYE: 5,
+};
 
 async function resolveProductId(merchantId: string, productName: string): Promise<string | null> {
   const product = await prisma.product.findFirst({
@@ -20,6 +37,18 @@ async function resolveProductId(merchantId: string, productName: string): Promis
     },
   });
   return product?.id ?? null;
+}
+
+/** Sort intents by LLM-assigned order, with hardcoded priority as tiebreaker. */
+function sortIntents(intents: IntentItem[]): IntentItem[] {
+  return [...intents].sort((a, b) => {
+    const orderDiff = a.order - b.order;
+    if (orderDiff !== 0) return orderDiff;
+    // Tiebreak by hardcoded priority (lower = first)
+    const pa = INTENT_PRIORITY[a.intent] ?? 5;
+    const pb = INTENT_PRIORITY[b.intent] ?? 5;
+    return pa - pb;
+  });
 }
 
 export const processMessage = async (messageId: string) => {
@@ -35,7 +64,7 @@ export const processMessage = async (messageId: string) => {
     where: { id: conversation.customerId },
   });
 
-  // --- LLM #1: intent extraction ---
+  // ─── LLM #1: multi-intent extraction ────────────────────────────────
   const intentContext: AgentContext = {
     state: conversation.state,
     allowedIntents: ALL_INTENTS,
@@ -43,15 +72,16 @@ export const processMessage = async (messageId: string) => {
     memory,
   };
   const rawIntent = await callLLM({
-  systemPrompt: buildIntentPrompt(intentContext),
-  userMessage: message.text,
-  responseSchema: INTENT_RESPONSE_SCHEMA,
-});
+    systemPrompt: buildIntentPrompt(intentContext),
+    userMessage: message.text,
+    responseSchema: INTENT_RESPONSE_SCHEMA,
+  });
 
   let parsed;
   try {
     parsed = parseResponse(rawIntent);
-    console.log(`[agent] ${messageId} -> raw intent response:`, parsed);
+    console.log(`[agent] ${messageId} -> extracted ${parsed.intents.length} intent(s):`,
+      parsed.intents.map(i => `${i.intent}(${i.confidence.toFixed(2)})`));
   } catch (err) {
     if (err instanceof LLMParseError) {
       console.error('[agent] failed to parse intent response', { messageId, raw: err.raw });
@@ -59,85 +89,128 @@ export const processMessage = async (messageId: string) => {
     throw err;
   }
 
-  await prisma.message.update({
-    where: { id: messageId },
-    data: {
-      intent: parsed.intent,
-      entities: parsed.entities,
-      confidence: parsed.confidence,
-    },
-  });
+  // Sort intents by logical execution order (LLM order + safety-net priority)
+  const sortedIntents = sortIntents(parsed.intents);
 
-  // --- Enrich entities: resolve productId from product name ---
-  if (parsed.entities.product && !parsed.entities.productId) {
-    const resolvedId = await resolveProductId(conversation.merchantId, parsed.entities.product as string);
-    if (resolvedId) {
-      parsed.entities.productId = resolvedId;
-      // Re-save entities with the resolved productId
-      await prisma.message.update({
-        where: { id: messageId },
-        data: { entities: parsed.entities },
-      });
-      console.log(`[agent] ${messageId} -> resolved productId "${resolvedId}" for product "${parsed.entities.product}"`);
+  // Log when safety net overrides LLM order (useful for prompt tuning)
+  for (let i = 0; i < sortedIntents.length; i++) {
+    const item = sortedIntents[i];
+    const expectedPriority = INTENT_PRIORITY[item.intent] ?? 5;
+    if (item.order !== i + 1) {
+      console.log(`[agent] ${messageId} -> order override: ${item.intent} was order=${item.order}, now position=${i + 1} (priority=${expectedPriority})`);
     }
   }
 
-  // --- Tool execution ---
-  let toolResult: ToolResult | null = null;
-  if (parsed.toolSuggestion) {
-    toolResult = await executeTool(parsed.toolSuggestion, parsed.entities, {
-      merchantId: conversation.merchantId,
-      customerId: conversation.customerId,
-      conversationId: conversation.id,
-      currentOrderId: conversation.currentOrderId,
-      currentProductId: conversation.currentProductId ?? null,
-      lastProductResults: memory.lastProductResults,
-      customerWilaya: customer.wilaya,
-      customerCommune: customer.commune,
-    });
-    console.log(`[agent] tool "${parsed.toolSuggestion}" ->`, toolResult);
-  }
+  // Save primary intent to message record (backward compat)
+  const primaryIntent = sortedIntents[0];
+  await prisma.message.update({
+    where: { id: messageId },
+    data: {
+      intent: primaryIntent.intent,
+      entities: primaryIntent.entities,
+      confidence: primaryIntent.confidence,
+    },
+  });
 
-  // --- Store search results in entities + memory for index-based selection ---
+  // ─── Entity enrichment + tool execution loop ─────────────────────────
+  const executionContext = {
+    merchantId: conversation.merchantId,
+    customerId: conversation.customerId,
+    conversationId: conversation.id,
+    currentOrderId: conversation.currentOrderId,
+    currentProductId: conversation.currentProductId ?? null,
+    lastProductResults: memory.lastProductResults,
+    customerWilaya: customer.wilaya,
+    customerCommune: customer.commune,
+  };
+
+  const toolResults: Array<{ intent: string; result: ToolResult | null }> = [];
   let lastProductResults = memory.lastProductResults;
-  if (
-    parsed.toolSuggestion === 'searchProducts' &&
-    toolResult?.success &&
-    toolResult.data?.products &&
-    Array.isArray(toolResult.data.products)
-  ) {
-    const productsArray = toolResult.data.products as Array<{ id: string; name: string }>;
-    const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
 
-    // Store on the customer message entities
-    await prisma.message.update({
-      where: { id: messageId },
-      data: {
-        entities: {
-          ...(parsed.entities as Record<string, unknown>),
-          products: productsList,
-        } as Prisma.InputJsonValue,
-      },
-    });
+  for (const item of sortedIntents) {
+    // Skip intents that are marked unresolved
+    if (item.status === 'unresolved') {
+      toolResults.push({
+        intent: item.intent,
+        result: { success: false, error: item.unresolvedReason ?? 'Intent present but cannot be acted on' },
+      });
+      continue;
+    }
 
-    lastProductResults = productsList;
-    console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
+    // Resolve tool from intent
+    const toolName = resolveTool(item.intent, item.entities);
+    if (!toolName) {
+      toolResults.push({ intent: item.intent, result: null });
+      continue;
+    }
+
+    // Enrich productId from product name (for intents that have a product entity)
+    const entities = { ...item.entities };
+    if (entities.product && !entities.productId) {
+      const resolvedId = await resolveProductId(conversation.merchantId, entities.product as string);
+      if (resolvedId) {
+        entities.productId = resolvedId;
+        console.log(`[agent] ${messageId} -> resolved productId "${resolvedId}" for product "${entities.product}"`);
+      }
+    }
+
+    // Execute tool with per-intent error handling
+    let result: ToolResult;
+    try {
+      result = await executeTool(toolName, entities, executionContext);
+      console.log(`[agent] tool "${toolName}" (intent=${item.intent}) ->`, result);
+    } catch (err) {
+      console.error(`[agent] tool "${toolName}" failed for intent ${item.intent}`, err);
+      result = { success: false, error: 'Tool execution failed' };
+    }
+
+    toolResults.push({ intent: item.intent, result });
+
+    // Post-processing: store search results in memory for index-based selection
+    if (
+      toolName === 'searchProducts' &&
+      result.success &&
+      result.data?.products &&
+      Array.isArray(result.data.products)
+    ) {
+      const productsArray = result.data.products as Array<{ id: string; name: string }>;
+      const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
+
+      // Store on the customer message entities
+      await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          entities: {
+            ...(entities as Record<string, unknown>),
+            products: productsList,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      lastProductResults = productsList;
+      executionContext.lastProductResults = productsList;
+      console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
+    }
   }
 
-  // --- LLM #2: reply generation ---
+  // ─── LLM #2: reply generation (single call for all intents) ─────────
   const replyContext: ReplyContext = {
-    intent: parsed.intent,
+    intents: sortedIntents.map(item => ({
+      intent: item.intent,
+      entities: item.entities,
+      status: item.status,
+      candidates: item.candidates,
+    })),
     conversationAct: parsed.conversationAct,
-    entities: parsed.entities,
-    toolResult,
+    toolResults,
     memory,
   };
-  
-const rawReply = await callLLM({
-  systemPrompt: buildReplyPrompt(replyContext),
-  userMessage: message.text,
-  responseSchema: REPLY_RESPONSE_SCHEMA,
-});
+
+  const rawReply = await callLLM({
+    systemPrompt: buildReplyPrompt(replyContext),
+    userMessage: message.text,
+    responseSchema: REPLY_RESPONSE_SCHEMA,
+  });
 
   let replyParsed;
   try {
@@ -149,26 +222,33 @@ const rawReply = await callLLM({
     throw err;
   }
 
-  await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      direction: 'OUT',
-      sender: 'AI',
-      content: replyParsed.response,
-      text: replyParsed.response,
-      role: 'assistant',
-    },
-  });
+  // Persist each reply message as a separate DB row
+  for (const text of replyParsed.messages) {
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: 'OUT',
+        sender: 'AI',
+        content: text,
+        text,
+        role: 'assistant',
+      },
+    });
+  }
 
-  // --- Send reply via WhatsApp ---
+  // ─── Send reply via WhatsApp (sequential with typing indicators) ─────
   try {
     const waSession = await prisma.whatsAppSession.findUnique({
       where: { merchantId: conversation.merchantId },
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
       if (customer?.phone) {
-        await openwaService.sendText(waSession.sessionId, customer.phone, replyParsed.response);
-        console.log(`[agent] Reply sent via WhatsApp to ${customer.phone}`);
+        await openwaService.sendMessagesSequentially(
+          waSession.sessionId,
+          customer.phone,
+          replyParsed.messages,
+        );
+        console.log(`[agent] Reply sent via WhatsApp to ${customer.phone} (${replyParsed.messages.length} messages)`);
       } else {
         console.log(`[agent] No phone found for customer ${conversation.customerId}, reply not sent`);
       }
@@ -179,12 +259,18 @@ const rawReply = await callLLM({
     console.error(`[agent] Failed to send reply via WhatsApp:`, err);
   }
 
-  // --- Update conversation memory ---
+  // ─── Update conversation memory ─────────────────────────────────────
+  const intentSummaries: IntentSummary[] = sortedIntents.map(item => ({
+    intent: item.intent,
+    entities: item.entities,
+  }));
+
   const updatedMemory: ConversationMemory = {
     ...memory,
-    lastIntent: parsed.intent,
+    lastIntent: primaryIntent.intent,
+    lastIntents: intentSummaries,
     lastConversationAct: parsed.conversationAct,
-    entities: { ...(memory.entities ?? {}), ...parsed.entities },
+    entities: { ...(memory.entities ?? {}), ...primaryIntent.entities },
     lastProductResults: lastProductResults ?? memory.lastProductResults,
     updatedAt: new Date().toISOString(),
   };
@@ -197,5 +283,6 @@ const rawReply = await callLLM({
     },
   });
 
-  console.log(`[agent] ${messageId} -> intent=${parsed.intent}, reply="${replyParsed.response}"`);
+  console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => i.intent).join(',')}, reply (${replyParsed.messages.length} msgs):`,
+    replyParsed.messages.map((m, i) => `[${i}] "${m.substring(0, 60)}${m.length > 60 ? '...' : ''}"`));
 };

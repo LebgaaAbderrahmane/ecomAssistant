@@ -11,9 +11,54 @@ import {
   CreateOrderArgsSchema,
   ChooseProductArgsSchema,
   GetProductDetailsArgsSchema,
-  UpdateAddressArgsSchema,
+  ModifyOrderArgsSchema,
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
+import { buildProductCatalog, matchProductsWithLLM, fetchProductsByIds } from './searchHelpers';
+
+interface CommuneValidation {
+  valid: boolean;
+  commune?: string;
+  wilaya?: string;
+  suggestions?: string[];
+}
+
+async function validateCommune(name: string, wilaya?: string): Promise<CommuneValidation> {
+  // Exact match (case-insensitive)
+  const where: Record<string, unknown> = { name: { equals: name, mode: 'insensitive' } };
+  if (wilaya) where.wilaya = { equals: wilaya, mode: 'insensitive' };
+
+  const exact = await prisma.commune.findFirst({ where });
+  if (exact) {
+    return { valid: true, commune: exact.name, wilaya: exact.wilaya };
+  }
+
+  // Fuzzy match: ILIKE with wildcards
+  const fuzzyWhere: Record<string, unknown> = { name: { contains: name, mode: 'insensitive' } };
+  if (wilaya) fuzzyWhere.wilaya = { equals: wilaya, mode: 'insensitive' };
+
+  const fuzzy = await prisma.commune.findMany({ where: fuzzyWhere, take: 3 });
+  if (fuzzy.length > 0) {
+    return {
+      valid: false,
+      suggestions: fuzzy.map((c) => wilaya ? `${c.name}` : `${c.name} (${c.wilaya})`),
+    };
+  }
+
+  // Last resort: search all communes with similar name
+  const allSimilar = await prisma.commune.findMany({
+    where: { name: { contains: name, mode: 'insensitive' } },
+    take: 3,
+  });
+  if (allSimilar.length > 0) {
+    return {
+      valid: false,
+      suggestions: allSimilar.map((c) => `${c.name} (${c.wilaya})`),
+    };
+  }
+
+  return { valid: false };
+}
 
 export interface ToolExecutionContext {
   merchantId: string;
@@ -40,36 +85,53 @@ const notImplemented: ToolHandler = async () => ({
   error: 'This tool is not implemented yet',
 });
 
+function formatProducts(products: Product[]) {
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    currency: p.currency,
+    stockStatus: p.stockStatus,
+  }));
+}
+
 const searchProducts: ToolHandler = async (entities, ctx) => {
   const parsedArgs = SearchProductsArgsSchema.safeParse(entities);
   if (!parsedArgs.success) {
     return { success: false, error: 'No product name provided to search for' };
   }
+  const query = parsedArgs.data.product;
 
-  const products = await prisma.product.findMany({
+  // Step 1: Fast case-insensitive SQL search on product name
+  const fastResults = await prisma.product.findMany({
     where: {
       merchantId: ctx.merchantId,
-      name: { contains: parsedArgs.data.product, mode: 'insensitive' },
+      name: { contains: query, mode: 'insensitive' },
     },
     take: 5,
   });
 
-  if (products.length === 0) {
-    return { success: false, error: `No products found matching "${parsedArgs.data.product}"` };
+  if (fastResults.length > 0) {
+    return { success: true, data: { products: formatProducts(fastResults) } };
   }
 
-  return {
-    success: true,
-    data: {
-      products: products.map((p: Product) => ({
-        id: p.id,
-        name: p.name,
-        price: p.price,
-        currency: p.currency,
-        stockStatus: p.stockStatus,
-      })),
-    },
-  };
+  // Step 2: LLM fallback — build catalog and let the model match
+  const catalog = await buildProductCatalog(ctx.merchantId);
+  if (catalog.length === 0) {
+    return { success: false, error: 'No products found in store catalog' };
+  }
+
+  const matchedIds = await matchProductsWithLLM(catalog, query);
+  if (matchedIds.length === 0) {
+    return { success: false, error: `No products found matching "${query}"` };
+  }
+
+  const products = await fetchProductsByIds(ctx.merchantId, matchedIds);
+  if (products.length === 0) {
+    return { success: false, error: `No products found matching "${query}"` };
+  }
+
+  return { success: true, data: { products: formatProducts(products.slice(0, 5)) } };
 };
 
 const getOrderStatus: ToolHandler = async (entities, ctx) => {
@@ -251,7 +313,7 @@ const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
   const messages = await prisma.message.findMany({
     where: {
       conversationId: ctx.conversationId,
-      intent: { in: ['SEARCH_PRODUCT', 'getProductDetails'] },
+      intent: { in: ['PRODUCT_SEARCH', 'PRODUCT_DETAILS'] },
     },
     orderBy: { createdAt: 'desc' },
     take: 30, // scan a window, not the whole history
@@ -299,7 +361,7 @@ const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
   return {
     success: true,
     data: {
-      products: productNames
+      products: formatProducts(ordered),
     },
   };
 };
@@ -406,15 +468,32 @@ const createOrder: ToolHandler = async (entities, ctx) => {
     return { success: false, error: `Missing required fields: ${missing}` };
   }
 
-  const { productId, product: productName, address, quantity } = parsedArgs.data;
+  const { productId, product: productName, quantity } = parsedArgs.data;
 
   // Auto-fill wilaya/commune from saved customer delivery info if not provided
   const wilaya = parsedArgs.data.wilaya ?? ctx.customerWilaya ?? undefined;
-  const commune = parsedArgs.data.commune ?? ctx.customerCommune ?? undefined;
+  const communeInput = parsedArgs.data.commune;
 
   if (!wilaya) {
     return { success: false, error: 'Missing required field: wilaya' };
   }
+
+  // Validate commune exists
+  const communeCheck = await validateCommune(communeInput, wilaya);
+  if (!communeCheck.valid) {
+    if (communeCheck.suggestions?.length) {
+      const list = communeCheck.suggestions.join(', ');
+      return {
+        success: false,
+        error: `Baladia "${communeInput}" makanach. Chno khatrek? ${list}`,
+      };
+    }
+    return {
+      success: false,
+      error: `Baladia "${communeInput}" makanach f l'wilaya dyal ${wilaya}.`,
+    };
+  }
+  const commune = communeCheck.commune!;
 
   let product: Product | null = null;
   if (productId) {
@@ -457,8 +536,7 @@ const createOrder: ToolHandler = async (entities, ctx) => {
       customerId: ctx.customerId,
       platformOrderId,
       wilaya,
-      commune: commune ?? null,
-      address,
+      commune,
       productId: product.id,
       productName: product.name,
       quantity,
@@ -470,7 +548,7 @@ const createOrder: ToolHandler = async (entities, ctx) => {
   // Save delivery info to customer record for future orders
   await prisma.customer.update({
     where: { id: ctx.customerId },
-    data: { wilaya, commune: commune ?? null },
+    data: { wilaya, commune },
   });
 
   await prisma.conversation.update({
@@ -490,16 +568,15 @@ const createOrder: ToolHandler = async (entities, ctx) => {
       totalAmount,
       deliveryCost: deliveryCostValue,
       wilaya,
-      commune: commune ?? null,
-      address,
+      commune,
     },
   };
 };
 
-const updateAddress: ToolHandler = async (entities, ctx) => {
-  const parsedArgs = UpdateAddressArgsSchema.safeParse(entities);
+const modifyOrder: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = ModifyOrderArgsSchema.safeParse(entities);
   if (!parsedArgs.success) {
-    return { success: false, error: 'No delivery fields provided to update' };
+    return { success: false, error: 'No fields provided to modify' };
   }
 
   if (!ctx.currentOrderId) {
@@ -519,10 +596,45 @@ const updateAddress: ToolHandler = async (entities, ctx) => {
     return { success: false, error: 'No pending order found to update' };
   }
 
-  const updateData: Record<string, string> = {};
-  if (parsedArgs.data.wilaya) updateData.wilaya = parsedArgs.data.wilaya;
-  if (parsedArgs.data.commune !== undefined) updateData.commune = parsedArgs.data.commune;
-  if (parsedArgs.data.address) updateData.address = parsedArgs.data.address;
+  // Resolve the product to get current price for total recalculation
+  const product = await prisma.product.findFirst({
+    where: { id: order.productId, merchantId: ctx.merchantId },
+  });
+  if (!product) {
+    return { success: false, error: 'Product for this order no longer exists' };
+  }
+
+  const updateData: Record<string, string | number> = {};
+
+  // Handle quantity change
+  const newQuantity = parsedArgs.data.quantity ?? order.quantity;
+  if (parsedArgs.data.quantity !== undefined) {
+    updateData.quantity = newQuantity;
+  }
+
+  // Handle wilaya change
+  if (parsedArgs.data.wilaya) {
+    updateData.wilaya = parsedArgs.data.wilaya;
+  }
+
+  // Validate commune if provided
+  if (parsedArgs.data.commune) {
+    const communeCheck = await validateCommune(parsedArgs.data.commune, parsedArgs.data.wilaya ?? order.wilaya);
+    if (!communeCheck.valid) {
+      if (communeCheck.suggestions?.length) {
+        const list = communeCheck.suggestions.join(', ');
+        return {
+          success: false,
+          error: `Baladia "${parsedArgs.data.commune}" makanach. Chno khatrek? ${list}`,
+        };
+      }
+      return {
+        success: false,
+        error: `Baladia "${parsedArgs.data.commune}" makanach f l'wilaya dyal ${parsedArgs.data.wilaya ?? order.wilaya}.`,
+      };
+    }
+    updateData.commune = communeCheck.commune!;
+  }
 
   // Recalculate delivery cost if wilaya changed
   let deliveryCostValue = order.deliveryCost;
@@ -531,10 +643,11 @@ const updateAddress: ToolHandler = async (entities, ctx) => {
       where: { merchantId: ctx.merchantId, wilaya: { equals: parsedArgs.data.wilaya, mode: 'insensitive' } },
     });
     deliveryCostValue = deliveryCostRow?.cost ?? 0;
-    updateData.deliveryCost = String(deliveryCostValue);
+    updateData.deliveryCost = deliveryCostValue;
   }
 
-  const newTotal = order.totalAmount - order.deliveryCost + deliveryCostValue;
+  // Recalculate total: price * quantity + delivery cost
+  const newTotal = product.price * newQuantity + deliveryCostValue;
 
   const updatedOrder = await prisma.order.update({
     where: { id: order.id },
@@ -547,7 +660,7 @@ const updateAddress: ToolHandler = async (entities, ctx) => {
   // Update customer record for future orders
   const customerUpdate: Record<string, string | null> = {};
   if (parsedArgs.data.wilaya) customerUpdate.wilaya = parsedArgs.data.wilaya;
-  if (parsedArgs.data.commune !== undefined) customerUpdate.commune = parsedArgs.data.commune;
+  if (parsedArgs.data.commune) customerUpdate.commune = parsedArgs.data.commune;
   if (Object.keys(customerUpdate).length > 0) {
     await prisma.customer.update({
       where: { id: ctx.customerId },
@@ -560,9 +673,9 @@ const updateAddress: ToolHandler = async (entities, ctx) => {
     data: {
       orderId: updatedOrder.id,
       productName: updatedOrder.productName,
+      quantity: updatedOrder.quantity,
       wilaya: updatedOrder.wilaya,
       commune: updatedOrder.commune,
-      address: updatedOrder.address,
       deliveryCost: deliveryCostValue,
       totalAmount: newTotal,
     },
@@ -571,15 +684,15 @@ const updateAddress: ToolHandler = async (entities, ctx) => {
 
 export const toolRegistry: Record<ToolName, ToolHandler> = {
   searchProducts,
-  getProductDetails,
+  recallPreviousProducts,
   chooseProduct,
+  getProductDetails,
   createOrder,
   confirmOrder,
+  modifyOrder,
   cancelOrder,
-  getOrderStatus,
   calculateShipping,
-  recallPreviousProducts,
-  updateAddress,
+  getOrderStatus,
   createSupportTicket: notImplemented,
 };
 

@@ -28,6 +28,7 @@ export const conversationService = {
       contentType?: string;
       mediaUrl?: string;
       mimeType?: string;
+      rawPayload?: Record<string, unknown>;
       createdAt?: Date;
     } = {},
   ) => {
@@ -44,6 +45,7 @@ export const conversationService = {
           contentType: opts.contentType ?? "text",
           mediaUrl: opts.mediaUrl ?? null,
           mimeType: opts.mimeType ?? null,
+          rawPayload: (opts.rawPayload as Prisma.InputJsonValue) ?? undefined,
           createdAt: now,
         },
       }),

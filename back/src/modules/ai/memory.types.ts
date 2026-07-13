@@ -6,8 +6,14 @@ export interface ProductResult {
   name: string;
 }
 
+export interface IntentSummary {
+  intent: string;
+  entities: Record<string, string | number | boolean | null>;
+}
+
 export interface ConversationMemory {
   lastIntent?: string;
+  lastIntents?: IntentSummary[];
   lastConversationAct?: string;
   entities?: Record<string, string | number | boolean | null>;
   lastProductResults?: ProductResult[];

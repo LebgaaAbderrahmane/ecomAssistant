@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { execFileSync } from "child_process";
 import prisma from "../../config/db.config";
 import { redis } from "../../config";
 import { config } from "../../config";
@@ -20,6 +21,7 @@ function ensureMediaDir() {
 }
 
 function mimeToExt(mime: string): string {
+  const base = mime.split(";")[0].trim().toLowerCase();
   const map: Record<string, string> = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -32,7 +34,33 @@ function mimeToExt(mime: string): string {
     "video/3gpp": ".3gp",
     "application/pdf": ".pdf",
   };
-  return map[mime] || ".bin";
+  return map[base] || ".bin";
+}
+
+/** Check if a MIME type is an audio format that can be converted to WAV for STT. */
+function isAudioForStt(mime: string): boolean {
+  const base = mime.split(";")[0].trim().toLowerCase();
+  return ["audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav"].includes(base);
+}
+
+/**
+ * Convert an audio file to 16kHz mono WAV — optimal for most STT engines.
+ * Returns the output path on success, null on failure (non-fatal).
+ */
+function convertToWav(inputPath: string, outputPath: string): string | null {
+  try {
+    execFileSync("ffmpeg", [
+      "-i", inputPath,
+      "-ar", "16000",    // 16kHz sample rate
+      "-ac", "1",        // mono
+      "-y",              // overwrite output
+      outputPath,
+    ], { stdio: "pipe", timeout: 30_000 });
+    return outputPath;
+  } catch (err) {
+    console.warn(`[WhatsApp] ffmpeg conversion failed for ${inputPath}:`, err);
+    return null;
+  }
 }
 
 function mapWaType(type: string): string {
@@ -132,6 +160,7 @@ export async function handleWebhook(
 
         let mediaUrl: string | undefined;
         let mimeType: string | undefined;
+        let rawPayload: Record<string, unknown> | undefined;
 
         const media = data.media as
           | { mimetype?: string; data?: string; omitted?: boolean }
@@ -145,6 +174,17 @@ export async function handleWebhook(
           fs.writeFileSync(filePath, Buffer.from(media.data, "base64"));
           mediaUrl = `/uploads/media/${filename}`;
           mimeType = media.mimetype;
+
+          // Convert audio to WAV for STT processing
+          if (isAudioForStt(media.mimetype)) {
+            const wavFilename = `${conversation.id}-${Date.now()}.wav`;
+            const wavPath = path.join(MEDIA_DIR, wavFilename);
+            const converted = convertToWav(filePath, wavPath);
+            if (converted) {
+              rawPayload = { wavUrl: `/uploads/media/${wavFilename}` };
+              console.log(`[WhatsApp] Audio converted to WAV: ${wavFilename}`);
+            }
+          }
         }
 
         const content = body || (msgType === "text" ? "" : msgType);
@@ -153,6 +193,7 @@ export async function handleWebhook(
           contentType: msgType,
           mediaUrl,
           mimeType,
+          rawPayload,
           createdAt,
         });
 
