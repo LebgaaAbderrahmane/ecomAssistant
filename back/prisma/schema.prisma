@@ -30,6 +30,7 @@ model Merchant {
   wilayaCosts      WilayaDeliveryCost[]
   whatsAppSession  WhatsAppSession?
   notifications    Notification[]
+  deliveryConfig   DeliveryProviderConfig?
 }
 
 model StoreConnection {
@@ -253,6 +254,19 @@ model WhatsAppSession {
   phoneNumber String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+}
+
+model DeliveryProviderConfig {
+  id            String   @id @default(cuid())
+  merchantId    String   @unique
+  provider      String
+  apiId         String?
+  apiToken      String?
+  isConnected   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 }

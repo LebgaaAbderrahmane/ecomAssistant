@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useLocation, useSearchParams } from 'react-router-dom'
-import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User, Users, X, ChevronDown, Smartphone, Phone, MapPin, Store } from 'lucide-react'
+import { Home, AlertTriangle, Package, ShoppingCart, Settings, CreditCard, Bell, ExternalLink, User, Users, X, ChevronDown, Smartphone, Phone, MapPin, Store, Truck } from 'lucide-react'
 import { useNotifications } from '../../lib/notifications.js'
 import { useMobileMenu } from '../../lib/mobileMenu.js'
 import { useTranslation } from 'react-i18next'
@@ -35,6 +35,7 @@ export function Sidebar() {
     { tab: 'store', label: t('sidebar.settingsStore'), icon: Store },
     { tab: 'whatsapp', label: t('sidebar.settingsWhatsapp'), icon: Phone },
     { tab: 'wilaya', label: t('sidebar.settingsWilaya'), icon: MapPin },
+    { tab: 'delivery', label: t('sidebar.settingsDelivery'), icon: Truck },
   ]
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -67,7 +68,7 @@ export function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 overflow-y-auto">
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto pb-20">
         <p className="px-3 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-on-faint">{t('sidebar.menu')}</p>
         {mainItems.map((item) => (
           <NavLink
@@ -82,8 +83,7 @@ export function Sidebar() {
           </NavLink>
         ))}
 
-        <div className="my-3 border-t border-on-light" />
-        <p className="px-3 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-on-faint">{t('sidebar.utilities')}</p>
+        <p className="px-3 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-wider text-on-faint">{t('sidebar.utilities')}</p>
 
         {utilityItems.map((item) => (
           <NavLink
@@ -139,11 +139,12 @@ export function Sidebar() {
         </div>
       </nav>
 
-      <div className="px-3 pb-5">
-        <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 p-3">
-          <p className="text-[13px] font-semibold text-brand-600">{t('sidebar.planGrowth')}</p>
-          <p className="text-xs text-on-muted">{t('sidebar.expiresAt')}</p>
-          <button className="mt-1 flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline">
+      <div className="border-t border-on-light" />
+      <div className="px-3 pb-4 pt-3">
+        <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 px-3 py-2">
+          <p className="text-xs font-semibold text-brand-600">{t('sidebar.planGrowth')}</p>
+          <p className="text-[11px] text-on-muted">{t('sidebar.expiresAt')}</p>
+          <button className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline">
             {t('sidebar.manageSubscription')}
             <ExternalLink className="h-3 w-3" />
           </button>

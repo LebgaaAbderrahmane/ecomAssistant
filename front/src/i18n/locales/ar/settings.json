@@ -5,7 +5,27 @@
     "agent": "إعداد الوكيل",
     "store": "ربط المتجر",
     "whatsapp": "واتساب",
-    "wilaya": "تعريفة الولايات"
+    "wilaya": "تعريفة الولايات",
+    "delivery": "التوصيل"
+  },
+  "delivery": {
+    "description": "ربط مزودي التوصيل لإنشاء الشحنات تلقائياً.",
+    "connected": "متصل",
+    "disconnected": "غير متصل",
+    "comingSoon": "قريباً",
+    "apiId": "معرف API",
+    "apiIdPlaceholder": "أدخل معرف API",
+    "apiToken": "رمز API",
+    "apiTokenPlaceholder": "أدخل رمز API",
+    "connect": "ربط",
+    "disconnect": "قطع الاتصال",
+    "cancel": "إلغاء",
+    "confirm": "تأكيد",
+    "modalTitle": "ربط {provider}",
+    "disconnectTitle": "قطع اتصال {provider}؟",
+    "disconnectDesc": "لن تتمكن من إنشاء شحنات عبر {provider}.",
+    "saved": "تم الربط بنجاح",
+    "saveError": "فشل الاتصال — تحقق من بيانات الدخول"
   },
   "agent": {
     "description": "تكوين سلوك الوكيل ونبرته وقوالب رسائله على واتساب.",

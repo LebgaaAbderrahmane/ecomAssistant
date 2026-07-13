@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  Save,
-  Phone,
   Loader2,
   AlertTriangle,
+  CheckCircle2,
+  Truck,
+  X,
+  Save,
+  Phone,
   RefreshCw,
   Globe,
-  CheckCircle2,
   ExternalLink,
   Unplug,
   Info,
@@ -44,7 +46,7 @@ interface StoreSettings {
   defaultOrderStatus: string;
 }
 
-type SettingsTab = "agent" | "store" | "whatsapp" | "wilaya";
+type SettingsTab = "agent" | "store" | "whatsapp" | "wilaya" | "delivery";
 
 function SegmentControl({
   options,
@@ -1309,12 +1311,186 @@ function WilayaPricingTab() {
   );
 }
 
+function DeliveryTab() {
+  const { t } = useTranslation('settings');
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(false);
+  const [showConnect, setShowConnect] = useState(false);
+  const [showDisconnect, setShowDisconnect] = useState(false);
+  const [apiId, setApiId] = useState('');
+  const [apiToken, setApiToken] = useState('');
+
+  const PROVIDERS = [
+    { key: 'yalidine', name: 'Yalidine', logo: '/images/providers/yalidine.png', available: true },
+    { key: 'procolis', name: 'Procolis', logo: null, available: false },
+  ];
+
+  useEffect(() => {
+    api.get<{ connected: boolean; provider: string | null }>('/delivery/status')
+      .then((res) => setConnected(res.connected))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleConnect = async () => {
+    if (!apiId || !apiToken) return;
+    setSaving(true);
+    try {
+      await api.post('/delivery/connect', { provider: 'yalidine', apiId, apiToken });
+      setConnected(true);
+      setShowConnect(false);
+      toast.success(t('delivery.saved'));
+    } catch (err: any) {
+      toast.error(err?.message || t('delivery.saveError'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setSaving(true);
+    try {
+      await api.post('/delivery/disconnect', {});
+      setConnected(false);
+      setShowDisconnect(false);
+      setApiId('');
+      setApiToken('');
+    } catch {} finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-on">{t('tabs.delivery')}</h1>
+          <p className="mt-1 text-sm text-on-muted">{t('delivery.description')}</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-on-faint" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-on">{t('tabs.delivery')}</h1>
+        <p className="mt-1 text-sm text-on-muted">{t('delivery.description')}</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {PROVIDERS.map((p) => {
+          const isConnected = p.available && connected;
+          const isAvailable = p.available;
+
+          return (
+            <Card key={p.key} className="relative p-6 flex flex-col items-center gap-4 hover:shadow-md transition-shadow">
+              <div className={`absolute top-3 right-3 px-2 py-0.5 rounded-full text-xs font-medium ${
+                isConnected
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-gray-100 text-gray-500'
+              }`}>
+                {isConnected ? t('delivery.connected') : isAvailable ? t('delivery.disconnected') : t('delivery.comingSoon')}
+              </div>
+
+              {p.logo ? (
+                <img src={p.logo} alt={p.name} className="h-16 w-48 object-contain mt-6" />
+              ) : (
+                <div className="h-16 w-16 mt-6 rounded-xl bg-surface-secondary flex items-center justify-center">
+                  <Truck className="h-8 w-8 text-on-faint" />
+                </div>
+              )}
+
+              <h3 className="text-lg font-semibold text-on text-center">{p.name}</h3>
+
+              {isConnected ? (
+                <Button variant="secondary" onClick={() => setShowDisconnect(true)}>
+                  {t('delivery.disconnect')}
+                </Button>
+              ) : isAvailable ? (
+                <Button onClick={() => setShowConnect(true)}>
+                  {t('delivery.connect')}
+                </Button>
+              ) : (
+                <Button variant="secondary" disabled>
+                  {t('delivery.comingSoon')}
+                </Button>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      {showConnect && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowConnect(false)} />
+          <div className="relative z-10 w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl border border-on">
+            <button onClick={() => setShowConnect(false)} className="absolute top-4 right-4 text-on-faint hover:text-on">
+              <X className="h-5 w-5" />
+            </button>
+            <h2 className="text-lg font-semibold text-on">{t('delivery.modalTitle', { provider: 'Yalidine' })}</h2>
+            <div className="mt-4 space-y-3">
+              <Input
+                label={t('delivery.apiId')}
+                placeholder={t('delivery.apiIdPlaceholder')}
+                value={apiId}
+                onChange={(e) => setApiId(e.target.value)}
+              />
+              <Input
+                label={t('delivery.apiToken')}
+                type="password"
+                autoComplete="new-password"
+                placeholder={t('delivery.apiTokenPlaceholder')}
+                value={apiToken}
+                onChange={(e) => setApiToken(e.target.value)}
+              />
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setShowConnect(false)} disabled={saving}>
+                {t('delivery.cancel')}
+              </Button>
+              <Button onClick={handleConnect} loading={saving} disabled={!apiId || !apiToken}>
+                {t('delivery.connect')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDisconnect && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowDisconnect(false)} />
+          <div className="relative z-10 w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl border border-on">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-6 w-6 text-amber-500 shrink-0" />
+              <h2 className="text-lg font-semibold text-on">{t('delivery.disconnectTitle', { provider: 'Yalidine' })}</h2>
+            </div>
+            <p className="mt-2 text-sm text-on-muted">{t('delivery.disconnectDesc', { provider: 'Yalidine' })}</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setShowDisconnect(false)} disabled={saving}>
+                {t('delivery.cancel')}
+              </Button>
+              <Button variant="danger" onClick={handleDisconnect} loading={saving}>
+                {t('delivery.confirm')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Settings() {
   const { t } = useTranslation('settings');
   const [searchParams] = useSearchParams();
   const urlTab = searchParams.get("tab") as SettingsTab | null;
 
-  const validTabs: SettingsTab[] = ["agent", "store", "whatsapp", "wilaya"];
+  const validTabs: SettingsTab[] = ["agent", "store", "whatsapp", "wilaya", "delivery"];
   const activeTab = urlTab && validTabs.includes(urlTab) ? urlTab : "agent";
 
   const content: Record<SettingsTab, React.ReactNode> = {
@@ -1322,6 +1498,7 @@ export function Settings() {
     store: <StoreConnectionTab />,
     whatsapp: <WhatsAppTab />,
     wilaya: <WilayaPricingTab />,
+    delivery: <DeliveryTab />,
   };
 
   return (

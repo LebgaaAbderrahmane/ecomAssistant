@@ -5,7 +5,27 @@
     "agent": "Agent configuration",
     "store": "Store connection",
     "whatsapp": "WhatsApp",
-    "wilaya": "Wilaya pricing"
+    "wilaya": "Wilaya pricing",
+    "delivery": "Delivery"
+  },
+  "delivery": {
+    "description": "Connect your delivery providers to automatically create shipments.",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "comingSoon": "Coming soon",
+    "apiId": "API ID",
+    "apiIdPlaceholder": "Enter your API ID",
+    "apiToken": "API Token",
+    "apiTokenPlaceholder": "Enter your API Token",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "modalTitle": "Connect {provider}",
+    "disconnectTitle": "Disconnect {provider}?",
+    "disconnectDesc": "You won't be able to create shipments to {provider}.",
+    "saved": "Connected successfully",
+    "saveError": "Connection failed — check your credentials"
   },
   "agent": {
     "description": "Configure your WhatsApp agent's behavior, tone, and message templates.",
