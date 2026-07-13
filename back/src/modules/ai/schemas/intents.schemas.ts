@@ -44,6 +44,7 @@ export type ConversationAct = z.infer<typeof ConversationActSchema>;
 export const ToolNameSchema = z.enum([
   'searchProducts',
   'getProductDetails',
+  'chooseProduct',
   'createOrder',
   'confirmOrder',
   'cancelOrder',
@@ -61,7 +62,8 @@ export const SearchProductsArgsSchema = z.object({
 });
 
 export const ConfirmOrderArgsSchema = z.object({
-  orderId: z.string().min(1),
+  orderId: z.string().min(1).optional(),
+  productName: z.string().min(1).optional(),
 });
 
 export const GetOrderStatusArgsSchema = z.object({
@@ -74,8 +76,39 @@ export const CalculateShippingArgsSchema = z.object({
 
 export const CancelOrderArgsSchema = z.object({
   orderId: z.string().optional(),
+  productName: z.string().min(1).optional(),
 });
 
 export const RecallPreviousProductsArgsSchema = z.object({
   limit: z.number().int().positive().max(10).optional(), // "the last 3 products" etc.
+});
+
+export const CreateOrderArgsSchema = z.object({
+  productId: z.string().min(1).optional(),
+  product: z.string().min(1).optional(),
+  wilaya: z.string().min(1).optional(),
+  address: z.string().min(1),
+  commune: z.string().optional(),
+  quantity: z.number().int().positive().default(1),
+}).refine(data => data.productId || data.product, {
+  message: 'Either productId or product name is required',
+});
+
+export const UpdateAddressArgsSchema = z.object({
+  wilaya: z.string().min(1).optional(),
+  commune: z.string().optional(),
+  address: z.string().min(1).optional(),
+}).refine(data => data.wilaya !== undefined || data.commune !== undefined || data.address !== undefined, {
+  message: 'At least one of wilaya, commune, or address must be provided',
+});
+
+export const ChooseProductArgsSchema = z.object({
+  productName: z.string().min(1).optional(),
+  productIndex: z.number().int().min(0).optional(),
+}).refine(data => data.productName || data.productIndex !== undefined, {
+  message: 'Either productName or productIndex is required',
+});
+
+export const GetProductDetailsArgsSchema = z.object({
+  productName: z.string().min(1).optional(),
 });

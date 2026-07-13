@@ -9,7 +9,7 @@ export const sendOrderConfirmation = async (orderId: string) => {
   });
 
   const conversation = await prisma.conversation.findFirstOrThrow({
-    where: { currentOrderId: order.id },
+    where: { merchantId: order.merchantId, customerId: order.customerId },
   });
 
   const language = order.customer.language ?? conversation.language ?? 'auto';

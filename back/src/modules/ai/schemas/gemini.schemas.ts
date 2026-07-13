@@ -17,7 +17,9 @@ export const INTENT_RESPONSE_SCHEMA = {
         orderId: { type: 'string' },
         wilaya: { type: 'string' },
         address: { type: 'string' },
+        commune: { type: 'string' },
         quantity: { type: 'string' },
+        productIndex: { type: 'number' },
       },
       // nothing required here — the model should omit keys that don't apply
     },

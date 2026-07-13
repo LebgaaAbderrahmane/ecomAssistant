@@ -37,11 +37,7 @@ export function buildOrderConfirmationText(
     language === "darija" ||
     language === "auto"
   ) {
-    return `Salam ${clientName ? clientName : ''},
-    nta li dit 3lina ${quantity} ${productName} ?
-    total ja: ${totalAmount} ${currency} w la livraison l  ${location} ${address}
-
-Choufha mlih. Ila kayn kch 7aja khasa ttbadel 9olli, w ila kolchi mli7 nb3toulk la commande.`;
+    return `Salam ${clientName ? clientName : ''}, nta li dit 3lina ${quantity} ${productName} ? total ja: ${totalAmount} ${currency} w la livraison l  ${location} ${address} Choufha mlih. Ila kayn kch 7aja khasa ttbadel 9olli, w ila kolchi mli7 nb3toulk la commande.`;
   }
 
   // French

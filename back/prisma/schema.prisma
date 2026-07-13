@@ -116,6 +116,8 @@ model Customer {
   phone      String
   name       String?
   language   String?
+  wilaya     String?
+  commune    String?
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -162,6 +164,7 @@ model Conversation {
   customerId       String
   customerPhone    String              @default("")
   currentOrderId   String?             @unique
+  currentProductId String?
   owner            ConversationOwner   @default(AI)
   state            ConversationState   @default(IDLE)
   status           ConversationStatus  @default(ACTIVE)

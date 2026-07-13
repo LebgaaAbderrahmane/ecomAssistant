@@ -12,6 +12,16 @@ import { openwaService } from '../whatsapp/whatsapp.service';
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
 const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
 
+async function resolveProductId(merchantId: string, productName: string): Promise<string | null> {
+  const product = await prisma.product.findFirst({
+    where: {
+      merchantId,
+      name: { contains: productName, mode: 'insensitive' },
+    },
+  });
+  return product?.id ?? null;
+}
+
 export const processMessage = async (messageId: string) => {
   const message = await prisma.message.findUniqueOrThrow({
     where: { id: messageId },
@@ -19,6 +29,11 @@ export const processMessage = async (messageId: string) => {
   });
   const { conversation } = message;
   const memory = (conversation.memory as ConversationMemory | null) ?? {};
+
+  // Fetch customer record for delivery info and WhatsApp sending
+  const customer = await prisma.customer.findUniqueOrThrow({
+    where: { id: conversation.customerId },
+  });
 
   // --- LLM #1: intent extraction ---
   const intentContext: AgentContext = {
@@ -53,6 +68,20 @@ export const processMessage = async (messageId: string) => {
     },
   });
 
+  // --- Enrich entities: resolve productId from product name ---
+  if (parsed.entities.product && !parsed.entities.productId) {
+    const resolvedId = await resolveProductId(conversation.merchantId, parsed.entities.product as string);
+    if (resolvedId) {
+      parsed.entities.productId = resolvedId;
+      // Re-save entities with the resolved productId
+      await prisma.message.update({
+        where: { id: messageId },
+        data: { entities: parsed.entities },
+      });
+      console.log(`[agent] ${messageId} -> resolved productId "${resolvedId}" for product "${parsed.entities.product}"`);
+    }
+  }
+
   // --- Tool execution ---
   let toolResult: ToolResult | null = null;
   if (parsed.toolSuggestion) {
@@ -61,8 +90,38 @@ export const processMessage = async (messageId: string) => {
       customerId: conversation.customerId,
       conversationId: conversation.id,
       currentOrderId: conversation.currentOrderId,
+      currentProductId: conversation.currentProductId ?? null,
+      lastProductResults: memory.lastProductResults,
+      customerWilaya: customer.wilaya,
+      customerCommune: customer.commune,
     });
     console.log(`[agent] tool "${parsed.toolSuggestion}" ->`, toolResult);
+  }
+
+  // --- Store search results in entities + memory for index-based selection ---
+  let lastProductResults = memory.lastProductResults;
+  if (
+    parsed.toolSuggestion === 'searchProducts' &&
+    toolResult?.success &&
+    toolResult.data?.products &&
+    Array.isArray(toolResult.data.products)
+  ) {
+    const productsArray = toolResult.data.products as Array<{ id: string; name: string }>;
+    const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
+
+    // Store on the customer message entities
+    await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        entities: {
+          ...(parsed.entities as Record<string, unknown>),
+          products: productsList,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    lastProductResults = productsList;
+    console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
   }
 
   // --- LLM #2: reply generation ---
@@ -98,7 +157,6 @@ const rawReply = await callLLM({
       content: replyParsed.response,
       text: replyParsed.response,
       role: 'assistant',
-      content: replyParsed.response,
     },
   });
 
@@ -108,9 +166,6 @@ const rawReply = await callLLM({
       where: { merchantId: conversation.merchantId },
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
-      const customer = await prisma.customer.findUnique({
-        where: { id: conversation.customerId },
-      });
       if (customer?.phone) {
         await openwaService.sendText(waSession.sessionId, customer.phone, replyParsed.response);
         console.log(`[agent] Reply sent via WhatsApp to ${customer.phone}`);
@@ -130,6 +185,7 @@ const rawReply = await callLLM({
     lastIntent: parsed.intent,
     lastConversationAct: parsed.conversationAct,
     entities: { ...(memory.entities ?? {}), ...parsed.entities },
+    lastProductResults: lastProductResults ?? memory.lastProductResults,
     updatedAt: new Date().toISOString(),
   };
 
