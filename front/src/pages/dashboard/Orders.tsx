@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, Loader2, Package, MessageCircle, Check, XCircle, Pause, Play, Hash } from 'lucide-react'
+import { Search, Loader2, Package, MessageCircle, Check, XCircle, Pause, Play, Hash, Truck } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge.js'
 import { SelectionBar } from '../../components/ui/SelectionBar.js'
 import { TrackingModal } from '../../components/ui/TrackingModal.js'
+import { ProviderShipModal } from '../../components/ui/ProviderShipModal.js'
 import { FilterDropdown } from '../../components/ui/FilterDropdown.js'
 import { DateRangeFilter } from '../../components/ui/DateRangeFilter.js'
 import { DropdownMenu, DropdownMenuItem } from '../../components/ui/DropdownMenu.js'
@@ -110,6 +111,8 @@ export function Orders() {
 
   const [trackingOpen, setTrackingOpen] = useState(false)
   const [trackingIds, setTrackingIds] = useState<string[]>([])
+  const [shipProviderOpen, setShipProviderOpen] = useState(false)
+  const [shipProviderIds, setShipProviderIds] = useState<string[]>([])
   const [actionLoading, setActionLoading] = useState(false)
 
   const selectedIds = Array.from(selectedOrders)
@@ -158,6 +161,11 @@ export function Orders() {
     }
   }
 
+  const handleBulkShip = async () => {
+    setShipProviderIds(selectedIds)
+    setShipProviderOpen(true)
+  }
+
   const getRowActions = (order: Order): DropdownMenuItem[] => {
     const isConfirmed = order.status === 'CONFIRMED'
     const isPaused = order.conversation?.takenOverByHuman ?? false
@@ -196,6 +204,12 @@ export function Orders() {
         onClick: () => { setTrackingIds([order.id]); setTrackingOpen(true) },
         disabled: actionLoading,
       },
+      ...(order.trackingNumber || order.status !== 'CONFIRMED' ? [] : [{
+        label: t('actions.ship'),
+        icon: <Truck className="h-4 w-4" />,
+        onClick: () => { setShipProviderIds([order.id]); setShipProviderOpen(true) },
+        disabled: actionLoading,
+      }]),
     ]
   }
 
@@ -316,7 +330,8 @@ export function Orders() {
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.client')}</th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.product')}</th>
                 <th className="px-4 py-3 text-right text-[13px] font-medium text-on-muted">{t('columns.amount')}</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.wilaya')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.address')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.tracking')}</th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('filters.status')}</th>
                 <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.date')}</th>
                 <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">{t('actions.openWhatsApp')}</th>
@@ -325,14 +340,14 @@ export function Orders() {
             <tbody>
               {loading && orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-on-muted">
+                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     {t('loading', { ns: 'common' })}
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-on-muted">
+                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                     {t('noResults', { ns: 'common' })}
                   </td>
@@ -360,6 +375,13 @@ export function Orders() {
                     <td className="px-4 py-3 text-sm text-on-muted">
                       {order.wilaya}
                       {order.commune && <span>, {order.commune}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {order.trackingNumber ? (
+                        <span className="text-brand-600 font-medium">{order.trackingNumber}</span>
+                      ) : (
+                        <span className="text-on-faint">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={statusVariant[order.status] || 'neutral'}>
@@ -486,6 +508,12 @@ export function Orders() {
             disabled: actionLoading,
           },
           {
+            label: t('actions.ship'),
+            icon: <Truck className="h-4 w-4" />,
+            onClick: handleBulkShip,
+            disabled: actionLoading,
+          },
+          {
             label: 'WhatsApp',
             icon: <MessageCircle className="h-4 w-4" />,
             onClick: () => {
@@ -502,6 +530,13 @@ export function Orders() {
         onClose={() => setTrackingOpen(false)}
         onConfirm={handleBulkTracking}
         loading={actionLoading}
+      />
+
+      <ProviderShipModal
+        open={shipProviderOpen}
+        onClose={() => setShipProviderOpen(false)}
+        orderIds={shipProviderIds}
+        onComplete={() => { setSelectedOrders(new Set()); fetchOrders() }}
       />
     </div>
   )

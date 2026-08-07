@@ -16,7 +16,8 @@
     "client": "العميل",
     "product": "المنتج",
     "amount": "المبلغ",
-    "wilaya": "الولاية",
+    "address": "العنوان",
+    "tracking": "التتبع",
     "date": "التاريخ"
   },
   "actions": {
@@ -25,12 +26,22 @@
     "pauseAgent": "إيقاف الوكيل مؤقتاً",
     "resumeAgent": "استئناف",
     "tracking": "التتبع",
+    "ship": "شحن الطلب",
     "openWhatsApp": "الإجراءات"
   },
+  "shipModal": {
+    "selectProvider": "اختر شركة الشحن",
+    "weight": "الوزن (كغ)",
+    "confirm": "شحن",
+    "notConnected": "غير متصل",
+    "notAvailable": "قريباً"
+  },
   "toast": {
-    "bulkStatusSuccess": "تم تحديث {{count}} order(s)",
-    "bulkHoldSuccess": "تم إيقاف/استئناف الوكيل لـ {{count}} order(s)",
-    "trackingSuccess": "تم تعيين التتبع لـ {{count}} order(s)",
+    "bulkStatusSuccess": "تم تحديث {{count}} طلب(ات)",
+    "bulkHoldSuccess": "تم إيقاف/استئناف الوكيل لـ {{count}} طلب(ات)",
+    "trackingSuccess": "تم تعيين التتبع لـ {{count}} طلب(ات)",
+    "shipSuccess": "تم شحن {{count}} طلب(ات)",
+    "shipError": "فشل الشحن",
     "newOrder": "تم استلام طلب جديد"
   }
 }

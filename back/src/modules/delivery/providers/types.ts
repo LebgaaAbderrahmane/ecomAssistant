@@ -41,6 +41,20 @@ export interface TrackingEvent {
   reason?: string
 }
 
+export interface ShipOrderInput {
+  weight?: number
+  length?: number
+  width?: number
+  height?: number
+  freeShipping?: boolean
+  isStopDesk?: boolean
+  stopDeskId?: number
+  doInsurance?: boolean
+  declaredValue?: number
+  hasExchange?: boolean
+  productToCollect?: string
+}
+
 export interface FeeQuery {
   fromWilaya: string
   toWilaya: string

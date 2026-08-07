@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Loader2,
@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Unplug,
   Info,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button.js";
@@ -905,52 +906,47 @@ function ConnectButton({
 
 function WhatsAppTab() {
   const { t } = useTranslation('settings');
-  const { whatsappConnected, whatsappPhoneNumber, suppressDisconnectModal } = useNotifications();
-  const [loading, setLoading] = useState(false);
+  const { suppressDisconnectModal } = useNotifications();
+  const [loading, setLoading] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showConnectOptions, setShowConnectOptions] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState("");
-  const [connectionMode, setConnectionMode] = useState<"qr" | "pairing">("qr");
-  const [pairingPhone, setPairingPhone] = useState("");
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [requestingCode, setRequestingCode] = useState(false);
-  const [sessionDetails, setSessionDetails] = useState<{
-    phoneNumber: string | null;
-    sessionId: string | null;
-    createdAt: string | null;
-  } | null>(null);
+
+  const fetchStatus = async () => {
+    try {
+      const data = await api.get<{ status: string; phoneNumber: string | null; hasSession: boolean }>("/whatsapp/session/status");
+      setConnected(data.status === "connected");
+      setPhoneNumber(data.phoneNumber);
+      setHasSession(data.hasSession);
+    } catch {
+      setConnected(false);
+      setHasSession(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (whatsappConnected) {
-      api.get<{ status: string; phoneNumber: string | null }>("/whatsapp/session/status")
-        .then((data) => {
-          if (data.phoneNumber) {
-            setSessionDetails({
-              phoneNumber: data.phoneNumber,
-              sessionId: null,
-              createdAt: null,
-            });
-          }
-        })
-        .catch(() => {});
-    } else {
-      setSessionDetails(null);
-    }
-  }, [whatsappConnected]);
+    fetchStatus();
+  }, []);
 
   const connectQR = async () => {
-    setConnecting(true);
+    setActionLoading(true);
     setError("");
-    setPairingCode(null);
     try {
       const res = await api.post<{ qrBase64?: string; connected?: boolean }>(
         "/whatsapp/session",
         {},
       );
       if (res.connected) {
-        setConnecting(false);
+        setConnected(true);
+        setShowConnectOptions(false);
         toast.success(t('whatsapp.connected'));
         return;
       }
@@ -958,75 +954,81 @@ function WhatsAppTab() {
 
       const poll = setInterval(async () => {
         try {
-          const data = await api.get<{
-            status: string;
-            phoneNumber: string | null;
-          }>("/whatsapp/session/status");
+          const data = await api.get<{ status: string; phoneNumber: string | null }>("/whatsapp/session/status");
           if (data.status === "connected") {
             clearInterval(poll);
             setQrBase64(null);
-            setConnecting(false);
+            setConnected(true);
+            setPhoneNumber(data.phoneNumber);
+            setShowConnectOptions(false);
             toast.success(t('whatsapp.connected'));
           }
-        } catch {
-          /* keep polling */
-        }
+        } catch { /* keep polling */ }
       }, 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur");
       toast.error(t('whatsapp.connectionError'));
-      setConnecting(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const connectPairing = async () => {
-    if (!pairingPhone.trim()) return;
-    setRequestingCode(true);
-    setError("");
-    setQrBase64(null);
+  const handleDisconnect = async () => {
+    setActionLoading(true);
+    suppressDisconnectModal();
     try {
-      const phone = pairingPhone.startsWith("+") ? pairingPhone : `+${pairingPhone}`;
-      const res = await api.post<{ code: string; sessionId: string }>(
-        "/whatsapp/session/pairing-code",
-        { phoneNumber: phone },
-      );
-      setPairingCode(res.code);
-
-      const poll = setInterval(async () => {
-        try {
-          const data = await api.get<{
-            status: string;
-            phoneNumber: string | null;
-          }>("/whatsapp/session/status");
-          if (data.status === "connected") {
-            clearInterval(poll);
-            setPairingCode(null);
-            setRequestingCode(false);
-            setPairingPhone("");
-            toast.success(t('whatsapp.connected'));
-          }
-        } catch {
-          /* keep polling */
-        }
-      }, 3000);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur");
-      toast.error(t('whatsapp.connectionError'));
-      setRequestingCode(false);
+      await api.post("/whatsapp/session/disconnect");
+      setConnected(false);
+      setPhoneNumber(null);
+      toast.success(t('whatsapp.sessionDeactivated'));
+    } catch {
+      toast.error(t('whatsapp.disconnectionError'));
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const disconnect = async () => {
-    setDisconnecting(true);
-    setShowDisconnectConfirm(false);
+  const handleDeleteSession = async () => {
+    setActionLoading(true);
+    setShowDeleteConfirm(false);
     suppressDisconnectModal();
     try {
       await api.delete("/whatsapp/session");
-      toast.success(t('whatsapp.disconnected'));
+      setConnected(false);
+      setHasSession(false);
+      setPhoneNumber(null);
+      setShowConnectOptions(true);
+      toast.success(t('whatsapp.sessionDeleted'));
     } catch {
       toast.error(t('whatsapp.disconnectionError'));
+    } finally {
+      setActionLoading(false);
     }
-    setDisconnecting(false);
+  };
+
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    setError("");
+    try {
+      await api.post("/whatsapp/session/reconnect");
+
+      const poll = setInterval(async () => {
+        try {
+          const data = await api.get<{ status: string; phoneNumber: string | null }>("/whatsapp/session/status");
+          if (data.status === "connected") {
+            clearInterval(poll);
+            setConnected(true);
+            setPhoneNumber(data.phoneNumber);
+            setReconnecting(false);
+            toast.success(t('whatsapp.connected'));
+          }
+        } catch { /* keep polling */ }
+      }, 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur");
+      toast.error(t('whatsapp.connectionError'));
+      setReconnecting(false);
+    }
   };
 
   if (loading)
@@ -1035,67 +1037,19 @@ function WhatsAppTab() {
   if (qrBase64) {
     return (
       <div className="space-y-6">
-        <h2 className="text-lg font-semibold text-on">
-          {t('whatsapp.connectWhatsApp')}
-        </h2>
+        <div>
+          <h1 className="text-2xl font-bold text-on">{t('tabs.whatsapp')}</h1>
+          <p className="mt-1 text-sm text-on-muted">{t('whatsapp.description')}</p>
+        </div>
         <Card>
+          <h3 className="text-sm font-semibold text-on mb-4">{t('whatsapp.scanQR')}</h3>
           <div className="flex flex-col items-center gap-4">
-            <p className="text-sm font-medium text-on-secondary">
-              {t('whatsapp.scanQR')}
-            </p>
-            <img
-              src={`data:image/png;base64,${qrBase64}`}
-              alt="QR"
-              className="h-64 w-64"
-            />
+            <img src={`data:image/png;base64,${qrBase64}`} alt="QR" className="h-64 w-64" />
             <div className="flex items-center gap-2 text-sm text-on-muted">
               <Loader2 className="h-4 w-4 animate-spin" />
               {t('whatsapp.waitingScan')}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setQrBase64(null);
-                setConnecting(false);
-              }}
-            >
-              {t('cancel', { ns: 'common' })}
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  if (pairingCode) {
-    return (
-      <div className="space-y-6">
-        <h2 className="text-lg font-semibold text-on">
-          {t('whatsapp.pairingCodeTitle')}
-        </h2>
-        <Card>
-          <div className="flex flex-col items-center gap-4">
-            <p className="text-sm text-on-muted text-center">
-              {t('whatsapp.pairingCodeDescription')}
-            </p>
-            <div className="rounded-lg border-2 border-dashed border-on bg-surface-secondary px-8 py-4">
-              <p className="text-3xl font-mono font-bold tracking-[0.3em] text-on text-center">
-                {pairingCode}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-on-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {t('whatsapp.waitingPairing')}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setPairingCode(null);
-                setRequestingCode(false);
-              }}
-            >
+            <Button variant="ghost" size="sm" onClick={() => { setQrBase64(null); setActionLoading(false); }}>
               {t('cancel', { ns: 'common' })}
             </Button>
           </div>
@@ -1105,194 +1059,121 @@ function WhatsAppTab() {
   }
 
   return (
-    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-on">{t('tabs.whatsapp')}</h1>
         <p className="mt-1 text-sm text-on-muted">{t('whatsapp.description')}</p>
       </div>
 
-      {/* Section 1: Session Status */}
-      <Card>
-        <h3 className="text-sm font-semibold text-on mb-4">{t('whatsapp.sessionStatus')}</h3>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div>
-              <p className="text-sm font-medium text-on">
-                {whatsappPhoneNumber || t('whatsapp.noNumber')}
-              </p>
-              {whatsappPhoneNumber && (
-                <p className="text-[13px] text-on-muted">{t('whatsapp.businessApp')}</p>
-              )}
-            </div>
-          </div>
-          <Badge variant={whatsappConnected ? "success" : "danger"}>
-            {whatsappConnected ? t('whatsapp.connected') : t('whatsapp.disconnected')}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2 mt-4">
-          {whatsappConnected ? (
-            <>
-              <Button
-                variant="secondary"
-                className="gap-2"
-                onClick={() => {
-                  suppressDisconnectModal();
-                  setShowDisconnectConfirm(true);
-                }}
-                loading={disconnecting}
-              >
-                <Unplug className="h-4 w-4" />
-                {t('whatsapp.disconnectBtn')}
-              </Button>
-              <Button
-                variant="secondary"
-                className="gap-2"
-                onClick={() => {
-                  suppressDisconnectModal();
-                  setShowDisconnectConfirm(true);
-                }}
-                loading={disconnecting}
-              >
-                <RefreshCw className="h-4 w-4" />
-                {t('whatsapp.reconnect')}
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="primary"
-              className="gap-2"
-              onClick={() => setConnecting(true)}
-              loading={connecting}
-            >
-              <Phone className="h-4 w-4" />
-              {t('whatsapp.connectWhatsApp')}
-            </Button>
-          )}
-        </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      </Card>
-
-      {/* Section 2: Connection Method */}
-      {connecting && !whatsappConnected && (
-        <Card>
-          <h3 className="text-sm font-semibold text-on mb-4">{t('whatsapp.connectionMethod')}</h3>
-          <div className="flex rounded-lg border border-on overflow-hidden mb-4">
-            <button
-              onClick={() => setConnectionMode("qr")}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${
-                connectionMode === "qr"
-                  ? "bg-brand-600 text-white"
-                  : "bg-surface text-on-muted hover:text-on"
-              }`}
-            >
-              QR Code
-            </button>
-            <button
-              onClick={() => setConnectionMode("pairing")}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${
-                connectionMode === "pairing"
-                  ? "bg-brand-600 text-white"
-                  : "bg-surface text-on-muted hover:text-on"
-              }`}
-            >
-              {t('whatsapp.pairingCode')}
-            </button>
-          </div>
-
-          {connectionMode === "qr" && (
-            <div className="flex flex-col items-center gap-4">
-              <Button
-                variant="primary"
-                className="gap-2"
-                onClick={connectQR}
-              >
-                {t('whatsapp.generateQR')}
-              </Button>
-              <p className="text-xs text-on-muted text-center">
-                {t('whatsapp.qrHint')}
-              </p>
-            </div>
-          )}
-
-          {connectionMode === "pairing" && (
-            <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left column */}
+        <div className="space-y-6">
+          {/* Session Status */}
+          <Card>
+            <h3 className="text-sm font-semibold text-on mb-4">{t('whatsapp.sessionStatus')}</h3>
+            <div className="flex items-center justify-between mb-4">
               <div>
-                <label className="block text-sm font-medium text-on-secondary mb-1.5">
-                  {t('whatsapp.phoneNumber')}
-                </label>
-                <input
-                  type="tel"
-                  value={pairingPhone}
-                  onChange={(e) => setPairingPhone(e.target.value)}
-                  placeholder="+213XXXXXXXXX"
-                  className="h-10 w-full rounded-md border border-on bg-surface text-on px-3 text-sm placeholder:text-on-faint focus:outline-none focus:ring-2 focus:ring-brand-600"
-                />
+                <p className="text-sm font-medium text-on">
+                  {phoneNumber || t('whatsapp.noNumber')}
+                </p>
+                {phoneNumber && (
+                  <p className="text-[13px] text-on-muted">{t('whatsapp.businessApp')}</p>
+                )}
               </div>
-              <Button
-                variant="primary"
-                className="gap-2"
-                onClick={connectPairing}
-                loading={requestingCode}
-                disabled={!pairingPhone.trim()}
-              >
-                {t('whatsapp.generateCode')}
+              <Badge variant={connected ? "success" : "danger"}>
+                {connected ? t('whatsapp.connected') : t('whatsapp.disconnected')}
+              </Badge>
+            </div>
+
+            {connected && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" className="gap-2" onClick={handleDisconnect} loading={actionLoading}>
+                  <Unplug className="h-4 w-4" />
+                  {t('whatsapp.disconnectBtn')}
+                </Button>
+                <Button variant="secondary" className="gap-2 text-red-600 hover:text-red-700" onClick={() => setShowDeleteConfirm(true)} disabled={actionLoading}>
+                  <Trash2 className="h-4 w-4" />
+                  {t('whatsapp.deleteSession')}
+                </Button>
+              </div>
+            )}
+
+            {!connected && hasSession && (
+              <Button variant="primary" className="gap-2" onClick={handleReconnect} loading={reconnecting}>
+                <RefreshCw className="h-4 w-4" />
+                {reconnecting ? t('whatsapp.reconnecting') : t('whatsapp.reconnect')}
               </Button>
-              <p className="text-xs text-on-muted">
-                {t('whatsapp.pairingHint')}
-              </p>
-            </div>
+            )}
+
+            {!connected && !hasSession && !showConnectOptions && (
+              <Button variant="primary" className="gap-2" onClick={() => setShowConnectOptions(true)}>
+                <Phone className="h-4 w-4" />
+                {t('whatsapp.connectWhatsApp')}
+              </Button>
+            )}
+
+            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          </Card>
+
+          {/* Connection Method (QR only) */}
+          {showConnectOptions && !connected && (
+            <Card>
+              <h3 className="text-sm font-semibold text-on mb-4">{t('whatsapp.connectionMethod')}</h3>
+              <div className="flex flex-col items-center gap-4">
+                <Button variant="primary" className="gap-2" onClick={connectQR} loading={actionLoading}>
+                  {t('whatsapp.generateQR')}
+                </Button>
+                <p className="text-xs text-on-muted text-center">{t('whatsapp.qrHint')}</p>
+              </div>
+            </Card>
           )}
-        </Card>
-      )}
+        </div>
 
-      {/* Section 3: Session Details */}
-      {whatsappConnected && (
-        <Card>
-          <h3 className="text-sm font-semibold text-on mb-4">{t('whatsapp.sessionDetails')}</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div>
-              <p className="text-[13px] text-on-muted">{t('whatsapp.phoneNumber')}</p>
-              <p className="text-sm font-medium text-on">{whatsappPhoneNumber || '—'}</p>
+        {/* Right column */}
+        <div className="space-y-6">
+          <Card>
+            <h3 className="text-sm font-semibold text-on mb-4">{t('whatsapp.sessionDetails')}</h3>
+            <div className="space-y-3">
+              <div>
+                <p className="text-[13px] text-on-muted">{t('whatsapp.phoneNumber')}</p>
+                <p className="text-sm font-medium text-on">{phoneNumber || '—'}</p>
+              </div>
+              <div>
+                <p className="text-[13px] text-on-muted">{t('whatsapp.status')}</p>
+                <p className={`text-sm font-medium ${connected ? 'text-green-600' : 'text-on-muted'}`}>
+                  {connected ? t('whatsapp.connected') : t('whatsapp.disconnected')}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[13px] text-on-muted">{t('whatsapp.status')}</p>
-              <p className="text-sm font-medium text-on">{t('whatsapp.connected')}</p>
-            </div>
-          </div>
-        </Card>
-      )}
-    </div>
-
-    {showDisconnectConfirm && (
-      <div className="fixed inset-0 z-[90] flex items-center justify-center">
-        <div className="fixed inset-0 bg-black/50" onClick={() => setShowDisconnectConfirm(false)} />
-        <div className="relative z-10 w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
-          <div className="flex items-start gap-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
-              <AlertTriangle className="h-5 w-5 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-semibold text-on">
-                {t('whatsapp.disconnectTitle')}
-              </h2>
-              <p className="mt-2 text-sm text-on-muted">
-                {t('whatsapp.disconnectDesc')}
-              </p>
-            </div>
-          </div>
-          <div className="mt-6 flex justify-end gap-3">
-            <Button variant="secondary" size="sm" onClick={() => setShowDisconnectConfirm(false)}>
-              {t('cancel', { ns: 'common' })}
-            </Button>
-            <Button size="sm" variant="danger" onClick={disconnect} loading={disconnecting}>
-              {t('whatsapp.disconnectBtn')}
-            </Button>
-          </div>
+          </Card>
         </div>
       </div>
-    )}
-    </>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="relative z-10 w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-on">{t('whatsapp.deleteSessionTitle')}</h2>
+                <p className="mt-2 text-sm text-on-muted">{t('whatsapp.deleteSessionDesc')}</p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(false)} disabled={actionLoading}>
+                {t('cancel', { ns: 'common' })}
+              </Button>
+              <Button size="sm" variant="danger" onClick={handleDeleteSession} loading={actionLoading}>
+                {t('whatsapp.deleteSession')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

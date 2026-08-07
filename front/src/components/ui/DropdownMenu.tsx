@@ -37,7 +37,7 @@ export function DropdownMenu({ items }: DropdownMenuProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-on bg-surface shadow-lg z-30 py-1">
+        <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-on bg-surface shadow-lg z-30 py-1">
           {items.map((item, i) => (
             <button
               key={i}

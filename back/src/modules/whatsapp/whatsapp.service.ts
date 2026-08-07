@@ -64,6 +64,8 @@ export interface Session {
   id: string;
   name: string;
   status: string;
+  phone?: string | null;
+  pushName?: string | null;
 }
 
 export interface SessionQR {

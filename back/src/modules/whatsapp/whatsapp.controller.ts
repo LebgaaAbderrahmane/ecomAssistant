@@ -182,11 +182,11 @@ export async function handleWebhook(
 
         if (status === "connected") {
           try {
-            const session = await openwaService.getSession(sessionId);
-            if (waSession?.phoneNumber !== session.name) {
+            const remote = await openwaService.getSession(sessionId);
+            if (remote.phone && waSession?.phoneNumber !== remote.phone) {
               await prisma.whatsAppSession.update({
                 where: { sessionId },
-                data: { phoneNumber: session.name },
+                data: { phoneNumber: remote.phone },
               });
             }
           } catch {
@@ -256,7 +256,7 @@ export async function createSession(
 
     try {
       const all = await openwaService.listSessions();
-      const stale = all.find((s) => s.name === merchantId);
+      const stale = all.find((s) => s.name.startsWith(merchantId));
       if (stale) {
         try {
           await openwaService.stopSession(stale.id);
@@ -270,7 +270,7 @@ export async function createSession(
       // best-effort cleanup
     }
 
-    const session = await openwaService.createSession(merchantId);
+    const session = await openwaService.createSession(`${merchantId}-${Date.now()}`);
     await openwaService.startSession(session.id);
 
     let qr: string | null = null;
@@ -313,14 +313,12 @@ export async function createSession(
         merchantId,
         sessionId: session.id,
         status: sessionStatus,
-        phoneNumber: session.name,
       },
     });
 
     notificationService.emitSessionStatus({
       merchantId,
       status: sessionStatus,
-      phoneNumber: session.name,
     });
 
     if (qr) {
@@ -348,19 +346,27 @@ export async function getSessionStatus(
       where: { merchantId },
     });
     if (!waSession) {
-      return res.json({ status: "disconnected" });
+      return res.json({ status: "disconnected", hasSession: false });
     }
 
     let currentStatus = waSession.status;
 
     try {
       const remote = await openwaService.getSession(waSession.sessionId);
+      const updates: any = {};
       if (remote.status !== currentStatus) {
+        updates.status = remote.status;
+        currentStatus = remote.status;
+      }
+      if (remote.status === "ready" && remote.phone && remote.phone !== waSession.phoneNumber) {
+        updates.phoneNumber = remote.phone;
+      }
+      if (Object.keys(updates).length > 0) {
         await prisma.whatsAppSession.update({
           where: { id: waSession.id },
-          data: { status: remote.status },
+          data: updates,
         });
-        currentStatus = remote.status;
+        if (updates.phoneNumber) waSession.phoneNumber = updates.phoneNumber;
       }
     } catch {
       currentStatus = "disconnected";
@@ -373,6 +379,7 @@ export async function getSessionStatus(
     return res.json({
       status: currentStatus === "ready" ? "connected" : currentStatus,
       phoneNumber: waSession.phoneNumber,
+      hasSession: true,
     });
   } catch (err) {
     next(err);
@@ -404,10 +411,11 @@ export async function deleteSession(
     }
 
     try {
+      await openwaService.logoutSession(waSession.sessionId);
+    } catch {}
+    try {
       await openwaService.deleteSession(waSession.sessionId);
-    } catch {
-      // session may already be gone
-    }
+    } catch {}
 
     await prisma.whatsAppSession.delete({ where: { id: waSession.id } });
 
@@ -417,6 +425,66 @@ export async function deleteSession(
     });
 
     return res.json({ message: "Session deleted" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function disconnectSession(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const merchantId = req.merchant!.merchantId;
+
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId },
+    });
+    if (!waSession) {
+      return res.status(404).json({ message: "No session found" });
+    }
+
+    try {
+      await openwaService.stopSession(waSession.sessionId);
+    } catch {}
+
+    await prisma.whatsAppSession.update({
+      where: { id: waSession.id },
+      data: { status: "disconnected" },
+    });
+
+    notificationService.emitSessionStatus({
+      merchantId,
+      status: "disconnected",
+    });
+
+    return res.json({ message: "Session disconnected" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function reconnectSession(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const merchantId = req.merchant!.merchantId;
+
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId },
+    });
+    if (!waSession) {
+      return res.status(404).json({ message: "No session found" });
+    }
+
+    try {
+      await openwaService.startSession(waSession.sessionId);
+    } catch {}
+
+    return res.json({ status: "connecting" });
   } catch (err) {
     next(err);
   }
@@ -450,7 +518,7 @@ export async function requestPairingCode(
 
     try {
       const all = await openwaService.listSessions();
-      const stale = all.find((s) => s.name === merchantId);
+      const stale = all.find((s) => s.name.startsWith(merchantId));
       if (stale) {
         try { await openwaService.stopSession(stale.id); } catch {}
         try { await openwaService.logoutSession(stale.id); } catch {}
@@ -458,7 +526,7 @@ export async function requestPairingCode(
       }
     } catch {}
 
-    const session = await openwaService.createSession(merchantId);
+    const session = await openwaService.createSession(`${merchantId}-${Date.now()}`);
     await openwaService.startSession(session.id);
     sessionId = session.id;
 

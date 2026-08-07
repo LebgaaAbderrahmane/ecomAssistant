@@ -16,7 +16,8 @@
     "client": "Client",
     "product": "Produit",
     "amount": "Montant",
-    "wilaya": "Wilaya",
+    "address": "Adresse",
+    "tracking": "Suivi",
     "date": "Date"
   },
   "actions": {
@@ -25,12 +26,22 @@
     "pauseAgent": "Pause agent",
     "resumeAgent": "Reprendre",
     "tracking": "Suivi",
+    "ship": "Expédier la commande",
     "openWhatsApp": "Actions"
+  },
+  "shipModal": {
+    "selectProvider": "Choisissez un transporteur",
+    "weight": "Poids (kg)",
+    "confirm": "Expédier",
+    "notConnected": "Non connecté",
+    "notAvailable": "Bientôt disponible"
   },
   "toast": {
     "bulkStatusSuccess": "{{count}} commande(s) mise(s) à jour",
     "bulkHoldSuccess": "Agent mis en pause / repris pour {{count}} commande(s)",
     "trackingSuccess": "Suivi attribué à {{count}} commande(s)",
+    "shipSuccess": "{{count}} commande(s) expédiée(s)",
+    "shipError": "Échec de l'expédition",
     "newOrder": "Nouvelle commande reçue"
   }
 }

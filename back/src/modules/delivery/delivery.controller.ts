@@ -11,6 +11,16 @@ export const getStatus = async (req: AuthenticatedRequest, res: Response) => {
   })
 }
 
+export const getProviders = async (req: AuthenticatedRequest, res: Response) => {
+  const merchantId = req.merchant!.merchantId
+  const config = await deliveryService.getConfig(merchantId)
+  const providers = [
+    { key: 'yalidine', connected: config?.provider === 'yalidine' && !!config?.isConnected, available: true },
+    { key: 'procolis', connected: false, available: false },
+  ]
+  res.json(providers)
+}
+
 export const getConfig = async (req: AuthenticatedRequest, res: Response) => {
   const merchantId = req.merchant!.merchantId
   const config = await deliveryService.getConfig(merchantId)
@@ -41,6 +51,18 @@ export const disconnectProvider = async (req: AuthenticatedRequest, res: Respons
   const merchantId = req.merchant!.merchantId
   await deliveryService.disconnectProvider(merchantId)
   res.json({ message: 'Disconnected' })
+}
+
+export const shipOrder = async (req: AuthenticatedRequest, res: Response) => {
+  const merchantId = req.merchant!.merchantId
+  const { orderId } = req.params
+
+  try {
+    const result = await deliveryService.shipOrder(merchantId, orderId, req.body)
+    res.json(result)
+  } catch (err: any) {
+    res.status(400).json({ message: err.message })
+  }
 }
 
 export const createParcel = async (req: AuthenticatedRequest, res: Response) => {

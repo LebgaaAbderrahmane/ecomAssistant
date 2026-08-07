@@ -12,6 +12,8 @@ const router:Router = express.Router();
 router.post("/webhook", controller.handleWebhook);
 router.post("/session", authenticate, controller.createSession);
 router.post("/session/pairing-code", authenticate, controller.requestPairingCode);
+router.post("/session/disconnect", authenticate, controller.disconnectSession);
+router.post("/session/reconnect", authenticate, controller.reconnectSession);
 router.get("/session/status", authenticate, controller.getSessionStatus);
 router.delete("/session", authenticate, controller.deleteSession);
 

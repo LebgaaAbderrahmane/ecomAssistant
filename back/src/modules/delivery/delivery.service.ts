@@ -1,6 +1,6 @@
 import prisma from '../../config/db.config.js'
 import { ProviderFactory } from './providers/ProviderFactory.js'
-import type { ParcelInput } from './providers/types.js'
+import type { ParcelInput, ShipOrderInput } from './providers/types.js'
 
 export const deliveryService = {
   async getConfig(merchantId: string) {
@@ -12,7 +12,7 @@ export const deliveryService = {
     const isConnected = await driver.connect()
 
     if (!isConnected) {
-      throw new Error('Failed to connect to Yalidine — check your API credentials')
+      throw new Error(`Failed to connect to ${provider} — check your API credentials`)
     }
 
     await prisma.deliveryProviderConfig.upsert({
@@ -25,7 +25,51 @@ export const deliveryService = {
   },
 
   async disconnectProvider(merchantId: string) {
-    await prisma.deliveryProviderConfig.delete({ where: { merchantId } })
+    await prisma.deliveryProviderConfig.deleteMany({ where: { merchantId } })
+  },
+
+  async shipOrder(merchantId: string, orderId: string, overrides?: ShipOrderInput) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { customer: true },
+    })
+    if (!order) {
+      throw new Error('Order not found')
+    }
+    if (order.merchantId !== merchantId) {
+      throw new Error('Order does not belong to this merchant')
+    }
+
+    const customerName = order.customer?.name ?? ''
+    const nameParts = customerName.split(' ')
+    const firstName = nameParts[0] || ''
+    const familyName = nameParts.slice(1).join(' ') || ''
+
+    const input: ParcelInput = {
+      orderId: order.id,
+      platformOrderId: order.platformOrderId,
+      firstName,
+      familyName,
+      phone: order.customer?.phone ?? '',
+      address: order.address,
+      wilaya: order.wilaya,
+      commune: order.commune ?? '',
+      productList: `${order.productName} x${order.quantity}`,
+      price: order.totalAmount,
+      weight: overrides?.weight ?? 0.5,
+      length: overrides?.length ?? 10,
+      width: overrides?.width ?? 10,
+      height: overrides?.height ?? 10,
+      freeShipping: overrides?.freeShipping ?? false,
+      isStopDesk: overrides?.isStopDesk ?? false,
+      stopDeskId: overrides?.stopDeskId,
+      doInsurance: overrides?.doInsurance ?? false,
+      declaredValue: overrides?.declaredValue,
+      hasExchange: overrides?.hasExchange ?? false,
+      productToCollect: overrides?.productToCollect,
+    }
+
+    return this.createParcel(merchantId, input)
   },
 
   async createParcel(merchantId: string, input: ParcelInput) {
