@@ -9,6 +9,7 @@ import type { ConversationMemory, IntentSummary } from './memory.types';
 import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 import { openwaService } from '../whatsapp/whatsapp.service';
+import type { ImageCategory } from './media/imageCaption.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
 const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
@@ -64,6 +65,70 @@ export const processMessage = async (messageId: string) => {
     where: { id: conversation.customerId },
   });
 
+  // ─── Image category routing ─────────────────────────────────────────
+  // If the message is an image, route by category before LLM #1 sees it.
+  // The description is already in message.content from the captioning service.
+  let effectiveText = message.text;
+
+  if (message.messageType === 'image') {
+    const entities = (message.entities as Record<string, unknown>) ?? {};
+    const category = entities.imageCategory as ImageCategory | undefined;
+    const productName = entities.productName as string | null;
+
+    if (category === 'PAYMENT_PROOF' || category === 'DAMAGE_COMPLAINT') {
+      // Escalate directly — human agent can view the image in WhatsApp
+      effectiveText = `[Image received: ${category === 'PAYMENT_PROOF' ? 'payment proof' : 'damage complaint'}] ${message.text}`;
+    } else if (category === 'PRODUCT_PHOTO') {
+      // Prepend image context so LLM #1 sees a rich query for PRODUCT_SEARCH
+      const namePart = productName ? ` (product: ${productName})` : '';
+      effectiveText = `[Customer sent a photo${namePart}] ${message.text}`;
+    }
+    // OTHER or uncategorized: fall through with effectiveText = message.text
+  }
+
+  // ─── Empty message guard ────────────────────────────────────────────
+  // No transcribable content (e.g. media omitted by the gateway). Skip the LLM
+  // pipeline entirely — never let empty input hallucinate an intent like
+  // ORDER_CONFIRM. Reply with a clarifying message instead.
+  if (!effectiveText || !effectiveText.trim()) {
+    const fallbackReply = "Désolé, je n'ai pas bien compris votre message. Pouvez-vous réessayer par texte ou me l'envoyer à nouveau ?";
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: 'OUT',
+        sender: 'AI',
+        content: fallbackReply,
+        text: fallbackReply,
+        role: 'assistant',
+      },
+    });
+
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId: conversation.merchantId },
+    });
+    if (waSession && (waSession.status === 'connected' || waSession.status === 'ready') && customer?.phone) {
+      try {
+        await openwaService.sendText(waSession.sessionId, customer.phone, fallbackReply);
+      } catch (err) {
+        console.error(`[agent] Failed to send fallback reply for ${messageId}:`, err);
+      }
+    }
+
+    const updatedMemory: ConversationMemory = {
+      ...memory,
+      lastIntent: 'OUT_OF_SCOPE',
+      lastIntents: [{ intent: 'OUT_OF_SCOPE', entities: {} }],
+      lastConversationAct: 'DIDNT_UNDERSTAND',
+      updatedAt: new Date().toISOString(),
+    };
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { memory: updatedMemory as Prisma.InputJsonValue, lastMessageAt: new Date() },
+    });
+    console.log(`[agent] ${messageId} -> empty message, replied with clarifying fallback`);
+    return;
+  }
+
   // ─── LLM #1: multi-intent extraction ────────────────────────────────
   const intentContext: AgentContext = {
     state: conversation.state,
@@ -73,7 +138,7 @@ export const processMessage = async (messageId: string) => {
   };
   const rawIntent = await callLLM({
     systemPrompt: buildIntentPrompt(intentContext),
-    userMessage: message.text,
+    userMessage: effectiveText,
     responseSchema: INTENT_RESPONSE_SCHEMA,
   });
 
@@ -208,7 +273,7 @@ export const processMessage = async (messageId: string) => {
 
   const rawReply = await callLLM({
     systemPrompt: buildReplyPrompt(replyContext),
-    userMessage: message.text,
+    userMessage: effectiveText,
     responseSchema: REPLY_RESPONSE_SCHEMA,
   });
 

@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { execFileSync } from "child_process";
 import prisma from "../../config/db.config";
 import { redis } from "../../config";
 import { config } from "../../config";
@@ -11,6 +10,8 @@ import { conversationService } from "./conversation.service";
 import { notificationService } from "./notification.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import { enqueueMessageJob } from "../../queues/message.queue";
+import { transcribeAudio } from "../ai/media/transcription.service";
+import { captionImage } from "../ai/media/imageCaption.service";
 
 const MEDIA_DIR = path.resolve("/app/uploads/media");
 
@@ -37,38 +38,14 @@ function mimeToExt(mime: string): string {
   return map[base] || ".bin";
 }
 
-/** Check if a MIME type is an audio format that can be converted to WAV for STT. */
-function isAudioForStt(mime: string): boolean {
-  const base = mime.split(";")[0].trim().toLowerCase();
-  return ["audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav"].includes(base);
-}
-
-/**
- * Convert an audio file to 16kHz mono WAV — optimal for most STT engines.
- * Returns the output path on success, null on failure (non-fatal).
- */
-function convertToWav(inputPath: string, outputPath: string): string | null {
-  try {
-    execFileSync("ffmpeg", [
-      "-i", inputPath,
-      "-ar", "16000",    // 16kHz sample rate
-      "-ac", "1",        // mono
-      "-y",              // overwrite output
-      outputPath,
-    ], { stdio: "pipe", timeout: 30_000 });
-    return outputPath;
-  } catch (err) {
-    console.warn(`[WhatsApp] ffmpeg conversion failed for ${inputPath}:`, err);
-    return null;
-  }
-}
-
 function mapWaType(type: string): string {
   const map: Record<string, string> = {
     text: "text",
     image: "image",
     video: "video",
     audio: "audio",
+    voice: "audio",     // OpenWA neutral type for voice notes (ptt)
+    ptt: "audio",       // WhatsApp voice messages (push-to-talk)
     document: "document",
     sticker: "image",
   };
@@ -161,43 +138,106 @@ export async function handleWebhook(
         let mediaUrl: string | undefined;
         let mimeType: string | undefined;
         let rawPayload: Record<string, unknown> | undefined;
+        let filePath: string | undefined;
+        let messageType: "text" | "voice" | "image" = "text";
 
         const media = data.media as
           | { mimetype?: string; data?: string; omitted?: boolean }
           | undefined;
 
+        if (media) {
+          console.log(`[WhatsApp] Media: mimetype=${media.mimetype} omitted=${media.omitted} hasData=${!!media.data}`);
+        }
+
         if (media?.data && media.mimetype && !media.omitted) {
           ensureMediaDir();
           const ext = mimeToExt(media.mimetype);
           const filename = `${conversation.id}-${Date.now()}${ext}`;
-          const filePath = path.join(MEDIA_DIR, filename);
-          fs.writeFileSync(filePath, Buffer.from(media.data, "base64"));
+          const fullPath = path.join(MEDIA_DIR, filename);
+          fs.writeFileSync(fullPath, Buffer.from(media.data, "base64"));
           mediaUrl = `/uploads/media/${filename}`;
           mimeType = media.mimetype;
+          filePath = mediaUrl;
 
-          // Convert audio to WAV for STT processing
-          if (isAudioForStt(media.mimetype)) {
-            const wavFilename = `${conversation.id}-${Date.now()}.wav`;
-            const wavPath = path.join(MEDIA_DIR, wavFilename);
-            const converted = convertToWav(filePath, wavPath);
-            if (converted) {
-              rawPayload = { wavUrl: `/uploads/media/${wavFilename}` };
-              console.log(`[WhatsApp] Audio converted to WAV: ${wavFilename}`);
-            }
+          // Prefer the media mimetype over data.type — OpenWA sometimes reports
+          // voice notes as type="voice"/"text" even though the media is audio.
+          const baseMime = media.mimetype.split(";")[0].trim().toLowerCase();
+          if (baseMime.startsWith("audio/")) {
+            messageType = "voice";
+          } else if (baseMime.startsWith("image/")) {
+            messageType = "image";
+          } else if (msgType === "audio") {
+            messageType = "voice";
+          } else if (msgType === "image") {
+            messageType = "image";
           }
         }
 
-        const content = body || (msgType === "text" ? "" : msgType);
+        // Use body if present, otherwise use a placeholder for media messages
+        let content = body || (msgType === "text" ? "" : `[${msgType} message]`);
 
         const savedMessage = await conversationService.addMessage(conversation.id, "customer", content, {
           contentType: msgType,
           mediaUrl,
           mimeType,
           rawPayload,
+          messageType,
+          filePath,
           createdAt,
         });
 
-        console.log(`[WhatsApp] Message saved to conversation ${conversation.id}`);
+        console.log(`[WhatsApp] Message saved to conversation ${conversation.id} (type=${messageType})`);
+
+        // ─── Voice: transcribe via Gemini, update content ──────────────
+        if (messageType === "voice" && filePath) {
+          const fullPath = path.resolve("/app", filePath.slice(1)); // strip leading /
+          try {
+            const transcript = await transcribeAudio(fullPath, mimeType!);
+            await prisma.message.update({
+              where: { id: savedMessage.id },
+              data: { content: transcript, text: transcript },
+            });
+            content = transcript;
+            console.log(`[WhatsApp] Voice transcribed: "${transcript.substring(0, 80)}"`);
+          } catch (err) {
+            console.error("[WhatsApp] Voice transcription failed:", err);
+            const fallback = "[voice message - transcription failed]";
+            await prisma.message.update({
+              where: { id: savedMessage.id },
+              data: { content: fallback, text: fallback },
+            });
+            content = fallback;
+          }
+        }
+
+        // ─── Image: caption via Gemini, update content + entities ─────
+        if (messageType === "image" && filePath) {
+          const fullPath = path.resolve("/app", filePath.slice(1));
+          try {
+            const result = await captionImage(fullPath, mimeType!);
+            await prisma.message.update({
+              where: { id: savedMessage.id },
+              data: {
+                content: result.description,
+                text: result.description,
+                entities: {
+                  imageCategory: result.category,
+                  productName: result.productName,
+                } as any,
+              },
+            });
+            content = result.description;
+            console.log(`[WhatsApp] Image captioned: category=${result.category}, product=${result.productName ?? "none"}`);
+          } catch (err) {
+            console.error("[WhatsApp] Image captioning failed:", err);
+            const fallback = "[image - could not process]";
+            await prisma.message.update({
+              where: { id: savedMessage.id },
+              data: { content: fallback, text: fallback },
+            });
+            content = fallback;
+          }
+        }
 
         enqueueMessageJob(savedMessage.id).catch((err) => {
           console.error(`[WhatsApp] Failed to enqueue message ${savedMessage.id} for agent:`, err);
@@ -225,7 +265,7 @@ export async function handleWebhook(
           try {
             const session = await openwaService.getSession(sessionId);
             if (waSession?.phoneNumber !== session.name) {
-              await prisma.whatsAppSession.update({
+              await prisma.whatsAppSession.updateMany({
                 where: { sessionId },
                 data: { phoneNumber: session.name },
               });

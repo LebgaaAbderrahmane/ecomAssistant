@@ -215,6 +215,9 @@ model Message {
 
   rawPayload Json?
 
+  filePath    String?
+  messageType String   @default("text")
+
   intent String?
 
   entities Json?
