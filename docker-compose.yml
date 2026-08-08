@@ -35,6 +35,7 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
+      - ./uploads:/app/uploads
     env_file: .env
     environment:
       REDIS_HOST: redis

@@ -1,0 +1,235 @@
+        ==========================================================
+        EcomAssistant — Use Cases (Client Conversations)
+        Generated: 2026-07-13
+        ==========================================================
+
+        ----------------------------------------------------------
+        1. PRODUCT SEARCH — Fast SQL Match
+        ----------------------------------------------------------
+        Customer: "عندكم iPhone 15?"
+        Agent: Lists matching iPhone products with prices.
+
+        Customer: "vous avez des Airpods?"
+        Agent: Shows available AirPods products.
+
+        Customer: "chokran barcha khater 3andkoum Galaxy Watch?"
+        Agent: Returns Galaxy Watch products from catalog.
+
+        ----------------------------------------------------------
+        2. PRODUCT SEARCH — LLM Fallback (No SQL Match)
+        ----------------------------------------------------------
+        Customer: "do you have wireless earbuds?"
+        (No product name matches "wireless earbuds" directly.)
+        Agent: LLM matches against full catalog by description/
+        variants, returns the closest products.
+
+        Customer: "ch3andkoum men tblolet?"
+        (No product name contains "tablolet" — LLM fuzzy-matches
+        against catalog and returns tablet products.)
+
+        ----------------------------------------------------------
+        3. PRODUCT SELECTION BY INDEX
+        ----------------------------------------------------------
+        Agent: [Search returned 4 products]
+        1. iPhone 15 — 89000 DZD
+        2. iPhone 15 Pro — 120000 DZD
+        3. iPhone 15 Pro Max — 140000 DZD
+        4. iPhone 14 — 65000 DZD
+
+        Customer: "je veux le deuxième"
+        Agent: Selects iPhone 15 Pro (index 1), sets as current
+        product, shows details.
+
+        Customer: "akhir wa7da"
+        Agent: Selects iPhone 14 (last in list).
+
+        Customer: "number 3"
+        Agent: Selects iPhone 15 Pro Max.
+
+        ----------------------------------------------------------
+        4. PRODUCT SELECTION BY NAME
+        ----------------------------------------------------------
+        Customer: "ghir khouni iPhone 15 Pro"
+        Agent: Selects iPhone 15 Pro directly by name.
+
+        Customer: "je prends les Airpods Pro"
+        Agent: Selects AirPods Pro by name.
+
+        ----------------------------------------------------------
+        5. PRODUCT DETAILS
+        ----------------------------------------------------------
+        Customer: "ch7al price dyal iPhone 15?"
+        Agent: Shows price, description, stock status.
+
+        Customer: "est-ce que le Galaxy Watch est en stock?"
+        Agent: Reports stock status and details.
+
+        Customer: "ch3andkoum f categories?"
+        Agent: Shows product category if available.
+
+        ----------------------------------------------------------
+        6. PRODUCT RECALL FROM PREVIOUS MESSAGES
+        ----------------------------------------------------------
+        Customer: "ch3andkoum men Samsung?"
+        Agent: [Returns Samsung products]
+
+        Customer: "ach mn Galaxy Watch kount ghadi?"
+        Agent: Recalls previously discussed Galaxy Watch from
+        conversation memory and returns it.
+
+        ----------------------------------------------------------
+        7. ORDER CREATION — New Customer (No Saved Info)
+        ----------------------------------------------------------
+        Customer: "bghit ncommandi iPhone 15"
+        Agent: "Wash bghitou? Chno l'wilaya w l'adresse dyalek?"
+
+        Customer: "Alger, 123 Rue Didouche Mourad"
+        Agent: Creates order, calculates delivery cost,
+        sends confirmation template.
+
+        ----------------------------------------------------------
+        8. ORDER CREATION — Returning Customer (Auto-Fill)
+        ----------------------------------------------------------
+        Customer: "bghit ncommandi Galaxy Watch"
+        Agent: Auto-fills wilaya=Alger, commune=Bab Ezzouar
+        from saved Customer record.
+        "Address? L'adresse dyalek?"
+
+        Customer: "456 Rue Didouche"
+        Agent: Creates order with auto-filled wilaya/commune
+        + new address, sends confirmation.
+
+        ----------------------------------------------------------
+        9. ORDER CREATION — Missing Product, Has Delivery
+        ----------------------------------------------------------
+        Customer: "bghit ncommandi ch7al f l'wilaya dyal Constantine?"
+        Agent: Reports shipping cost to Constantine.
+
+        Customer: "w ch7al la livraison?"
+        Agent: Reports delivery cost again or confirms.
+
+        ----------------------------------------------------------
+        10. ORDER CONFIRMATION — Customer Confirms
+        ----------------------------------------------------------
+        Agent: [Confirmation template sent with all details]
+        "Salam, nta li dit 3lina 1 iPhone 15? total ja: 89000 DZD
+        w la livraison l Bab Ezzouar, Alger 123 Rue Didouche.
+        Choufha mlih..."
+
+        Customer: "oui c'est bon"
+        Agent: Confirms order, status flips to CONFIRMED.
+
+        Customer: "nwaklo"
+        Agent: Confirms order.
+
+        Customer: "yes confirm"
+        Agent: Confirms order.
+
+        ----------------------------------------------------------
+        11. ORDER CONFIRMATION — Customer Cancels
+        ----------------------------------------------------------
+        Agent: [Confirmation template sent]
+
+        Customer: "non annule"
+        Agent: Cancels the order.
+
+        Customer: "bghit nlsqha"
+        Agent: Cancels the order.
+
+        ----------------------------------------------------------
+        12. CHANGE DELIVERY DURING CONFIRMATION
+        ----------------------------------------------------------
+        Agent: [Confirmation: wilaya=Alger, address=123 Rue...]
+
+        Customer: "actually change the wilaya to Constantine"
+        Agent: Updates order wilaya to Constantine,
+        recalculates delivery cost and total,
+        updates Customer record for future orders.
+        "Updated! New total is X DZD. Confirm?"
+
+        Customer: "l'adresse ghayer, 789 Rue Liberté"
+        Agent: Updates address on order and customer record.
+
+        ----------------------------------------------------------
+        13. ORDER STATUS CHECK
+        ----------------------------------------------------------
+        Customer: "ch7al men yam wana ncommandit w ma jatnich?"
+        Agent: Checks order status, reports PENDING/SHIPPED/etc.
+
+        Customer: "where is my order?"
+        Agent: Reports current status and tracking if available.
+
+        ----------------------------------------------------------
+        14. SHIPPING COST CHECK
+        ----------------------------------------------------------
+        Customer: "ch7al la livraison l Oran?"
+        Agent: Looks up WilayaDeliveryCost for Oran, reports price.
+
+        Customer: "quand est-ce que ça arrive à Alger?"
+        Agent: Reports delivery cost for Alger.
+
+        ----------------------------------------------------------
+        15. CONTACT SUPPORT / ESCALATION
+        ----------------------------------------------------------
+        Customer: "bghit ntaklem m3a chi wa7ed"
+        Agent: Escalates to human merchant.
+
+        Customer: "jebt lcommande w ma kan chay"
+        Agent: Escalates to support (delivered-but-missing).
+
+        Customer: "je veux un remboursement"
+        Agent: Escalates to support (refund request).
+
+        Customer: "ghadi nchkou f had l7a9iya"
+        Agent: Escalates to support (legal/complaint).
+
+        ----------------------------------------------------------
+        16. FRUSTRATED CUSTOMER
+        ----------------------------------------------------------
+        Customer: "MA BGHITCH NMANTRI!! chno bghiti meniya?!"
+        Agent: Detects FRUSTRATED conversation act, stays calm
+        and apologetic, tries to help.
+
+        Customer: "مره اخرى قلت ليك ما بغيتش"
+        Agent: Mirrors language (Arabic), remains calm.
+
+        ----------------------------------------------------------
+        17. OUT OF SCOPE
+        ----------------------------------------------------------
+        Customer: "chno speed dyal l3dam?"
+        Agent: Classifies as OUT_OF_SCOPE, replies that it
+        can't help with that.
+
+        Customer: "what's the weather in Algiers?"
+        Agent: Deflects naturally, stays on topic.
+
+        ----------------------------------------------------------
+        18. MULTI-LANGUAGE MIRRORING
+        ----------------------------------------------------------
+        Customer: "عندكم iPhone?" (Arabic)
+        Agent: Replies in Arabic.
+
+        Customer: "vous avez des Airpods?" (French)
+        Agent: Replies in French.
+
+        Customer: "ch3andkoum men Samsung?" (Darija)
+        Agent: Replies in Darija.
+
+        ----------------------------------------------------------
+        19. GOODBYE
+        ----------------------------------------------------------
+        Customer: "merci beaucoup"
+        Agent: Friendly goodbye message.
+
+        Customer: "ila bkit lkhir"
+        Agent: Friendly goodbye in Darija.
+
+        ----------------------------------------------------------
+        20. DIDN'T UNDERSTAND
+        ----------------------------------------------------------
+        Customer: "asdbfkajsbfkj"
+        Agent: "Mashi mafhoum, chno bghiti?" / "Pouvez-vous
+        répéter s'il vous plaît?"
+
+        Customer: "..."
+        Agent: Asks for clarification.

@@ -116,6 +116,8 @@ model Customer {
   phone      String
   name       String?
   language   String?
+  wilaya     String?
+  commune    String?
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -134,8 +136,8 @@ model Order {
   customerId       String
   platformOrderId  String
   wilaya           String
-  commune          String?
-  address          String
+  commune          String
+  address          String?
   productId        String
   productName      String
   quantity         Int         @default(1)
@@ -162,6 +164,7 @@ model Conversation {
   customerId       String
   customerPhone    String              @default("")
   currentOrderId   String?             @unique
+  currentProductId String?
   owner            ConversationOwner   @default(AI)
   state            ConversationState   @default(IDLE)
   status           ConversationStatus  @default(ACTIVE)
@@ -211,6 +214,9 @@ model Message {
 
 
   rawPayload Json?
+
+  filePath    String?
+  messageType String   @default("text")
 
   intent String?
 
@@ -318,4 +324,15 @@ enum MessageSender {
   CUSTOMER
   AI
   MERCHANT
+}
+
+model Commune {
+  id        String @id @default(cuid())
+  name      String
+  wilaya    String
+  wilayaCode Int
+
+  @@unique([name, wilaya])
+  @@index([wilaya])
+  @@index([name])
 }

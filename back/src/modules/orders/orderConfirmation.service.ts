@@ -9,12 +9,12 @@ export const sendOrderConfirmation = async (orderId: string) => {
   });
 
   const conversation = await prisma.conversation.findFirstOrThrow({
-    where: { currentOrderId: order.id },
+    where: { merchantId: order.merchantId, customerId: order.customerId },
   });
 
   const language = order.customer.language ?? conversation.language ?? 'auto';
 
-  const text = buildOrderConfirmationText(
+  const messages = buildOrderConfirmationText(
     {
       productName: order.productName,
       quantity: order.quantity,
@@ -22,32 +22,38 @@ export const sendOrderConfirmation = async (orderId: string) => {
       currency: 'DZD',
       wilaya: order.wilaya,
       commune: order.commune,
-      address: order.address,
       clientName: order.customer.name,
     },
     language
   );
 
-  await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      direction: 'OUT',
-      sender: 'AI',
-      text,
-      role: 'assistant',
-      content: text,
-    },
-  });
+  // Persist each confirmation message as a separate DB row
+  for (const text of messages) {
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: 'OUT',
+        sender: 'AI',
+        text,
+        role: 'assistant',
+        content: text,
+      },
+    });
+  }
 
-  // Send via WhatsApp
+  // Send sequentially via WhatsApp with typing indicators
   try {
     const waSession = await prisma.whatsAppSession.findUnique({
       where: { merchantId: order.merchantId },
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
       if (order.customer.phone) {
-        await openwaService.sendText(waSession.sessionId, order.customer.phone, text);
-        console.log(`[orders] Confirmation sent via WhatsApp for order ${orderId}`);
+        await openwaService.sendMessagesSequentially(
+          waSession.sessionId,
+          order.customer.phone,
+          messages,
+        );
+        console.log(`[orders] Confirmation sent via WhatsApp for order ${orderId} (${messages.length} messages)`);
       } else {
         console.log(`[orders] No phone for customer ${order.customerId}, skipping WhatsApp send`);
       }
