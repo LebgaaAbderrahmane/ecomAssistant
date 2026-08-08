@@ -36,13 +36,23 @@ export const connectProvider = async (req: AuthenticatedRequest, res: Response) 
   const merchantId = req.merchant!.merchantId
   const { provider, apiId, apiToken } = req.body
 
-  if (!provider || !apiId || !apiToken) {
-    res.status(400).json({ message: 'provider, apiId, and apiToken are required' })
+  if (!provider || !apiToken) {
+    res.status(400).json({ message: 'provider and apiToken are required' })
+    return
+  }
+
+  const meta = DELIVERY_PROVIDERS.find((p) => p.key === provider)
+  if (!meta) {
+    res.status(400).json({ message: `Unknown delivery provider: ${provider}` })
+    return
+  }
+  if (meta.credentialField !== 'apiToken' && !apiId) {
+    res.status(400).json({ message: 'apiId is required for this provider' })
     return
   }
 
   try {
-    const result = await deliveryService.connectProvider(merchantId, provider, apiId, apiToken)
+    const result = await deliveryService.connectProvider(merchantId, provider, apiId ?? '', apiToken)
     res.json({ message: 'Connected successfully', provider })
   } catch (err: any) {
     res.status(400).json({ message: err.message || 'Connection failed' })

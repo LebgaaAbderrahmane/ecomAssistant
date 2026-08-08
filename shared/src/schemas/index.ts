@@ -4,7 +4,7 @@ export const storePlatformSchema = z.enum(['shopify', 'woocommerce'])
 export const languageSchema = z.enum(['derdja', 'french', 'arabic'])
 export const agentToneSchema = z.enum(['formal', 'friendly'])
 export const orderStatusSchema = z.enum(['pending', 'confirmed', 'cancelled', 'failed'])
-export const deliveryProviderSchema = z.enum(['yalidine', 'procolis'])
+export const deliveryProviderSchema = z.enum(['yalidine', 'procolis', 'maystro', 'noest'])
 
 export const agentConfigSchema = z.object({
   defaultLanguage: z.union([languageSchema, z.literal('auto')]),
