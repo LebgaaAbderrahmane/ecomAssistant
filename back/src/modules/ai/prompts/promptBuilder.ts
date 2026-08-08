@@ -21,6 +21,7 @@ export interface AgentContext {
   allowedIntents: string[];
   allowedTools: string[];
   memory: ConversationMemory;
+  knownSuggestedIntents?: Array<{ name: string; description: string | null }>;
 }
 
 export function buildIntentPrompt(ctx: AgentContext): string {
@@ -30,10 +31,16 @@ export function buildIntentPrompt(ctx: AgentContext): string {
     `Current conversation state: ${ctx.state}`,
     `Allowed intents right now: ${ctx.allowedIntents.join(', ')}`,
     `Allowed tools right now: ${ctx.allowedTools.length ? ctx.allowedTools.join(', ') : 'none'}`,
-    '',
-    'Context (memory):',
-    JSON.stringify(ctx.memory, null, 2),
   ];
+
+  if (ctx.knownSuggestedIntents?.length) {
+    const list = ctx.knownSuggestedIntents
+      .map(s => `  ${s.name} (suggested) — ${s.description ?? ''}`)
+      .join('\n');
+    sections.push('', 'Previously suggested intents (reuse these names if they match):', list);
+  }
+
+  sections.push('', 'Context (memory):', JSON.stringify(ctx.memory, null, 2));
 
   if (ctx.memory.lastProductResults?.length) {
     const list = ctx.memory.lastProductResults
@@ -52,8 +59,8 @@ export function buildIntentPrompt(ctx: AgentContext): string {
 export interface IntentContext {
   intent: string;
   entities: Record<string, string | number | boolean | null>;
-  toolResult: ToolResult | null;
-  memory: ConversationMemory;
+  toolResult?: ToolResult | null;
+  memory?: ConversationMemory;
   tone?: string;
   language?: string;
   status: string;
@@ -65,6 +72,8 @@ export interface ReplyContext {
   conversationAct: string;
   toolResults: Array<{ intent: string; result: ToolResult | null }>;
   memory: ConversationMemory;
+  tone?: string;
+  language?: string;
 }
 
 export function buildReplyPrompt(ctx: ReplyContext): string {
@@ -110,19 +119,7 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     }
   }
 
-  lines.push('');
-  lines.push(`Customer intent: ${ctx.intent}`);
-  lines.push(`Conversation tone: ${ctx.conversationAct}`);
-  lines.push('Extracted entities:');
-  lines.push(JSON.stringify(ctx.entities, null, 2));
-  lines.push('');
-  lines.push(toolSection);
-  lines.push('');
-  lines.push('Context (memory):');
-  lines.push(JSON.stringify(ctx.memory, null, 2));
-
-  return lines.join('\n');
-  // Build intents summary
+  // Intents summary (in execution order)
   const intentLines = ctx.intents.map(item => {
     let line = `  - ${item.intent} (status: ${item.status})`;
     if (item.candidates?.length) {
@@ -135,8 +132,7 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     ? toolSections.join('\n\n')
     : 'No tool was called for this message — do not state facts you do not have.';
 
-  return [
-    REPLY_GENERATION_RULES,
+  lines.push(
     '',
     'Customer intents (in execution order):',
     intentLines.join('\n'),
@@ -148,5 +144,7 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     '',
     'Context (memory):',
     JSON.stringify(ctx.memory, null, 2),
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }

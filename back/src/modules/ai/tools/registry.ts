@@ -80,11 +80,6 @@ export interface ToolResult {
 type ToolEntities = Record<string, string | number | boolean | null>;
 type ToolHandler = (entities: ToolEntities, ctx: ToolExecutionContext) => Promise<ToolResult>;
 
-const notImplemented: ToolHandler = async () => ({
-  success: false,
-  error: 'This tool is not implemented yet',
-});
-
 function formatProducts(products: Product[]) {
   return products.map((p) => ({
     id: p.id,
@@ -682,6 +677,46 @@ const modifyOrder: ToolHandler = async (entities, ctx) => {
   };
 };
 
+const escalateConversation: ToolHandler = async (_entities, ctx) => {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: ctx.conversationId },
+  });
+  if (!conversation) {
+    return { success: false, error: 'Conversation not found' };
+  }
+
+  // Idempotent — one escalation per conversation.
+  if (conversation.takenOverByHuman) {
+    return { success: true, data: { escalated: false } };
+  }
+
+  await prisma.conversation.update({
+    where: { id: ctx.conversationId },
+    data: { takenOverByHuman: true, escalatedAt: new Date() },
+  });
+
+  const customer = await prisma.customer.findUnique({
+    where: { id: ctx.customerId },
+    select: { name: true, phone: true },
+  });
+
+  try {
+    await prisma.notification.create({
+      data: {
+        merchantId: ctx.merchantId,
+        type: 'escalation',
+        title: 'Conversation escaladée',
+        message: `Le client ${customer?.name || customer?.phone || 'inconnu'} a été transféré à un humain.`,
+        link: '/dashboard/escalations',
+      },
+    });
+  } catch (err) {
+    console.error('[tools] Failed to create escalation notification:', err);
+  }
+
+  return { success: true, data: { escalated: true } };
+};
+
 export const toolRegistry: Record<ToolName, ToolHandler> = {
   searchProducts,
   recallPreviousProducts,
@@ -693,7 +728,7 @@ export const toolRegistry: Record<ToolName, ToolHandler> = {
   cancelOrder,
   calculateShipping,
   getOrderStatus,
-  createSupportTicket: notImplemented,
+  escalateConversation,
 };
 
 export const executeTool = async (

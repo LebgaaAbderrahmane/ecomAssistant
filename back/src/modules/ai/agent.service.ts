@@ -3,8 +3,9 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema, ToolNameSchema, resolveTool } from './schemas/intents.schemas';
+import { IntentSchema, ToolNameSchema, resolveTool, isSuggestedIntent, intentToString, type IntentField } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
+import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
 import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
@@ -53,6 +54,10 @@ const INTENT_PRIORITY: Record<string, number> = {
   GOODBYE: 5,
 };
 
+function intentPriority(intent: IntentField): number {
+  return typeof intent === 'string' ? (INTENT_PRIORITY[intent] ?? 5) : 5;
+}
+
 async function resolveProductId(merchantId: string, productName: string): Promise<string | null> {
   const product = await prisma.product.findFirst({
     where: {
@@ -69,9 +74,39 @@ function sortIntents(intents: IntentItem[]): IntentItem[] {
     const orderDiff = a.order - b.order;
     if (orderDiff !== 0) return orderDiff;
     // Tiebreak by hardcoded priority (lower = first)
-    const pa = INTENT_PRIORITY[a.intent] ?? 5;
-    const pb = INTENT_PRIORITY[b.intent] ?? 5;
-    return pa - pb;
+    return intentPriority(a.intent) - intentPriority(b.intent);
+  });
+}
+
+async function persistMemory(
+  conversationId: string,
+  memory: ConversationMemory,
+  sortedIntents: IntentItem[],
+  primaryIntent: IntentItem,
+  conversationAct: string,
+  lastProductResults?: ConversationMemory['lastProductResults'],
+) {
+  const intentSummaries: IntentSummary[] = sortedIntents.map(item => ({
+    intent: intentToString(item.intent),
+    entities: item.entities,
+  }));
+
+  const updatedMemory: ConversationMemory = {
+    ...memory,
+    lastIntent: intentToString(primaryIntent.intent),
+    lastIntents: intentSummaries,
+    lastConversationAct: conversationAct,
+    entities: { ...(memory.entities ?? {}), ...primaryIntent.entities },
+    lastProductResults: lastProductResults ?? memory.lastProductResults,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      memory: updatedMemory as Prisma.InputJsonValue,
+      lastMessageAt: new Date(),
+    },
   });
 }
 
@@ -122,8 +157,13 @@ export const processMessage = async (messageId: string) => {
   // ─── Empty message guard ────────────────────────────────────────────
   // No transcribable content (e.g. media omitted by the gateway). Skip the LLM
   // pipeline entirely — never let empty input hallucinate an intent like
-  // ORDER_CONFIRM. Reply with a clarifying message instead.
+  // ORDER_CONFIRM. If a human owns the conversation, stay silent entirely.
   if (!effectiveText || !effectiveText.trim()) {
+    if (conversation.takenOverByHuman) {
+      console.log(`[agent] ${messageId} -> empty message in human-owned conversation, ignored`);
+      return;
+    }
+
     const fallbackReply = "Désolé, je n'ai pas bien compris votre message. Pouvez-vous réessayer par texte ou me l'envoyer à nouveau ?";
     await prisma.message.create({
       data: {
@@ -162,12 +202,15 @@ export const processMessage = async (messageId: string) => {
     return;
   }
 
-  // ─── LLM #1: multi-intent extraction ────────────────────────────────
+  // ─── LLM #1: multi-intent extraction (always runs, even if taken over) ─
+  // LLM #1 keeps working so we keep collecting intent data + suggested intents.
+  const knownSuggestedIntents = await topSuggested(10);
   const intentContext: AgentContext = {
     state: conversation.state,
     allowedIntents: ALL_INTENTS,
     allowedTools: ALL_TOOLS,
     memory,
+    knownSuggestedIntents,
   };
   const rawIntent = await callLLM({
     systemPrompt: buildIntentPrompt(intentContext),
@@ -179,7 +222,7 @@ export const processMessage = async (messageId: string) => {
   try {
     parsed = parseResponse(rawIntent);
     console.log(`[agent] ${messageId} -> extracted ${parsed.intents.length} intent(s):`,
-      parsed.intents.map(i => `${i.intent}(${i.confidence.toFixed(2)})`));
+      parsed.intents.map(i => `${intentToString(i.intent)}(${i.confidence.toFixed(2)})`));
   } catch (err) {
     if (err instanceof LLMParseError) {
       console.error('[agent] failed to parse intent response', { messageId, raw: err.raw });
@@ -193,9 +236,9 @@ export const processMessage = async (messageId: string) => {
   // Log when safety net overrides LLM order (useful for prompt tuning)
   for (let i = 0; i < sortedIntents.length; i++) {
     const item = sortedIntents[i];
-    const expectedPriority = INTENT_PRIORITY[item.intent] ?? 5;
+    const expectedPriority = intentPriority(item.intent);
     if (item.order !== i + 1) {
-      console.log(`[agent] ${messageId} -> order override: ${item.intent} was order=${item.order}, now position=${i + 1} (priority=${expectedPriority})`);
+      console.log(`[agent] ${messageId} -> order override: ${intentToString(item.intent)} was order=${item.order}, now position=${i + 1} (priority=${expectedPriority})`);
     }
   }
 
@@ -204,67 +247,12 @@ export const processMessage = async (messageId: string) => {
   await prisma.message.update({
     where: { id: messageId },
     data: {
-      intent: primaryIntent.intent,
+      intent: intentToString(primaryIntent.intent),
       entities: primaryIntent.entities,
       confidence: primaryIntent.confidence,
     },
   });
 
-  // --- Check escalation threshold ---
-  const recentIntents = (memory.recentIntents ?? []) as string[];
-  const updatedRecentIntents = [...recentIntents, `${parsed.intent}:${parsed.conversationAct}`].slice(-10);
-
-  if (
-    !conversation.takenOverByHuman &&
-    (parsed.conversationAct === 'DIDNT_UNDERSTAND' || parsed.conversationAct === 'FRUSTRATED')
-  ) {
-    const consecutiveNegative = updatedRecentIntents
-      .slice()
-      .reverse()
-      .filter((e) => e.endsWith(':DIDNT_UNDERSTAND') || e.endsWith(':FRUSTRATED'))
-      .length;
-
-    if (consecutiveNegative >= escalationThreshold) {
-      console.log(`[agent] Escalation threshold reached (${consecutiveNegative}/${escalationThreshold}) — escalating conversation ${conversation.id}`);
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: {
-          takenOverByHuman: true,
-          escalatedAt: new Date(),
-        },
-      });
-
-      // Send escalation notification to merchant
-      try {
-        const customer = await prisma.customer.findUnique({
-          where: { id: conversation.customerId },
-        });
-        await prisma.notification.create({
-          data: {
-            merchantId: conversation.merchantId,
-            type: 'escalation',
-            title: 'Conversation escaladée',
-            message: `Le client ${customer?.name || customer?.phone || 'inconnu'} a été transféré à un humain. ${consecutiveNegative} messages sans réponse satisfaisante.`,
-            link: '/dashboard/escalations',
-          },
-        });
-      } catch (err) {
-        console.error('[agent] Failed to create escalation notification:', err);
-      }
-    }
-  }
-
-  // --- Tool execution ---
-  let toolResult: ToolResult | null = null;
-  if (parsed.toolSuggestion) {
-    toolResult = await executeTool(parsed.toolSuggestion, parsed.entities, {
-      merchantId: conversation.merchantId,
-      customerId: conversation.customerId,
-      conversationId: conversation.id,
-      currentOrderId: conversation.currentOrderId,
-    });
-    console.log(`[agent] tool "${parsed.toolSuggestion}" ->`, toolResult);
-  // ─── Entity enrichment + tool execution loop ─────────────────────────
   const executionContext = {
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
@@ -276,6 +264,89 @@ export const processMessage = async (messageId: string) => {
     customerCommune: customer.commune,
   };
 
+  // ─── Suggested intents: record + escalate ───────────────────────────
+  // When the LLM proposes a new intent, we persist it (count +1) and hand the
+  // conversation over to a human. The AI then stops: no tools, no reply.
+  const suggestedItems = sortedIntents.filter(item => isSuggestedIntent(item.intent));
+  let takenOver = conversation.takenOverByHuman;
+
+  if (suggestedItems.length > 0) {
+    const seen = new Set<string>();
+    for (const item of suggestedItems) {
+      if (!isSuggestedIntent(item.intent)) continue;
+      const suggested = item.intent; // narrowed to SuggestedIntentField
+      if (seen.has(suggested.name)) continue;
+      seen.add(suggested.name);
+      try {
+        await recordSuggestion(suggested.name, suggested.description);
+        console.log(`[agent] ${messageId} -> recorded suggested intent "${suggested.name}"`);
+      } catch (err) {
+        console.error(`[agent] failed to record suggested intent "${suggested.name}":`, err);
+      }
+    }
+
+    if (!takenOver) {
+      const result = await executeTool('escalateConversation', {}, executionContext);
+      console.log(`[agent] ${messageId} -> escalated conversation (suggested intent), tool ->`, result);
+      takenOver = true;
+    }
+  }
+
+  // ─── Escalation threshold (existing safety net) ─────────────────────
+  if (!takenOver) {
+    const recentIntents = (memory.recentIntents ?? []) as string[];
+    const updatedRecentIntents = [...recentIntents, `${intentToString(primaryIntent.intent)}:${parsed.conversationAct}`].slice(-10);
+
+    if (parsed.conversationAct === 'DIDNT_UNDERSTAND' || parsed.conversationAct === 'FRUSTRATED') {
+      const consecutiveNegative = updatedRecentIntents
+        .slice()
+        .reverse()
+        .filter((e) => e.endsWith(':DIDNT_UNDERSTAND') || e.endsWith(':FRUSTRATED'))
+        .length;
+
+      if (consecutiveNegative >= escalationThreshold) {
+        console.log(`[agent] Escalation threshold reached (${consecutiveNegative}/${escalationThreshold}) — escalating conversation ${conversation.id}`);
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            takenOverByHuman: true,
+            escalatedAt: new Date(),
+          },
+        });
+        takenOver = true;
+
+        // Send escalation notification to merchant
+        try {
+          const customer = await prisma.customer.findUnique({
+            where: { id: conversation.customerId },
+          });
+          await prisma.notification.create({
+            data: {
+              merchantId: conversation.merchantId,
+              type: 'escalation',
+              title: 'Conversation escaladée',
+              message: `Le client ${customer?.name || customer?.phone || 'inconnu'} a été transféré à un humain. ${consecutiveNegative} messages sans réponse satisfaisante.`,
+              link: '/dashboard/escalations',
+            },
+          });
+        } catch (err) {
+          console.error('[agent] Failed to create escalation notification:', err);
+        }
+      }
+    }
+  }
+
+  // ─── Human takeover: keep LLM #1, stop everything else ─────────────
+  // LLM #1 already ran (intent data + suggestions recorded above). The AI must
+  // not execute tools or generate replies once a human owns the conversation —
+  // the merchant responds directly.
+  if (takenOver) {
+    await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, memory.lastProductResults);
+    console.log(`[agent] ${messageId} -> conversation taken over by human, AI stopped (no reply)`);
+    return;
+  }
+
+  // ─── Entity enrichment + tool execution loop ─────────────────────────
   const toolResults: Array<{ intent: string; result: ToolResult | null }> = [];
   let lastProductResults = memory.lastProductResults;
 
@@ -283,7 +354,7 @@ export const processMessage = async (messageId: string) => {
     // Skip intents that are marked unresolved
     if (item.status === 'unresolved') {
       toolResults.push({
-        intent: item.intent,
+        intent: intentToString(item.intent),
         result: { success: false, error: item.unresolvedReason ?? 'Intent present but cannot be acted on' },
       });
       continue;
@@ -292,7 +363,7 @@ export const processMessage = async (messageId: string) => {
     // Resolve tool from intent
     const toolName = resolveTool(item.intent, item.entities);
     if (!toolName) {
-      toolResults.push({ intent: item.intent, result: null });
+      toolResults.push({ intent: intentToString(item.intent), result: null });
       continue;
     }
 
@@ -310,13 +381,13 @@ export const processMessage = async (messageId: string) => {
     let result: ToolResult;
     try {
       result = await executeTool(toolName, entities, executionContext);
-      console.log(`[agent] tool "${toolName}" (intent=${item.intent}) ->`, result);
+      console.log(`[agent] tool "${toolName}" (intent=${intentToString(item.intent)}) ->`, result);
     } catch (err) {
-      console.error(`[agent] tool "${toolName}" failed for intent ${item.intent}`, err);
+      console.error(`[agent] tool "${toolName}" failed for intent ${intentToString(item.intent)}`, err);
       result = { success: false, error: 'Tool execution failed' };
     }
 
-    toolResults.push({ intent: item.intent, result });
+    toolResults.push({ intent: intentToString(item.intent), result });
 
     // Post-processing: store search results in memory for index-based selection
     if (
@@ -345,10 +416,22 @@ export const processMessage = async (messageId: string) => {
     }
   }
 
+  // If a tool (e.g. ESCALATION → escalateConversation) took the conversation
+  // over, the AI must not reply — the merchant responds directly.
+  const conversationAfterTools = await prisma.conversation.findUnique({
+    where: { id: conversation.id },
+    select: { takenOverByHuman: true },
+  });
+  if (conversationAfterTools?.takenOverByHuman) {
+    await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, lastProductResults);
+    console.log(`[agent] ${messageId} -> conversation escalated during tool execution, AI stopped (no reply)`);
+    return;
+  }
+
   // ─── LLM #2: reply generation (single call for all intents) ─────────
   const replyContext: ReplyContext = {
     intents: sortedIntents.map(item => ({
-      intent: item.intent,
+      intent: intentToString(item.intent),
       entities: item.entities,
       status: item.status,
       candidates: item.candidates,
@@ -414,29 +497,8 @@ export const processMessage = async (messageId: string) => {
   }
 
   // ─── Update conversation memory ─────────────────────────────────────
-  const intentSummaries: IntentSummary[] = sortedIntents.map(item => ({
-    intent: item.intent,
-    entities: item.entities,
-  }));
+  await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, lastProductResults);
 
-  const updatedMemory: ConversationMemory = {
-    ...memory,
-    lastIntent: primaryIntent.intent,
-    lastIntents: intentSummaries,
-    lastConversationAct: parsed.conversationAct,
-    entities: { ...(memory.entities ?? {}), ...primaryIntent.entities },
-    lastProductResults: lastProductResults ?? memory.lastProductResults,
-    updatedAt: new Date().toISOString(),
-  };
-
-  await prisma.conversation.update({
-    where: { id: conversation.id },
-    data: {
-      memory: updatedMemory as Prisma.InputJsonValue,
-      lastMessageAt: new Date(),
-    },
-  });
-
-  console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => i.intent).join(',')}, reply (${replyParsed.messages.length} msgs):`,
+  console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => intentToString(i.intent)).join(',')}, reply (${replyParsed.messages.length} msgs):`,
     replyParsed.messages.map((m, i) => `[${i}] "${m.substring(0, 60)}${m.length > 60 ? '...' : ''}"`));
 };

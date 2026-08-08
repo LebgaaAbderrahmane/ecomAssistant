@@ -357,3 +357,14 @@ model Commune {
   @@index([wilaya])
   @@index([name])
 }
+
+model SuggestedIntent {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  count       Int      @default(1)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([count(sort: Desc)])
+}

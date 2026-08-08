@@ -35,6 +35,31 @@ export const ConversationActSchema = z.enum([
 ]);
 export type ConversationAct = z.infer<typeof ConversationActSchema>;
 
+// ─── Suggested intent field ─────────────────────────────────────────────
+// When the LLM can't map a request to a covered intent, it may propose a new
+// one. It is flagged with `suggested: true` and carries a canonical name +
+// short description. These are persisted (with a count) in SuggestedIntent.
+export const SuggestedIntentFieldSchema = z.object({
+  suggested: z.literal(true),
+  name: z.string().min(1).max(60),
+  description: z.string().min(1).max(200),
+});
+export type SuggestedIntentField = z.infer<typeof SuggestedIntentFieldSchema>;
+
+// A single intent field is either a covered intent (enum) or a suggested one.
+export const IntentFieldSchema = z.union([IntentSchema, SuggestedIntentFieldSchema]);
+export type IntentField = z.infer<typeof IntentFieldSchema>;
+
+export function isSuggestedIntent(
+  intent: IntentField
+): intent is SuggestedIntentField {
+  return typeof intent !== 'string' && intent.suggested === true;
+}
+
+export function intentToString(intent: IntentField): string {
+  return isSuggestedIntent(intent) ? `SUGGESTED:${intent.name}` : intent;
+}
+
 // ─── Tool names ──────────────────────────────────────────────────────────
 // Must match the keys registered in tools/registry.ts exactly.
 export const ToolNameSchema = z.enum([
@@ -48,7 +73,7 @@ export const ToolNameSchema = z.enum([
   'cancelOrder',
   'calculateShipping',
   'getOrderStatus',
-  'createSupportTicket',
+  'escalateConversation',
 ]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
 
@@ -66,10 +91,13 @@ const INTENT_TOOL_MAP: Partial<Record<Intent, ToolName>> = {
   ORDER_CANCEL: 'cancelOrder',
   SHIPPING_CHECK: 'calculateShipping',
   STATUS_CHECK: 'getOrderStatus',
-  ESCALATION: 'createSupportTicket',
+  ESCALATION: 'escalateConversation',
 };
 
-export function resolveTool(intent: Intent, entities: Record<string, unknown>): ToolName | null {
+export function resolveTool(intent: IntentField, entities: Record<string, unknown>): ToolName | null {
+  if (isSuggestedIntent(intent)) {
+    return null;
+  }
   if (intent === 'PRODUCT_SEARCH') {
     return entities.product ? 'searchProducts' : 'recallPreviousProducts';
   }

@@ -7,10 +7,26 @@ import { IntentSchema, ConversationActSchema } from './intents.schemas';
 // when the intent/tool enums change.
 
 // ─── Intent item schema (one per extracted intent) ──────────────────────
+// The intent field is an anyOf: a covered intent (string enum) OR a suggested
+// intent (object flagged `suggested: true`). Mirrors IntentFieldSchema in
+// intents.schemas.ts; keep both in sync by hand.
 const INTENT_ITEM_SCHEMA = {
   type: 'object' as const,
   properties: {
-    intent: { type: 'string' as const, enum: [...IntentSchema.options] },
+    intent: {
+      anyOf: [
+        { type: 'string' as const, enum: [...IntentSchema.options] },
+        {
+          type: 'object' as const,
+          properties: {
+            suggested: { type: 'boolean' as const },
+            name: { type: 'string' as const },
+            description: { type: 'string' as const },
+          },
+          required: ['suggested', 'name', 'description'] as const,
+        },
+      ],
+    },
     entities: {
       type: 'object' as const,
       properties: {

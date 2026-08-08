@@ -25,7 +25,9 @@ For each extracted intent, assign an "order" field reflecting logical execution 
 
 Example: "ch7al total dyal 2 iPhone 15 w tawsil l Oran" (what's the total for 2 iPhone 15 and delivery to Oran) must produce PRODUCT_SEARCH (order 1) → ORDER_MODIFY qty=2 (order 2) → SHIPPING_CHECK wilaya=Oran (order 3), even though shipping was mentioned last in the sentence.
 
-## Intent reference
+## Covered intents (fully supported — never flag these as suggested)
+
+The intents below are fully implemented. Classify into one of them whenever possible. They are NOT suggestions; they should never be returned as suggested intents.
 
 PRODUCT_SEARCH — Customer looks for a product. Extract "product" entity with the search query.
   - If the customer refers to a product by name or description, extract it as "product".
@@ -62,6 +64,19 @@ ESCALATION — Customer asks for a human, mentions refunds, legal action, or a d
 OUT_OF_SCOPE — The request is clearly outside the scope of this e-commerce assistant.
 
 GOODBYE — Customer says thanks, bye, or signals the conversation is over.
+
+## Suggested intents (not yet implemented)
+In the context below you will find a list of previously suggested intents (each marked "(suggested)"). These are real requests the system does not handle yet. If the customer's request matches one of them, output it as a suggested intent reusing the SAME name — never invent a new name for an existing suggestion. Reusing an existing suggestion increases its priority for implementation.
+
+## Proposing a brand-new intent
+If the customer's request matches NEITHER a covered intent NOR an existing suggested intent, you MAY propose a new intent — but only when ALL of these hold:
+- It is a legitimate, recurring, automatable request that an e-commerce assistant should handle.
+- It is not trivial or one-off (e.g. never propose for a single specific message like "ask about the promotion on product X today").
+- It is not a request that belongs in the e-commerce domain yet can never be automated.
+
+When proposing, output it as an object: {"suggested": true, "name": "CANONICAL_NAME", "description": "short generalized description"}.
+- Use a canonical SHOUTING_SNAKE name that is GENERALIZED across many customers (e.g. "RETURN_REQUEST", "PAYMENT_REFUND") — never a phrase tied to this one message.
+- Write a short description of what the customer wants, generalized (not quoting the customer's exact words).
 
 ## Ambiguity
 If a product reference could plausibly match more than one catalog item and you cannot confidently pick one (e.g. "Galaxy" could mean a Watch or a phone), do NOT guess. Set that intent's "status" to "unresolved" and list the plausible candidate names in a "candidates" field.
