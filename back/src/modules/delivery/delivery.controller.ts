@@ -1,4 +1,4 @@
-import { Response } from 'express'
+import { Request, Response } from 'express'
 import { DELIVERY_PROVIDERS, DeliveryProviderKey } from '@ecomassistant/shared'
 import { AuthenticatedRequest } from '../../middlwares/auth.middlware.js'
 import { deliveryService } from './delivery.service.js'
@@ -97,5 +97,18 @@ export const getTracking = async (req: AuthenticatedRequest, res: Response) => {
     res.json(result)
   } catch (err: any) {
     res.status(400).json({ message: err.message })
+  }
+}
+
+export const handleWebhook = async (req: Request, res: Response) => {
+  const { provider } = req.params
+  const rawBody = (req as any).rawBody
+
+  try {
+    const result = await deliveryService.handleWebhook(provider, rawBody ?? Buffer.from(''), req.body)
+    res.status(200).json(result)
+  } catch (err: any) {
+    console.error(`[Delivery] webhook for ${provider} failed:`, err?.message || err)
+    res.status(200).json({ received: true })
   }
 }

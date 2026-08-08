@@ -12,5 +12,6 @@ router.post('/disconnect', authenticate, controller.disconnectProvider)
 router.post('/ship-order/:orderId', authenticate, controller.shipOrder)
 router.post('/parcels', authenticate, controller.createParcel)
 router.get('/tracking/:trackingNumber', authenticate, controller.getTracking)
+router.post('/webhook/:provider', controller.handleWebhook)
 
 export default router

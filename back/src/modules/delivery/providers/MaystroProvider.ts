@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getWilayaCode } from '@ecomassistant/shared'
 import { AbstractDeliveryProvider } from './AbstractDeliveryProvider.js'
-import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery } from './types.js'
+import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery, WebhookEvent } from './types.js'
 
 const BASE_URL = 'https://backend.maystro-delivery.com/api/'
 const MAYSTRO_SOURCE_ID = 4
@@ -17,6 +17,13 @@ interface MaystroOrderResponse {
   display_id_order?: string
   success?: boolean
   errors?: string[]
+}
+
+const MAYSTRO_STATUS: Record<number, WebhookEvent['status']> = {
+  15: 'shipped',
+  41: 'delivered',
+  50: 'cancelled',
+  55: 'returned',
 }
 
 const normalizeCommune = (name: string): string =>
@@ -140,7 +147,50 @@ export class MaystroProvider extends AbstractDeliveryProvider {
     return 0
   }
 
-  verifyWebhookSignature(_payload: Buffer, _signature: string): boolean {
-    return true
+  verifyWebhookSignature(payload: Buffer, _signature: string): boolean {
+    try {
+      const raw = JSON.parse(payload.toString('utf8'))
+      const data = raw?.message?.data
+      if (typeof data !== 'string') return false
+      const decodedOnce = Buffer.from(data, 'base64').toString('utf8')
+      const decodedTwice = Buffer.from(decodedOnce, 'base64').toString('utf8')
+      const parsed = JSON.parse(decodedTwice)
+      return typeof parsed?.event === 'string' && !!parsed?.payload
+    } catch {
+      return false
+    }
+  }
+
+  parseWebhook(_payload: string, body: unknown): WebhookEvent | null {
+    const decoded = this.decodeDoubleBase64(body)
+    if (!decoded) return null
+
+    const rawStatus = Number(decoded.payload?.status)
+    const status = MAYSTRO_STATUS[rawStatus]
+    if (!status) return null
+
+    const tracking = decoded.payload?.display_id_order || decoded.payload?.external_order_id
+    if (!tracking) return null
+
+    return {
+      tracking: String(tracking),
+      status,
+      rawStatus: String(rawStatus),
+      date: decoded.payload?.last_update || decoded.payload?.delivered_at,
+    }
+  }
+
+  private decodeDoubleBase64(body: unknown): any {
+    try {
+      if (!body) return null
+      const wrapper = typeof body === 'string' ? JSON.parse(body) : body
+      const data = wrapper?.message?.data
+      if (typeof data !== 'string') return null
+      const first = Buffer.from(data, 'base64').toString('utf8')
+      const second = Buffer.from(first, 'base64').toString('utf8')
+      return JSON.parse(second)
+    } catch {
+      return null
+    }
   }
 }

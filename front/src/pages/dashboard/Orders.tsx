@@ -301,6 +301,8 @@ export function Orders() {
             options={[
               { value: 'CONFIRMED', label: t('placeholders.confirmed') },
               { value: 'PENDING', label: t('placeholders.pending') },
+              { value: 'SHIPPED', label: t('placeholders.shipped') },
+              { value: 'DELIVERED', label: t('placeholders.delivered') },
               { value: 'CANCELLED', label: t('placeholders.cancelled') },
               { value: 'SHIPPED', label: t('placeholders.shipped') },
               { value: 'DELIVERED', label: t('placeholders.delivered') },

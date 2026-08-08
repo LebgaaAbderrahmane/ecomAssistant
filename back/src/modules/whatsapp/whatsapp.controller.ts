@@ -656,3 +656,110 @@ export async function sendOrderNotification(order: {
     );
   }
 }
+
+export async function sendDeliveryStatusNotification(order: {
+  orderId: string;
+  merchantId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  productName: string;
+  platformOrderId: string;
+  totalAmount: number;
+  wilaya: string;
+  trackingNumber: string;
+  status: "shipped" | "delivered";
+  provider: string;
+}): Promise<void> {
+  const {
+    merchantId,
+    customerPhone,
+    customerName,
+    customerId,
+    productName,
+    platformOrderId,
+    totalAmount,
+    wilaya,
+    orderId,
+    trackingNumber,
+    status,
+    provider,
+  } = order;
+
+  if (!customerPhone) {
+    console.log(
+      `[WhatsApp] Skipping delivery status — no phone for order ${platformOrderId}`,
+    );
+    return;
+  }
+
+  const waSession = await prisma.whatsAppSession.findUnique({
+    where: { merchantId },
+  });
+  if (
+    !waSession ||
+    (waSession.status !== "connected" && waSession.status !== "ready")
+  ) {
+    console.log(
+      `[WhatsApp] Skipping delivery status — WhatsApp not connected for merchant ${merchantId}`,
+    );
+    return;
+  }
+
+  const conversation = await conversationService.createFromOrder(
+    merchantId,
+    orderId,
+    customerId,
+    customerPhone,
+  );
+
+  const agentConfig = await prisma.agentConfig.findUnique({
+    where: { merchantId },
+  });
+  const templates = (agentConfig?.templates as Record<string, string> | null) ?? {};
+
+  const isShipped = status === "shipped";
+  const template =
+    (isShipped
+      ? templates.deliveryShipped
+      : templates.deliveryDelivered) ||
+    (isShipped
+      ? [
+          "Bonjour {clientName},",
+          "",
+          "Votre commande #{orderId} pour \"{productName}\" a été expédiée !",
+          "",
+          "Suivi: {trackingNumber} ({provider})",
+          "",
+          "Merci de votre confiance !",
+        ].join("\n")
+      : [
+          "Bonjour {clientName},",
+          "",
+          "Votre commande #{orderId} pour \"{productName}\" a été livrée.",
+          "",
+          "Merci pour votre achat !",
+        ].join("\n"));
+
+  const text = template
+    .replace(/\{clientName\}/g, customerName || "Client")
+    .replace(/\{orderId\}/g, platformOrderId)
+    .replace(/\{productName\}/g, productName)
+    .replace(/\{trackingNumber\}/g, trackingNumber)
+    .replace(/\{provider\}/g, provider)
+    .replace(/\{totalAmount\}/g, totalAmount.toLocaleString("fr-FR"))
+    .replace(/\{wilaya\}/g, wilaya);
+
+  try {
+    await openwaService.sendText(waSession.sessionId, customerPhone, text);
+    await conversationService.addMessage(conversation.id, "agent", text);
+    console.log(
+      `[WhatsApp] Delivery status "${status}" sent for order ${platformOrderId}`,
+    );
+  } catch (err) {
+    console.error(
+      `[WhatsApp] Failed to send delivery status for ${platformOrderId}:`,
+      err,
+    );
+  }
+}

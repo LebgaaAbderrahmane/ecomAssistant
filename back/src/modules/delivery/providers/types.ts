@@ -41,6 +41,13 @@ export interface TrackingEvent {
   reason?: string
 }
 
+export interface WebhookEvent {
+  tracking: string
+  status: 'shipped' | 'delivered' | 'returned' | 'cancelled' | 'unknown'
+  rawStatus?: string
+  date?: string
+}
+
 export interface ShipOrderInput {
   weight?: number
   length?: number

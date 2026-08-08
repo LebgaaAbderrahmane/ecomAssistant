@@ -1,6 +1,7 @@
 import prisma from '../../config/db.config.js'
 import { ProviderFactory } from './providers/ProviderFactory.js'
-import type { ParcelInput, ShipOrderInput } from './providers/types.js'
+import type { ParcelInput, ShipOrderInput, WebhookEvent } from './providers/types.js'
+import { sendDeliveryStatusNotification } from '../whatsapp/whatsapp.controller.js'
 
 export const deliveryService = {
   async getConfig(merchantId: string) {
@@ -97,5 +98,67 @@ export const deliveryService = {
 
     const driver = ProviderFactory.create(config.provider, merchantId, config.apiId!, config.apiToken!)
     return driver.getTracking(trackingNumber)
+  },
+
+  async handleWebhook(provider: string, payload: Buffer, body: unknown) {
+    const configs = await prisma.deliveryProviderConfig.findMany({
+      where: { provider, isConnected: true },
+      include: { merchant: true },
+    })
+
+    for (const config of configs) {
+      const driver = ProviderFactory.create(config.provider, config.merchantId, config.apiId!, config.apiToken!)
+      if (!driver.verifyWebhookSignature(payload, '')) continue
+
+      const event = driver.parseWebhook(payload.toString('utf8'), body)
+      if (!event) continue
+
+      const order = await prisma.order.findFirst({
+        where: {
+          merchantId: config.merchantId,
+          OR: [
+            { trackingNumber: event.tracking },
+            { platformOrderId: event.tracking },
+          ],
+        },
+        include: { customer: true, merchant: true },
+      })
+      if (!order) continue
+
+      const statusMap: Partial<Record<WebhookEvent['status'], 'SHIPPED' | 'DELIVERED' | 'CANCELLED'>> = {
+        shipped: 'SHIPPED',
+        delivered: 'DELIVERED',
+        returned: 'CANCELLED',
+        cancelled: 'CANCELLED',
+      }
+      const newStatus = statusMap[event.status]
+      if (!newStatus) continue
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { status: newStatus },
+      })
+
+      if (event.status === 'shipped' || event.status === 'delivered') {
+        await sendDeliveryStatusNotification({
+          orderId: order.id,
+          merchantId: order.merchantId,
+          customerId: order.customerId,
+          customerName: order.customer?.name ?? '',
+          customerPhone: order.customer?.phone ?? '',
+          productName: order.productName,
+          platformOrderId: order.platformOrderId,
+          totalAmount: order.totalAmount,
+          wilaya: order.wilaya,
+          trackingNumber: order.trackingNumber ?? event.tracking,
+          status: event.status,
+          provider,
+        })
+      }
+
+      return { received: true, orderId: order.id, status: event.status }
+    }
+
+    return { received: true, processed: false }
   },
 }

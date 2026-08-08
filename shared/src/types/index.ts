@@ -1,6 +1,6 @@
 // ─── Enums ───────────────────────────────────────────
 
-export type OrderStatus = 'pending' | 'confirmed' | 'cancelled' | 'failed'
+export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled' | 'failed'
 export type ConversationStatus = 'active' | 'waiting' | 'confirmed' | 'cancelled' | 'escalated' | 'expired'
 export type Language = 'derdja' | 'french' | 'arabic'
 export type AgentTone = 'formal' | 'friendly'

@@ -1,4 +1,4 @@
-import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery } from './types.js'
+import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery, WebhookEvent } from './types.js'
 
 export abstract class AbstractDeliveryProvider {
   protected merchantId: string
@@ -22,4 +22,8 @@ export abstract class AbstractDeliveryProvider {
   abstract getFee(query: FeeQuery): Promise<number>
 
   abstract verifyWebhookSignature(payload: Buffer, signature: string): boolean
+
+  parseWebhook(_payload: string, _body: unknown): WebhookEvent | null {
+    return null
+  }
 }
