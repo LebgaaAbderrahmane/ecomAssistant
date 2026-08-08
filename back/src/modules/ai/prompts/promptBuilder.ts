@@ -52,6 +52,10 @@ export function buildIntentPrompt(ctx: AgentContext): string {
 export interface IntentContext {
   intent: string;
   entities: Record<string, string | number | boolean | null>;
+  toolResult: ToolResult | null;
+  memory: ConversationMemory;
+  tone?: string;
+  language?: string;
   status: string;
   candidates?: string[] | null;
 }
@@ -77,6 +81,47 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     }
   }
 
+  const lines = [REPLY_GENERATION_RULES];
+
+  // Tone override
+  if (ctx.tone && ctx.tone !== 'friendly') {
+    const toneMap: Record<string, string> = {
+      formal: 'Adopt a formal, professional tone. Use "vous" and proper grammar. Avoid slang and emojis.',
+      friendly: '',
+    };
+    const toneOverride = toneMap[ctx.tone];
+    if (toneOverride) {
+      lines.push('');
+      lines.push(`Tone override: ${toneOverride}`);
+    }
+  }
+
+  // Language preference
+  if (ctx.language && ctx.language !== 'auto') {
+    const langMap: Record<string, string> = {
+      french: 'Always respond in French.',
+      arabic: 'Always respond in Modern Standard Arabic.',
+      derdja: 'Always respond in Algerian Darija (Latin or Arabic script).',
+    };
+    const langOverride = langMap[ctx.language];
+    if (langOverride) {
+      lines.push('');
+      lines.push(langOverride);
+    }
+  }
+
+  lines.push('');
+  lines.push(`Customer intent: ${ctx.intent}`);
+  lines.push(`Conversation tone: ${ctx.conversationAct}`);
+  lines.push('Extracted entities:');
+  lines.push(JSON.stringify(ctx.entities, null, 2));
+  lines.push('');
+  lines.push(toolSection);
+  lines.push('');
+  lines.push('Context (memory):');
+  lines.push(JSON.stringify(ctx.memory, null, 2));
+
+  return lines.join('\n');
   // Build intents summary
   const intentLines = ctx.intents.map(item => {
     let line = `  - ${item.intent} (status: ${item.status})`;

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Badge } from '../../components/ui/Badge.js'
 import { Button } from '../../components/ui/Button.js'
 import { api } from '../../lib/api.js'
+import { useTranslation } from 'react-i18next'
 
 interface Escalation {
   id: string
@@ -50,6 +51,7 @@ export function Escalations() {
   const [hasMore, setHasMore] = useState(false)
   const [resolvingAll, setResolvingAll] = useState(false)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const { t } = useTranslation('escalations')
 
   const fetchEscalations = async (cursor?: string) => {
     setLoading(true)
@@ -82,9 +84,9 @@ export function Escalations() {
     try {
       await api.post(`/escalations/${id}/resolve`, {})
       setEscalations((prev) => prev.filter((e) => e.id !== id))
-      toast.success('Escalade résolue')
+      toast.success(t('resolved'))
     } catch {
-      toast.error('Erreur lors de la résolution')
+      toast.error(t('resolveError'))
     }
     setResolvingId(null)
   }
@@ -94,9 +96,9 @@ export function Escalations() {
     try {
       await api.post('/escalations/resolve-all', {})
       setEscalations([])
-      toast.success('Toutes les escalades ont été résolues')
+      toast.success(t('allResolved'))
     } catch {
-      toast.error('Erreur lors de la résolution')
+      toast.error(t('resolveError'))
     }
     setResolvingAll(false)
   }
@@ -105,64 +107,64 @@ export function Escalations() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Escalades</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {escalations.length} ouverte{escalations.length > 1 ? 's' : ''}
+          <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
+          <p className="mt-1 text-sm text-on-muted">
+            {t('openCount', { count: escalations.length })}
           </p>
         </div>
         {escalations.length > 0 && (
           <Button variant="secondary" onClick={handleResolveAll} loading={resolvingAll}>
-            Tout marquer comme résolu
+            {t('resolveAll')}
           </Button>
         )}
       </div>
 
-      <div className="mt-6 rounded-lg border border-gray-200 bg-white">
+      <div className="mt-6 rounded-lg border border-on bg-surface">
         <div className="hidden lg:block">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Client</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Dernier message</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Statut</th>
-                <th className="px-4 py-3 text-left text-[13px] font-medium text-gray-500">Depuis</th>
-                <th className="px-4 py-3 text-center text-[13px] font-medium text-gray-500">Actions</th>
+              <tr className="border-b border-on">
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.client')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.lastMessage')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.status')}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium text-on-muted">{t('columns.since')}</th>
+                <th className="px-4 py-3 text-center text-[13px] font-medium text-on-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && escalations.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-on-muted">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                    Chargement...
+                    {t('loading', { ns: 'common' })}
                   </td>
                 </tr>
               ) : escalations.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-on-muted">
                     <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                    Aucune escalade
-                    <p className="mt-1">Les conversations nécessitant votre attention apparaîtront ici</p>
+                    {t('empty')}
+                    <p className="mt-1">{t('emptyDescription')}</p>
                   </td>
                 </tr>
               ) : (
                 escalations.map((esc) => (
-                  <tr key={esc.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <tr key={esc.id} className="border-b border-on-light last:border-0 hover:bg-surface-secondary">
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{esc.customer.name || "—"}</p>
-                      <p className="text-xs text-gray-500">{esc.customer.phone}</p>
+                      <p className="text-sm font-medium text-on">{esc.customer.name || "—"}</p>
+                      <p className="text-xs text-on-muted">{esc.customer.phone}</p>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-sm text-gray-700 truncate max-w-[280px]">
+                      <p className="text-sm text-on-secondary truncate max-w-[280px]">
                         {esc.messages[0]?.content || "—"}
                       </p>
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={esc.takenOverByHuman ? "info" : "warning"}>
-                        {esc.takenOverByHuman ? "Pris en main" : "En attente"}
+                        {esc.takenOverByHuman ? t('status.takenOver') : t('status.pending')}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
+                    <td className="px-4 py-3 text-sm text-on-muted">
                       {esc.escalatedAt ? timeAgo(esc.escalatedAt) : "—"}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -182,7 +184,7 @@ export function Escalations() {
                           onClick={() => handleResolve(esc.id)}
                           loading={resolvingId === esc.id}
                         >
-                          Résoudre
+                          {t('resolve')}
                         </Button>
                       </div>
                     </td>
@@ -195,32 +197,32 @@ export function Escalations() {
 
         <div className="lg:hidden">
           {loading && escalations.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
               <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-              Chargement...
+              {t('loading', { ns: 'common' })}
             </div>
           ) : escalations.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-500">
+            <div className="px-4 py-12 text-center text-sm text-on-muted">
               <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-              Aucune escalade
-              <p className="mt-1">Les conversations nécessitant votre attention apparaîtront ici</p>
+              {t('empty')}
+              <p className="mt-1">{t('emptyDescription')}</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-on-light">
               {escalations.map((esc) => (
                 <div key={esc.id} className="p-4">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm font-medium text-gray-900">{esc.customer.name || "—"}</p>
+                    <p className="text-sm font-medium text-on">{esc.customer.name || "—"}</p>
                     <Badge variant={esc.takenOverByHuman ? "info" : "warning"}>
-                      {esc.takenOverByHuman ? "Pris en main" : "En attente"}
+                      {esc.takenOverByHuman ? t('status.takenOver') : t('status.pending')}
                     </Badge>
                   </div>
-                  <p className="text-xs text-gray-500">{esc.customer.phone}</p>
+                  <p className="text-xs text-on-muted">{esc.customer.phone}</p>
                   {esc.messages[0]?.content && (
-                    <p className="text-sm text-gray-700 mt-1.5 truncate">{esc.messages[0].content}</p>
+                    <p className="text-sm text-on-secondary mt-1.5 truncate">{esc.messages[0].content}</p>
                   )}
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-gray-400">{esc.escalatedAt ? timeAgo(esc.escalatedAt) : "—"}</span>
+                    <span className="text-xs text-on-faint">{esc.escalatedAt ? timeAgo(esc.escalatedAt) : "—"}</span>
                     <div className="flex items-center gap-2">
                       <a
                         href={formatWhatsAppUrl(esc.customerPhone)}
@@ -237,7 +239,7 @@ export function Escalations() {
                         onClick={() => handleResolve(esc.id)}
                         loading={resolvingId === esc.id}
                       >
-                        Résoudre
+                        {t('resolve')}
                       </Button>
                     </div>
                   </div>
@@ -248,9 +250,9 @@ export function Escalations() {
         </div>
 
         {hasMore && (
-          <div className="p-3 text-center border-t border-gray-100">
+          <div className="p-3 text-center border-t border-on-light">
             <Button variant="ghost" size="sm" onClick={() => fetchEscalations(nextCursor!)} loading={loading}>
-              Charger plus
+              {t('loadMore', { ns: 'common' })}
             </Button>
           </div>
         )}

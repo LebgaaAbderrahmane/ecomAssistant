@@ -1,0 +1,21 @@
+{
+  "title": "Dashboard",
+  "subtitle": "Overview of your AI WhatsApp agent performance",
+  "kpi": {
+    "ordersThisMonth": "Orders this month",
+    "confirmationRate": "Confirmation rate",
+    "avgDelay": "Average delay",
+    "pendingFollowUps": "Pending follow-ups"
+  },
+  "chart": {
+    "title": "Confirmations vs Cancellations",
+    "period": "Last 14 days",
+    "confirmed": "Confirmed",
+    "cancelled": "Cancelled"
+  },
+  "recentEscalations": "Recent escalations",
+  "viewAll": "View all",
+  "noEscalations": "No open escalations",
+  "escalated": "Escalated",
+  "recentOrders": "Recent orders"
+}

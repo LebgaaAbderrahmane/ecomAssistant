@@ -1,0 +1,47 @@
+{
+  "title": "Commandes",
+  "subtitle": "{{count}} commande(s)",
+  "placeholders": {
+    "confirmed": "Confirmée",
+    "pending": "En attente",
+    "cancelled": "Annulée",
+    "shipped": "Expédiée",
+    "delivered": "Livrée"
+  },
+  "filters": {
+    "status": "Statut",
+    "allStatuses": "Tous les statuts"
+  },
+  "columns": {
+    "client": "Client",
+    "product": "Produit",
+    "amount": "Montant",
+    "address": "Adresse",
+    "tracking": "Suivi",
+    "date": "Date"
+  },
+  "actions": {
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "pauseAgent": "Pause agent",
+    "resumeAgent": "Reprendre",
+    "tracking": "Suivi",
+    "ship": "Expédier la commande",
+    "openWhatsApp": "Actions"
+  },
+  "shipModal": {
+    "selectProvider": "Choisissez un transporteur",
+    "weight": "Poids (kg)",
+    "confirm": "Expédier",
+    "notConnected": "Non connecté",
+    "notAvailable": "Bientôt disponible"
+  },
+  "toast": {
+    "bulkStatusSuccess": "{{count}} commande(s) mise(s) à jour",
+    "bulkHoldSuccess": "Agent mis en pause / repris pour {{count}} commande(s)",
+    "trackingSuccess": "Suivi attribué à {{count}} commande(s)",
+    "shipSuccess": "{{count}} commande(s) expédiée(s)",
+    "shipError": "Échec de l'expédition",
+    "newOrder": "Nouvelle commande reçue"
+  }
+}

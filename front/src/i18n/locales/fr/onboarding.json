@@ -1,0 +1,63 @@
+{
+  "layout": {
+    "store": "Boutique",
+    "agent": "Agent",
+    "activation": "Activation"
+  },
+  "store": {
+    "title": "Connectez votre boutique",
+    "description": "Choisissez votre plateforme e-commerce pour synchroniser vos produits et commandes",
+    "oauth": "Via OAuth",
+    "apiKey": "Via clé API",
+    "shopifyName": "Nom de votre boutique Shopify",
+    "shopifyPlaceholder": "ma-boutique",
+    "shopifyHint": "Exemple : ma-boutique → ma-boutique.myshopify.com",
+    "connecting": "Connexion en cours...",
+    "connectShopify": "Connecter Shopify",
+    "retry": "Réessayer",
+    "skip": "Continuer sans boutique →",
+    "selectPlatform": "Sélectionnez une plateforme pour continuer",
+    "popupBlocked": "Le popup a été bloqué par votre navigateur. Autorisez les popups pour ce site et réessayez, ou connectez votre boutique depuis les paramètres plus tard.",
+    "windowClosed": "Fenêtre Shopify fermée. Si l'application est en cours de validation par Shopify, vous ne pourrez pas l'installer. Vous pouvez réessayer ou passer cette étape.",
+    "timedOut": "La connexion a pris trop de temps. Vérifiez que l'application Shopify est autorisée à s'installer."
+  },
+  "whatsapp": {
+    "title": "Connectez WhatsApp",
+    "description": "Liez votre numéro WhatsApp Business pour que l'agent puisse communiquer avec vos clients",
+    "instruction": "Utilisez le bouton ci-dessous pour connecter votre numéro WhatsApp.",
+    "connectButton": "Connecter WhatsApp",
+    "configuring": "Configuration de la session...",
+    "scanQR": "Scannez ce code QR avec WhatsApp",
+    "qrLabel": "QR Code WhatsApp",
+    "waitingScan": "En attente de scan...",
+    "connected": "WhatsApp connecté !",
+    "redirecting": "Redirection...",
+    "retry": "Réessayer",
+    "skip": "Passer cette étape"
+  },
+  "agent": {
+    "title": "Configurez votre agent",
+    "description": "Personnalisez le comportement de l'agent IA",
+    "defaultLanguage": "Langue par défaut",
+    "autoDetect": "Détection automatique",
+    "french": "Français",
+    "arabic": "Arabe",
+    "agentTone": "Ton de l'agent",
+    "friendly": "Amical",
+    "formal": "Formel",
+    "followUp1": "1er suivi (heures)",
+    "followUp2": "2e suivi (heures)",
+    "followUp3": "3e suivi (heures)",
+    "continue": "Continuer"
+  },
+  "activation": {
+    "storeConnected": "Boutique connectée et synchronisée",
+    "whatsappLinked": "Numéro WhatsApp lié",
+    "agentConfigured": "Agent configuré",
+    "deliveryPricing": "Grille tarifaire de livraison complétée",
+    "title": "Activation",
+    "description": "Vérifiez les éléments ci-dessous avant d'activer votre agent",
+    "activateButton": "Activer mon agent",
+    "hint": "Vous pourrez modifier ces réglages plus tard depuis les paramètres"
+  }
+}

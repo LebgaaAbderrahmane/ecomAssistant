@@ -1,0 +1,47 @@
+{
+  "title": "Orders",
+  "subtitle": "{{count}} order(s)",
+  "placeholders": {
+    "confirmed": "Confirmed",
+    "pending": "Pending",
+    "cancelled": "Cancelled",
+    "shipped": "Shipped",
+    "delivered": "Delivered"
+  },
+  "filters": {
+    "status": "Status",
+    "allStatuses": "All statuses"
+  },
+  "columns": {
+    "client": "Customer",
+    "product": "Product",
+    "amount": "Amount",
+    "address": "Address",
+    "tracking": "Tracking",
+    "date": "Date"
+  },
+  "actions": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "pauseAgent": "Pause agent",
+    "resumeAgent": "Resume",
+    "tracking": "Tracking",
+    "ship": "Ship order",
+    "openWhatsApp": "Actions"
+  },
+  "shipModal": {
+    "selectProvider": "Select a provider",
+    "weight": "Weight (kg)",
+    "confirm": "Ship",
+    "notConnected": "Not connected",
+    "notAvailable": "Coming soon"
+  },
+  "toast": {
+    "bulkStatusSuccess": "{{count}} order(s) updated",
+    "bulkHoldSuccess": "Agent paused / resumed for {{count}} order(s)",
+    "trackingSuccess": "Tracking assigned to {{count}} order(s)",
+    "shipSuccess": "{{count}} order(s) shipped",
+    "shipError": "Shipment failed",
+    "newOrder": "New order received"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "title": "Catalog",
+  "subtitle": "{{count}} product(s) synced",
+  "stock": {
+    "label": "Stock",
+    "allStocks": "All stock",
+    "inStock": "In stock",
+    "lowStock": "Low stock",
+    "outOfStock": "Out of stock"
+  },
+  "columns": {
+    "image": "Image",
+    "product": "Product",
+    "sku": "SKU",
+    "price": "Price",
+    "stock": "Stock",
+    "stockQty": "Qty",
+    "category": "Category",
+    "variants": "Variants",
+    "agent": "Agent"
+  },
+  "actions": {
+    "viewOnShopify": "View on Shopify",
+    "enableAgent": "Enable agent",
+    "disableAgent": "Disable agent"
+  },
+  "agentDisabled": "Agent disabled",
+  "toast": {
+    "agentEnabled": "Agent enabled for {{count}} product(s)",
+    "agentDisabled": "Agent disabled for {{count}} product(s)",
+    "synced": "Catalog updated"
+  }
+}

@@ -123,6 +123,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           setUnreadCount((prev) => prev + 1);
         }
 
+        if (data.type === "order.created") {
+          window.dispatchEvent(new CustomEvent("order:created", { detail: data }));
+        }
+
+        if (data.type === "product.synced") {
+          window.dispatchEvent(new CustomEvent("products:synced", { detail: data }));
+        }
+
         reconnectDelay.current = 1000;
       } catch {}
     };

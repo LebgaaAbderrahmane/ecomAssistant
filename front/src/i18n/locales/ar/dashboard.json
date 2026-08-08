@@ -1,0 +1,21 @@
+{
+  "title": "لوحة التحكم",
+  "subtitle": "نظرة عامة على أداء وكيل واتساب بالذكاء الاصطناعي",
+  "kpi": {
+    "ordersThisMonth": "طلبات هذا الشهر",
+    "confirmationRate": "نسبة التأكيد",
+    "avgDelay": "متوسط التأخير",
+    "pendingFollowUps": "المتابعات المنتظرة"
+  },
+  "chart": {
+    "title": "ال confirmations مقابل الإلغاءات",
+    "period": "آخر 14 يوم",
+    "confirmed": "مؤكدة",
+    "cancelled": "ملغاة"
+  },
+  "recentEscalations": "التصعيدات الأخيرة",
+  "viewAll": "عرض الكل",
+  "noEscalations": "لا توجد تصعيدات مفتوحة",
+  "escalated": "تم التصعيد",
+  "recentOrders": "الطلبات الأخيرة"
+}

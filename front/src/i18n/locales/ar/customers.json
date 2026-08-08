@@ -1,0 +1,28 @@
+{
+  "title": "العملاء",
+  "subtitle": "{{count}} client(s)",
+  "filters": {
+    "withOrders": "مع طلبات",
+    "withoutOrders": "بدون طلبات",
+    "allClients": "جميع العملاء",
+    "label": "العملاء"
+  },
+  "columns": {
+    "client": "العميل",
+    "confirmed": "مؤكدة",
+    "cancelled": "ملغاة",
+    "total": "الإجمالي",
+    "since": "عميل منذ"
+  },
+  "actions": {
+    "viewOrders": "عرض الطلبات",
+    "block": "حظر",
+    "unblock": "إلغاء الحظر"
+  },
+  "blocked": "محظور",
+  "toast": {
+    "blocked": "تم حظر {{count}} client(s)",
+    "unblocked": "تم إلغاء حظر {{count}} client(s)",
+    "newOrder": "تم استلام طلب جديد"
+  }
+}

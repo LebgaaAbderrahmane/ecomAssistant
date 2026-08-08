@@ -11,9 +11,10 @@ datasource db {
 model Merchant {
   id                         String    @id @default(cuid())
   email                      String    @unique
-  passwordHash               String
+  passwordHash               String    @default("")
   name                       String
   shopName                   String
+  googleId                   String?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
   isVerified                 Boolean   @default(false)
@@ -29,6 +30,7 @@ model Merchant {
   wilayaCosts      WilayaDeliveryCost[]
   whatsAppSession  WhatsAppSession?
   notifications    Notification[]
+  deliveryConfig   DeliveryProviderConfig?
 }
 
 model StoreConnection {
@@ -56,6 +58,8 @@ model ShopifyConnection {
   tokenExpiresAt        DateTime?
   refreshTokenExpiresAt DateTime?
   scopes                String?
+  currency              String    @default("DZD")
+  defaultOrderStatus    String    @default("PENDING")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -70,15 +74,17 @@ enum Source {
 }
 
 model AgentConfig {
-  id               String   @id @default(cuid())
-  merchantId       String   @unique
-  defaultLanguage  String   @default("auto")
-  tone             String   @default("friendly")
-  followUpDelays   Json
-  maxFollowUps     Int      @default(3)
-  deliveryProvider String?
-  isActive         Boolean  @default(false)
-  updatedAt        DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  merchantId           String   @unique
+  defaultLanguage      String   @default("auto")
+  tone                 String   @default("friendly")
+  followUpDelays       Json
+  maxFollowUps         Int      @default(3)
+  deliveryProvider     String?
+  isActive             Boolean  @default(false)
+  templates            Json?
+  escalationThreshold  Int      @default(3)
+  updatedAt            DateTime @updatedAt
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 }
@@ -95,6 +101,7 @@ model Product {
   variants          Json
   stockStatus       String   @default("in_stock")
   category          String?
+  agentEnabled      Boolean  @default(true)
   createdAt         DateTime @default(now())
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
@@ -116,6 +123,7 @@ model Customer {
   phone      String
   name       String?
   language   String?
+  blocked    Boolean  @default(false)
   wilaya     String?
   commune    String?
 
@@ -251,6 +259,19 @@ model WhatsAppSession {
   phoneNumber String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+}
+
+model DeliveryProviderConfig {
+  id            String   @id @default(cuid())
+  merchantId    String   @unique
+  provider      String
+  apiId         String?
+  apiToken      String?
+  isConnected   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 }

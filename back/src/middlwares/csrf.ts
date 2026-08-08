@@ -8,7 +8,7 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
   }
 
   // Exempt webhook endpoints — called by OpenWA, not the browser
-  if (req.path.startsWith("/whatsapp/webhook")) {
+  if (req.path.startsWith("/whatsapp/webhook") || req.path.startsWith("/delivery/webhook")) {
     return next();
   }
 

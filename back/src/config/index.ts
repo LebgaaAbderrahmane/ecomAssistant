@@ -21,6 +21,10 @@ export const config = {
   openwaWebhookSecret: env('OPENWA_WEBHOOK_SECRET', 'whsec_dev'),
   appUrl: env('APP_URL', 'http://localhost:3000'),
   internalUrl: env('INTERNAL_URL', 'http://back:3000'),
+  googleClientId: env('GOOGLE_CLIENT_ID'),
+  googleClientSecret: env('GOOGLE_CLIENT_SECRET'),
+  frontendUrl: env('FRONTEND_URL', 'http://localhost:5173'),
+  googleCallbackUrl: env('GOOGLE_CALLBACK_URL', 'http://localhost:3000/auth/google/callback'),
 };
 
 

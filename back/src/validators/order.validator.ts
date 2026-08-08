@@ -5,6 +5,8 @@ export const getOrdersSchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   status: z.string().optional(),
+  search: z.string().optional(),
+  dateRange: z.enum(['today', 'week', 'month', 'year']).optional(),
   storeConnectionId: z.string().optional(),
 });
 
