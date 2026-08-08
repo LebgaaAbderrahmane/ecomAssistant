@@ -24,6 +24,7 @@ export const ingestFakeMessage = async (input: FakeMessageInput) => {
       content: input.text,
       direction: 'IN',
       sender: 'CUSTOMER',
+      content: input.text,
       text: input.text,
     },
   });

@@ -123,6 +123,65 @@ export const openwaService = {
     );
   },
 
+  sendChatState: async (
+    sessionId: string,
+    to: string,
+    state: 'typing' | 'recording' | 'paused',
+  ): Promise<void> => {
+    await request<void>(
+      "POST",
+      `/sessions/${sessionId}/chats/typing`,
+      {
+        chatId: addSuffix(to),
+        state,
+      },
+    );
+  },
+
+  sendMessagesSequentially: async (
+    sessionId: string,
+    to: string,
+    messages: string[],
+  ): Promise<void> => {
+    let typingFailed = false;
+
+    for (let i = 0; i < messages.length; i++) {
+      const text = messages[i];
+
+      // Show typing indicator (skip if previous call failed — server doesn't support it)
+      if (!typingFailed) {
+        try {
+          await openwaService.sendChatState(sessionId, to, 'typing');
+        } catch (err) {
+          console.warn('[whatsapp] sendChatState failed — proceeding without typing indicator', err);
+          typingFailed = true;
+        }
+      }
+
+      // Length-scaled delay to mimic natural typing: ~30ms per char + 500ms base, capped at 1.8s
+      if (!typingFailed) {
+        const delay = Math.min(500 + text.length * 30, 1800);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      await openwaService.sendText(sessionId, to, text);
+
+      // Clear typing indicator
+      if (!typingFailed) {
+        try {
+          await openwaService.sendChatState(sessionId, to, 'paused');
+        } catch {
+          // Non-fatal — ignore
+        }
+      }
+
+      // Brief pause between messages so they don't dump as a wall
+      if (i < messages.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+  },
+
   registerWebhook: async (
     sessionId: string,
     url: string,

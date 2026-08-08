@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>MIME-Type-Handling-Architecture.md</title>
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+    
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+html,footer,header{
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Custom MD PDF CSS
+ */
+html,footer,header{
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+
+ }
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+<link rel="stylesheet" href="file:///home/moumen/Desktop/ecomAssistant/R%3A%5C2.Travail%5C1.Enseignement%5CCours%5C_1.Outils%5C2.Developpement%5C1.SCSS%5Cmain.css" type="text/css"><link rel="stylesheet" href="file:///home/moumen/Desktop/ecomAssistant/D%3A%5Crdaros%5CCours%5C_1.Outils%5C2.Developpement%5C1.SCSS%5Cmain.css" type="text/css">
+</head>
+
+<body>
+    <h1 id="mime-type-handling-architecture">MIME-Type Handling Architecture</h1>
+<p><strong>Scope:</strong> Complete analysis of how message MIME types are detected, classified, normalized, persisted, and routed across the EcomAssistant system — from the moment a WhatsApp message arrives at the OpenWA gateway until it reaches the AI (Gemini) model and any downstream processing.</p>
+<p><strong>Author:</strong> architectural analysis (no code changes were made)<br>
+<strong>Date:</strong> 2026-08-04</p>
+<hr>
+<h2 id="1-executive-summary">1. Executive Summary</h2>
+<p>EcomAssistant is an e-commerce WhatsApp bot. A customer's message enters the system through <strong>OpenWA</strong>, a self-hosted WhatsApp gateway (two engine adapters: Baileys and whatsapp-web.js), which normalizes native WhatsApp message types into an <em>engine-neutral vocabulary</em> and attaches a <code>media</code> envelope (with <code>mimetype</code>, base64 <code>data</code>, size, and an &quot;omitted&quot; flag) to media messages. OpenWA delivers these to the <strong>back</strong> Express API over a signed webhook (<code>message.received</code>).</p>
+<p>The back service then:</p>
+<ol>
+<li>Verifies the webhook signature.</li>
+<li>Classifies the message type via its <strong>own</strong> mapping (<code>mapWaType</code>) — duplicating OpenWA's normalization.</li>
+<li>Persists the raw base64 blob to disk (<code>/app/uploads/media</code>), derives a file extension from the MIME type (<code>mimeToExt</code>), and stores MIME metadata on the <code>Message</code> row.</li>
+<li>For <strong>voice</strong> messages, calls Gemini to transcribe audio; for <strong>images</strong>, calls Gemini to caption + classify. Both are <strong>blocking, synchronous</strong> calls inside the webhook handler.</li>
+<li>Enqueues the message on a BullMQ queue; a worker runs the two-stage AI agent (intent extraction → tool execution → reply generation).</li>
+<li>Sends the final reply back through OpenWA.</li>
+</ol>
+<p>MIME type information flows through <strong>three independent vocabularies</strong> that must stay in sync by convention only:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Vocabulary</th>
+<th>Where defined</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WhatsApp engine</td>
+<td>native tokens (<code>chat</code>, <code>ptt</code>, <code>imageMessage</code>, …)</td>
+<td>Baileys / wwebjs protobufs</td>
+</tr>
+<tr>
+<td>OpenWA</td>
+<td>engine-neutral <code>MessageType</code> (<code>text</code>, <code>image</code>, <code>video</code>, <code>audio</code>, <code>voice</code>, <code>document</code>, <code>sticker</code>, <code>location</code>, <code>contact</code>, <code>revoked</code>, <code>unknown</code>)</td>
+<td><code>OpenWA/src/engine/interfaces/whatsapp-engine.interface.ts</code></td>
+</tr>
+<tr>
+<td>Back</td>
+<td>app-level <code>contentType</code> (free string) + <code>messageType</code> (<code>text \| voice \| image</code>)</td>
+<td><code>back/src/modules/whatsapp/whatsapp.controller.ts</code>, Prisma <code>Message</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The currently-blocking defect</strong> (the reported <code>ReferenceError</code>) is a single typo in <code>back/src/modules/ai/clients/gemini.client.ts:34</code> — the variable is spelled <code>resolvedMidmeType</code> but referenced as <code>resolvedMimeType</code> on line 41. Because that reference is unconditional, <strong>every</strong> <code>callLLM</code> invocation (transcription, captioning, intent extraction, reply generation, product matching) throws, which is why the worker fails on every message.</p>
+<p>A full list of additional weaknesses — including a stale <code>voice</code>-type mapping that silently prevents voice-note transcription, and a webhook-signature header-name mismatch — is in §10.</p>
+<hr>
+<h2 id="2-system-architecture-context">2. System Architecture Context</h2>
+<pre class="hljs"><code><div>                    ┌────────────────────────────┐
+                    │   WhatsApp (customer)      │
+                    └─────────────┬──────────────┘
+                                  │ WhatsApp Web protocol
+                    ┌─────────────▼──────────────┐
+                    │  OpenWA gateway            │  (NestJS + BullMQ)
+                    │  - Baileys / wwebjs engine │
+                    │  - engine adapters         │   engine-neutral IncomingMessage
+                    │  - WebhookService          │   media: { mimetype, data, ... }
+                    └─────────────┬──────────────┘
+                                  │  signed webhook POST
+                                  │  X-OpenWA-Signature
+                    ┌─────────────▼──────────────┐
+                    │  back (Express API)        │
+                    │  whatsapp.controller       │──▶ disk: /app/uploads/media
+                    │  conversation.service      │──▶ Postgres (Message row)
+                    │  transcription/caption     │──▶ Gemini (pre-enrichment)
+                    └─────────────┬──────────────┘
+                                  │ enqueueMessageJob
+                    ┌─────────────▼──────────────┐
+                    │  BullMQ &quot;message&quot; queue    │
+                    └─────────────┬──────────────┘
+                                  │ message.worker
+                    ┌─────────────▼──────────────┐
+                    │  agent.service (processMessage)
+                    │  LLM #1 intent extraction  │
+                    │  tools (search/orders/…)   │──▶ Postgres
+                    │  LLM #2 reply generation   │──▶ WhatsApp (outbound)
+                    └────────────────────────────┘
+</div></code></pre>
+<ul>
+<li><strong>Postgres</strong> — Prisma; conversations, messages, customers, products, orders, sessions.</li>
+<li><strong>Redis</strong> — BullMQ broker + QR cache.</li>
+<li><strong><code>/app/uploads</code></strong> — a volume mounted into the <code>back</code> container (<code>docker-compose.yml</code>), served by Express at <code>/uploads/…</code> and also written directly by the controller.</li>
+</ul>
+<hr>
+<h2 id="3-complete-message-flow-end-to-end">3. Complete Message Flow (end to end)</h2>
+<h3 id="31-origin--whatsapp-engine-adapters-openwa">3.1 Origin — WhatsApp engine adapters (OpenWA)</h3>
+<p><strong>Engine interfaces</strong> — <code>OpenWA/src/engine/interfaces/whatsapp-engine.interface.ts</code></p>
+<ul>
+<li><code>MessageType</code> (lines 44–55): <code>text | image | video | audio | voice | document | sticker | location | contact | revoked | unknown</code>. This is the <em>only</em> type vocabulary downstream consumers should see. <code>voice</code> is deliberately distinct from <code>audio</code> (a push-to-talk voice note vs. an audio <em>file</em>).</li>
+<li><code>IncomingMessage.media</code> (lines 90–98):<pre class="hljs"><code><div>media?: {
+  mimetype: <span class="hljs-built_in">string</span>;
+  filename?: <span class="hljs-built_in">string</span>;
+  data?: <span class="hljs-built_in">string</span>;      <span class="hljs-comment">// base64; absent when payload was omitted (see `omitted`)</span>
+  omitted?: <span class="hljs-built_in">boolean</span>;  <span class="hljs-comment">// True when media exceeded the inbound size cap and the blob was dropped</span>
+  sizeBytes?: <span class="hljs-built_in">number</span>; <span class="hljs-comment">// Decoded byte size; always set when `omitted` is true</span>
+};
+</div></code></pre>
+</li>
+</ul>
+<p><strong>Type normalization</strong> — two adapters, one contract:</p>
+<ul>
+<li><code>OpenWA/src/engine/adapters/message-mapper.ts</code> — <code>mapWwebjsMessageType</code> (lines 9–35) maps whatsapp-web.js tokens: <code>chat→text</code>, <code>image→image</code>, <code>video→video</code>, <code>audio→audio</code>, <code>ptt→voice</code>, <code>document→document</code>, <code>sticker→sticker</code>, <code>location→location</code>, <code>vcard→contact</code>, <code>revoked→revoked</code>, else <code>unknown</code>.</li>
+<li><code>OpenWA/src/engine/adapters/baileys-message-mapper.ts</code> — <code>mapBaileysMessageType(contentType, isPtt)</code> (lines 8–33) maps protobuf content types: <code>conversation</code>/<code>extendedTextMessage→text</code>, <code>imageMessage→image</code>, <code>videoMessage→video</code>, <code>audioMessage→(isPtt ? voice : audio)</code>, <code>documentMessage→document</code>, <code>stickerMessage→sticker</code>, <code>locationMessage→location</code>, <code>contactMessage→contact</code>, else <code>unknown</code>.</li>
+<li>The current deployment uses <code>ENGINE_TYPE=baileys</code> (<code>docker-compose.yml</code> line 72), so voice notes arrive as neutral <code>voice</code>.</li>
+</ul>
+<p><strong>Media extraction &amp; MIME detection</strong> — <code>OpenWA/src/engine/adapters/baileys.adapter.ts</code>, <code>mapMessage</code> (lines 977–1065):</p>
+<ul>
+<li>Body is <code>conversation ?? extendedTextMessage?.text ?? image/video/document caption ?? ''</code> (line 982–988). <strong>The caption becomes <code>body</code>; the binary stays in <code>media</code>.</strong></li>
+<li>For media types, <code>normalizeMessageContent</code> unwraps <code>documentWithCaptionMessage</code>/<code>viewOnceMessage</code>/<code>ephemeralMessage</code> (line 1018), then reads the inner sub-message (lines 1019–1026):<pre class="hljs"><code><div><span class="hljs-keyword">const</span> mimetype = subMessage?.mimetype ?? <span class="hljs-string">''</span>;             <span class="hljs-comment">// raw string, NOT stripped</span>
+<span class="hljs-keyword">const</span> filename = normalizedContent.documentMessage?.fileName ?? <span class="hljs-literal">undefined</span>;
+<span class="hljs-keyword">const</span> declared = coerceDeclaredSize(subMessage?.fileLength);
+</div></code></pre>
+→ <strong>The MIME type is taken verbatim from the WhatsApp protobuf <code>mimetype</code> field</strong> (e.g. <code>audio/ogg; codecs=opus</code>, <code>image/jpeg</code>, <code>video/mp4</code>). It is <em>not</em> sniffed from bytes and not normalized here.</li>
+</ul>
+<p><strong>Inbound media safety caps</strong> — <code>OpenWA/src/engine/adapters/inbound-media-cap.ts</code>:</p>
+<ul>
+<li><code>inboundMediaMaxBytes()</code> — default <strong>50 MiB</strong>, overridable via <code>MEDIA_DOWNLOAD_MAX_BYTES</code>.</li>
+<li><code>coerceDeclaredSize</code> — normalizes a sender-declared <code>fileLength</code> (number / Long / numeric string / absent → 0).</li>
+<li><code>capInboundMedia</code> — final guard. Under cap: <code>{ mimetype, filename, data: toBase64() }</code>. Over cap: <code>{ mimetype, filename, omitted: true, sizeBytes }</code> — the blob is <em>never</em> base64-encoded.</li>
+<li><code>inboundMediaConcurrency()</code> — max 4 concurrent downloads (<code>INBOUND_MEDIA_CONCURRENCY</code>).</li>
+<li>Pre-download declared-size gate + mid-download streaming abort (<code>downloadInboundMediaCapped</code>, lines 952–975) bound heap usage.</li>
+<li><strong>Error fallback:</strong> if the download throws, <code>mapMessage</code> emits the message <strong>without</strong> a <code>media</code> field at all (lines 1058–1063) — downstream never learns media existed.</li>
+</ul>
+<h3 id="32-delivery--openwa-webhookservice">3.2 Delivery — OpenWA WebhookService</h3>
+<p><code>OpenWA/src/modules/session/session.service.ts</code> — the engine's <code>onMessage</code> callback (line 595):</p>
+<ol>
+<li>Skips status/story broadcasts.</li>
+<li>Runs the <code>message:received</code> hook chain (plugins may mutate/stop).</li>
+<li>Persists the message to OpenWA's own SQLite (<code>waMessageId</code> UNIQUE → dedup oracle).</li>
+<li>Fire-and-forget <code>webhookService.dispatch(id, 'message.received', finalMessage)</code> (line 677) and a WebSocket emit.</li>
+</ol>
+<p><code>OpenWA/src/modules/webhook/webhook.service.ts</code> — <code>dispatch</code> (line 199):</p>
+<ul>
+<li>Envelope (lines 233–240): <code>{ event, timestamp, sessionId, idempotencyKey, deliveryId, data }</code>.</li>
+<li><code>data</code> is the whole <code>IncomingMessage</code> — including <code>type</code> (neutral) and <code>media</code> (<code>mimetype</code>, <code>data</code>, <code>omitted</code>, <code>sizeBytes</code>).</li>
+<li>Signs with HMAC-SHA256 using the webhook <code>secret</code>; header <strong><code>X-OpenWA-Signature</code></strong> (<code>sha256=&lt;hex&gt;</code>) (lines 279–283, 444–448).</li>
+<li>Delivers via BullMQ queue (or direct fallback) with exponential retry; SSRF-guarded URL.</li>
+</ul>
+<blockquote>
+<p>⚠️ Note the signature header is <code>X-OpenWA-Signature</code> (see §10.7 for the mismatch in <code>back</code>).</p>
+</blockquote>
+<h3 id="33-ingress--security--express">3.3 Ingress &amp; security — Express</h3>
+<p><code>back/src/app.ts</code>:</p>
+<ul>
+<li><code>express.json()</code> with a <code>verify</code> hook that captures <code>req.rawBody</code> (lines 14–18).</li>
+<li><code>app.use('/uploads', express.static(path.resolve('/app/uploads')))</code> (line 33) — the persisted media is served back as static files.</li>
+<li>Global error handler (lines 36–39).</li>
+</ul>
+<p><code>back/src/routes/index.ts</code> (line 15) mounts <code>whatsappRoutes</code> at <code>/whatsapp</code>; <code>back/src/modules/whatsapp/whatsapp.routes.ts</code> (line 10) exposes <code>POST /whatsapp/webhook</code> <strong>without</strong> authentication (signature is the auth) → <code>handleWebhook</code>.</p>
+<p><code>handleWebhook</code> — <code>back/src/modules/whatsapp/whatsapp.controller.ts:72</code>:</p>
+<ul>
+<li><strong>Signature verification</strong> (lines 78–83): in non-dev, reads <code>req.headers[&quot;x-hub-signature-256&quot;]</code> and compares against <code>verifyHmac(JSON.stringify(req.body), signature)</code>. (See §10.7 — this does not match what OpenWA sends.)</li>
+<li><code>verifyHmac</code> (lines 56–66): <code>crypto.timingSafeEqual</code> on hex digests; returns <code>false</code> when no secret is configured.</li>
+<li>Extracts <code>event</code>, <code>sessionId</code>, <code>data</code>; logs <code>[WhatsApp] Webhook received: event=... sessionId=...</code> (matches the log line from the incident).</li>
+<li>Routes on <code>switch (event)</code>:
+<ul>
+<li><code>message.received</code> → message pipeline (below).</li>
+<li><code>session.status</code> → session/QR/notification handling (no MIME involvement).</li>
+<li>default → <code>{ status: &quot;ignored&quot; }</code>.</li>
+</ul>
+</li>
+</ul>
+<h3 id="34-message-classification-back">3.4 Message classification (back)</h3>
+<p>Inside the <code>message.received</code> case (<code>whatsapp.controller.ts:94–239</code>):</p>
+<ol>
+<li><code>extractPhone(from)</code> (line 68) strips the <code>@c.us</code> / <code>@g.us</code> suffix → <code>phone</code>.</li>
+<li><code>msgType = mapWaType((data.type as string) || &quot;text&quot;)</code> (line 98).</li>
+<li>Resolve <code>WhatsAppSession</code> by <code>sessionId</code>; ignore unknown sessions (lines 106–112).</li>
+<li>Resolve/create <code>Conversation</code> for the merchant+customer; auto-create if the customer exists (lines 114–135).</li>
+</ol>
+<p><strong><code>mapWaType</code></strong> (lines 41–52) — the back's own type classification:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">const</span> map = {
+  text: <span class="hljs-string">"text"</span>,
+  image: <span class="hljs-string">"image"</span>,
+  video: <span class="hljs-string">"video"</span>,
+  audio: <span class="hljs-string">"audio"</span>,
+  ptt: <span class="hljs-string">"audio"</span>,        <span class="hljs-comment">// ← stale: OpenWA now emits "voice", not "ptt"</span>
+  <span class="hljs-built_in">document</span>: <span class="hljs-string">"document"</span>,
+  sticker: <span class="hljs-string">"image"</span>,
+};
+<span class="hljs-keyword">return</span> map[<span class="hljs-keyword">type</span>] || <span class="hljs-string">"text"</span>;   <span class="hljs-comment">// unknown/default → "text"</span>
+</div></code></pre>
+<blockquote>
+<p>⚠️ <code>voice</code> (OpenWA's neutral token for PTT voice notes, what Baileys actually emits) is <strong>missing</strong>. See §10.2.</p>
+</blockquote>
+<ol start="5">
+<li>
+<p>Media handling (lines 137–166):</p>
+<ul>
+<li><code>media = data.media as { mimetype?, data?, omitted? }</code> (line 143).</li>
+<li>Only when <code>media?.data &amp;&amp; media.mimetype &amp;&amp; !media.omitted</code>:
+<ul>
+<li><code>ensureMediaDir()</code> (line 152) — <code>fs.mkdirSync(&quot;/app/uploads/media&quot;)</code>.</li>
+<li><code>ext = mimeToExt(media.mimetype)</code> (line 153).</li>
+<li><code>filename = </code>${conversation.id}-${Date.now()}${ext}`` (line 154).</li>
+<li><code>fs.writeFileSync(fullPath, Buffer.from(media.data, &quot;base64&quot;))</code> (line 156).</li>
+<li>Sets <code>mediaUrl = /uploads/media/&lt;filename&gt;</code>, <code>mimeType = media.mimetype</code> (raw), <code>filePath = mediaUrl</code>.</li>
+<li>Derives <code>messageType</code>:
+<ul>
+<li><code>msgType === &quot;audio&quot;</code> → <code>messageType = &quot;voice&quot;</code> (lines 161–162).</li>
+<li><code>msgType === &quot;image&quot;</code> → <code>messageType = &quot;image&quot;</code> (lines 163–165).</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>If media is <strong>absent, omitted, or has no data</strong>: <code>mediaUrl</code>/<code>mimeType</code>/<code>filePath</code> stay <code>undefined</code> and <code>messageType</code> stays <code>&quot;text&quot;</code> — even for a media-typed message.</li>
+</ul>
+</li>
+<li>
+<p>Content fallback (line 169): <code>content = body || (msgType === &quot;text&quot; ? &quot;&quot; : </code>[${msgType} message]<code>)</code>.</p>
+</li>
+<li>
+<p>Persist via <code>conversationService.addMessage(...)</code> (lines 171–179) with:<br>
+<code>contentType: msgType</code>, <code>mediaUrl</code>, <code>mimeType</code>, <code>rawPayload</code> (always <code>undefined</code>), <code>messageType</code>, <code>filePath</code>, <code>createdAt</code>.</p>
+</li>
+</ol>
+<p><strong><code>mimeToExt</code></strong> (lines 24–39) — MIME → file extension:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">const</span> map = {
+  <span class="hljs-string">"image/jpeg"</span>: <span class="hljs-string">".jpg"</span>, <span class="hljs-string">"image/png"</span>: <span class="hljs-string">".png"</span>, <span class="hljs-string">"image/gif"</span>: <span class="hljs-string">".gif"</span>, <span class="hljs-string">"image/webp"</span>: <span class="hljs-string">".webp"</span>,
+  <span class="hljs-string">"audio/ogg"</span>: <span class="hljs-string">".ogg"</span>, <span class="hljs-string">"audio/mpeg"</span>: <span class="hljs-string">".mp3"</span>, <span class="hljs-string">"audio/mp4"</span>: <span class="hljs-string">".m4a"</span>,
+  <span class="hljs-string">"video/mp4"</span>: <span class="hljs-string">".mp4"</span>, <span class="hljs-string">"video/3gpp"</span>: <span class="hljs-string">".3gp"</span>,
+  <span class="hljs-string">"application/pdf"</span>: <span class="hljs-string">".pdf"</span>,
+};
+<span class="hljs-keyword">return</span> map[base] || <span class="hljs-string">".bin"</span>;   <span class="hljs-comment">// unknown → .bin (observed in production: uploads/media/*.bin)</span>
+</div></code></pre>
+<p><code>base</code> strips parameters (<code>mime.split(&quot;;&quot;)[0].trim().toLowerCase()</code>) — good, but note the <em>stored</em> <code>mimeType</code> is the raw, parameterized string (see §10.5).</p>
+<h3 id="35-media-persistence">3.5 Media persistence</h3>
+<p><code>back/src/modules/whatsapp/conversation.service.ts</code> — <code>addMessage</code> (lines 21–62):</p>
+<ul>
+<li>Creates the <code>Message</code> row and updates <code>Conversation.lastMessageAt</code> in parallel.</li>
+<li>Defaults: <code>contentType: &quot;text&quot;</code>, <code>messageType: &quot;text&quot;</code>, <code>direction</code>/<code>sender</code> derived from <code>role</code>.</li>
+<li>Persists <code>mediaUrl</code>, <code>mimeType</code>, <code>rawPayload</code>, <code>filePath</code> (null when absent).</li>
+</ul>
+<p>Prisma <code>Message</code> model (<code>back/prisma/schema.prisma:195–231</code>):</p>
+<pre class="hljs"><code><div>contentType    String  @default(&quot;text&quot;)
+mediaUrl       String?
+mimeType       String?
+whatsappMessageId String? @unique   // never populated by the webhook handler
+text           String
+rawPayload     Json?
+filePath       String?
+messageType    String  @default(&quot;text&quot;)
+entities       Json?
+intent         String?
+confidence     Float?
+</div></code></pre>
+<h3 id="36-pre-llm-media-enrichment-voice--image-only">3.6 Pre-LLM media enrichment (voice &amp; image only)</h3>
+<p>Both run <strong>synchronously in the webhook request handler</strong> before the message is queued.</p>
+<p><strong>Voice transcription</strong> — <code>back/src/modules/whatsapp/whatsapp.controller.ts:184–203</code> → <code>back/src/modules/ai/media/transcription.service.ts</code>:</p>
+<ul>
+<li>Reconstructs the filesystem path from the URL: <code>path.resolve(&quot;/app&quot;, filePath.slice(1))</code> (line 185).</li>
+<li><code>transcribeAudio(fullPath, mimeType!)</code> (transcription.service.ts:16):<pre class="hljs"><code><div><span class="hljs-keyword">const</span> parts: ContentPart[] = [
+  { <span class="hljs-keyword">type</span>: <span class="hljs-string">"audio"</span>, data: buffer, mimeType },        <span class="hljs-comment">// buffer from fs.readFileSync</span>
+  { <span class="hljs-keyword">type</span>: <span class="hljs-string">"text"</span>,  text: buildTranscriptionPrompt() },
+];
+<span class="hljs-keyword">await</span> callLLM({ systemPrompt, userMessage: parts, responseMimeType: <span class="hljs-string">"text/plain"</span> });
+</div></code></pre>
+</li>
+<li>On success: updates <code>Message.content</code> and <code>Message.text</code> to the transcript (lines 188–191).</li>
+<li>On failure: writes the fallback <code>&quot;[voice message - transcription failed]&quot;</code> (lines 194–202).</li>
+</ul>
+<p><strong>Image captioning</strong> — <code>whatsapp.controller.ts:206–232</code> → <code>back/src/modules/ai/media/imageCaption.service.ts</code>:</p>
+<ul>
+<li><code>captionImage(fullPath, mimeType!)</code> (imageCaption.service.ts:62):<pre class="hljs"><code><div><span class="hljs-keyword">const</span> parts: ContentPart[] = [
+  { <span class="hljs-keyword">type</span>: <span class="hljs-string">"image"</span>, data: buffer, mimeType },
+  { <span class="hljs-keyword">type</span>: <span class="hljs-string">"text"</span>,  text: buildImageCaptionPrompt() },
+];
+<span class="hljs-keyword">await</span> callLLM({ systemPrompt, userMessage: parts, responseSchema: IMAGE_CAPTION_SCHEMA });
+</div></code></pre>
+</li>
+<li>The <code>IMAGE_CAPTION_SCHEMA</code> (lines 20–37) constrains Gemini output: <code>{ productName, description, category }</code> where <code>category ∈ {PRODUCT_PHOTO, PAYMENT_PROOF, DAMAGE_COMPLAINT, OTHER}</code>.</li>
+<li>Result persisted: <code>content</code>/<code>text</code> = <code>description</code>, <code>entities = { imageCategory, productName }</code> (lines 210–219).</li>
+<li>On failure: fallback <code>&quot;[image - could not process]&quot;</code> (lines 223–231).</li>
+</ul>
+<blockquote>
+<p>⚠️ <strong>Video, document, sticker-as-unknown, and location messages are never enriched.</strong> Only <code>audio→voice</code> and <code>image</code> messageTypes trigger Gemini. Videos become <code>[video message]</code> text; documents <code>[document message]</code> text.</p>
+</blockquote>
+<h3 id="37-queue--worker">3.7 Queue + worker</h3>
+<p><code>back/src/queues/message.queue.ts</code>:</p>
+<ul>
+<li>BullMQ queue <code>&quot;message&quot;</code>, <code>attempts: 5</code>, exponential backoff (<code>delay: 1000</code>), <code>removeOnComplete: 1000</code>, <code>removeOnFail: 5000</code>.</li>
+<li><code>enqueueMessageJob(messageId)</code> adds a job.</li>
+</ul>
+<p><code>back/src/workers/message.worker.ts</code>:</p>
+<ul>
+<li>Worker with <code>concurrency: 5</code>, calls <code>processMessage(job.data.messageId)</code>.</li>
+<li><code>failed</code> handler logs <code>[worker] message &lt;id&gt; failed: &lt;error&gt;</code> — exactly the log observed in the incident, with the stack tracing to <code>gemini.client.ts:41</code>.</li>
+</ul>
+<h3 id="38-agent-processing">3.8 Agent processing</h3>
+<p><code>back/src/modules/ai/agent.service.ts</code> — <code>processMessage</code> (line 55):</p>
+<ol>
+<li>Loads <code>Message</code> + <code>Conversation</code> + <code>Customer</code> (lines 56–66).</li>
+<li><strong>Image-category routing</strong> (lines 68–87), only when <code>message.messageType === &quot;image&quot;</code>:
+<ul>
+<li><code>PAYMENT_PROOF</code> / <code>DAMAGE_COMPLAINT</code> → <code>effectiveText = &quot;[Image received: payment proof|damage complaint] &lt;text&gt;&quot;</code> (escalation signal; the AI replies defensively).</li>
+<li><code>PRODUCT_PHOTO</code> → prepends <code>&quot;[Customer sent a photo (product: &lt;name&gt;)] &lt;text&gt;&quot;</code> so intent extraction is rich.</li>
+<li><code>OTHER</code> / uncategorized → falls through with <code>effectiveText = message.text</code> (the caption).</li>
+<li><strong>Note:</strong> this routing reads <code>messageType</code> (app-level), <code>entities.imageCategory</code> (from captioning). Voice transcripts reach the agent via <code>message.text</code>; no special routing.</li>
+</ul>
+</li>
+<li><strong>LLM #1 — multi-intent extraction</strong> (lines 89–112): <code>callLLM({ systemPrompt: buildIntentPrompt(...), userMessage: effectiveText, responseSchema: INTENT_RESPONSE_SCHEMA })</code>. Text-only (no ContentParts).</li>
+<li><strong>Parsing</strong> — <code>back/src/modules/ai/parser/response.parser.ts</code>: <code>stripFences</code> → <code>JSON.parse</code> → Zod <code>LLMResponseSchema</code>; wraps failures in <code>LLMParseError</code>.</li>
+<li><strong>Intent sorting</strong> (lines 43–53, 115–124): by LLM <code>order</code>, tie-broken by hardcoded <code>INTENT_PRIORITY</code>.</li>
+<li>Persists primary intent + entities (lines 127–135).</li>
+<li><strong>Tool loop</strong> (lines 152–216): <code>resolveTool</code> → entity enrichment (<code>resolveProductId</code>) → <code>executeTool</code> (registry) → stores product search results into entities + memory.</li>
+<li><strong>LLM #2 — reply generation</strong> (lines 231–235): <code>callLLM({ systemPrompt: buildReplyPrompt(...), userMessage: effectiveText, responseSchema: REPLY_RESPONSE_SCHEMA })</code>, parsed with <code>ReplyResponseSchema</code>.</li>
+<li>Persists each reply as an <code>OUT</code>/<code>AI</code>/<code>assistant</code> Message row (lines 248–259).</li>
+<li><strong>Outbound send</strong> (lines 262–282): finds the session; <code>openwaService.sendMessagesSequentially</code> → <code>sendText</code> (text-only; <strong>no media is ever sent back</strong>).</li>
+<li><strong>Memory update</strong> (lines 284–306): merges intents into <code>Conversation.memory</code> JSON.</li>
+</ol>
+<h3 id="39-llm-client-layer-the-mime-boundary">3.9 LLM client layer (the MIME boundary)</h3>
+<p><code>back/src/modules/ai/clients/llm.client.ts</code>:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">export</span> <span class="hljs-keyword">type</span> ContentPart =
+  | { <span class="hljs-keyword">type</span>: <span class="hljs-string">"text"</span>; text: <span class="hljs-built_in">string</span> }
+  | { <span class="hljs-keyword">type</span>: <span class="hljs-string">"audio"</span>; data: Buffer; mimeType: <span class="hljs-built_in">string</span> }
+  | { <span class="hljs-keyword">type</span>: <span class="hljs-string">"image"</span>; data: Buffer; mimeType: <span class="hljs-built_in">string</span> };
+
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">interface</span> CallLLMParams {
+  systemPrompt: <span class="hljs-built_in">string</span>;
+  userMessage: <span class="hljs-built_in">string</span> | ContentPart[];
+  responseSchema?: object;
+  responseMimeType?: <span class="hljs-built_in">string</span>;      <span class="hljs-comment">// output MIME</span>
+}
+</div></code></pre>
+<ul>
+<li><code>ContentPart</code> is a discriminated union modeling the <strong>input</strong> payloads Gemini can accept. <code>mimeType</code> on audio/image parts is the input MIME; <code>responseMimeType</code> is the requested <em>output</em> MIME.</li>
+<li><code>callLLM</code> is re-exported from <code>./gemini.client</code>.</li>
+</ul>
+<p><code>back/src/modules/ai/clients/gemini.client.ts</code>:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">toGeminiContents</span>(<span class="hljs-params">userMessage: <span class="hljs-built_in">string</span> | ContentPart[]</span>) </span>{
+  <span class="hljs-keyword">if</span> (<span class="hljs-keyword">typeof</span> userMessage === <span class="hljs-string">"string"</span>) <span class="hljs-keyword">return</span> userMessage;
+  <span class="hljs-keyword">return</span> userMessage.map(<span class="hljs-function"><span class="hljs-params">part</span> =&gt;</span> part.type === <span class="hljs-string">"text"</span>
+    ? { text: part.text }
+    : { inlineData: { mimeType: part.mimeType, data: part.data.toString(<span class="hljs-string">"base64"</span>) } });
+}
+</div></code></pre>
+<ul>
+<li>
+<p>Text parts → <code>{ text }</code>; binary parts → Gemini <code>inlineData { mimeType, data }</code> (base64). <strong>No whitelist/validation</strong> of <code>part.mimeType</code> happens here.</p>
+</li>
+<li>
+<p><code>callLLM</code> (lines 31–57) computes the <strong>output</strong> MIME:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">const</span> resolvedMidmeType = responseMimeType ?? (responseSchema ? <span class="hljs-string">"application/json"</span> : <span class="hljs-string">"text/plain"</span>); <span class="hljs-comment">// ← TYPO (line 34)</span>
+...
+responseMimeType: resolvedMimeType,   <span class="hljs-comment">// ← undefined identifier → ReferenceError (line 41)</span>
+</div></code></pre>
+<p>The typo on line 34 means line 41 references an undefined binding. Since line 41 runs unconditionally, <strong>every <code>callLLM</code> throws</strong>, cascading to:</p>
+<ul>
+<li><code>transcription.service.ts:31</code> and <code>imageCaption.service.ts:77</code> (pre-enrichment, inside the webhook handler — caught and replaced with fallback text there),</li>
+<li><code>agent.service.ts:96</code> and <code>agent.service.ts:231</code> (worker — uncaught, so the job fails after 5 retries),</li>
+<li><code>tools/searchHelpers.ts:71</code> (product matcher).<br>
+This is the root cause of the <code>[worker] message ... failed: ReferenceError: resolvedMimeType is not defined</code> log.</li>
+</ul>
+</li>
+<li>
+<p>Response handling: <code>usageMetadata</code> is logged (<code>promptTokenCount</code>, <code>candidatesTokenCount</code>, latency); returns <code>response.text ?? &quot;&quot;</code>.</p>
+</li>
+</ul>
+<h3 id="310-downstream-consumers">3.10 Downstream consumers</h3>
+<ul>
+<li><strong>Frontend:</strong> the current <code>front/src</code> has <strong>no chat/messaging UI</strong> — media is not rendered anywhere in the dashboard. <code>mediaUrl</code>/<code>mimeType</code> are effectively stored for future use (or consumed out-of-band). Escalated image messages are only viewable in the WhatsApp app itself.</li>
+<li><strong>Escalations</strong> (<code>back/src/modules/escalations/escalations.service.ts</code>): lists conversations with <code>escalatedAt != null</code>; the last message is shown. <code>Conversation.escalatedAt</code> is not set anywhere in the flow above (no escalation write in the image route), so image-based escalations rely on the AI reply text only.</li>
+</ul>
+<hr>
+<h2 id="4-mime-type-handling-inventory">4. MIME-Type Handling Inventory</h2>
+<h3 id="41-normalization-pipeline">4.1 Normalization pipeline</h3>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Component</th>
+<th>Input</th>
+<th>Output</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Engine token → neutral type</td>
+<td><code>baileys-message-mapper.ts</code> / <code>message-mapper.ts</code></td>
+<td><code>audioMessage</code>/<code>ptt</code>, <code>imageMessage</code>, …</td>
+<td><code>text \| image \| video \| audio \| voice \| document \| sticker \| location \| contact \| revoked \| unknown</code></td>
+<td><code>audioMessage</code>+<code>ptt</code> → <code>voice</code>; this is the <em>only</em> place MIME-vs-kind is considered (by content type token, not MIME string)</td>
+</tr>
+<tr>
+<td>Neutral type → app type</td>
+<td><code>whatsapp.controller.ts</code> <code>mapWaType</code></td>
+<td><code>data.type</code> (neutral)</td>
+<td><code>text \| image \| video \| audio \| document</code> (falls back to <code>text</code>)</td>
+<td><strong>Missing <code>voice</code></strong> (§10.2); duplicates OpenWA logic</td>
+</tr>
+<tr>
+<td>Media MIME → extension</td>
+<td><code>whatsapp.controller.ts</code> <code>mimeToExt</code></td>
+<td>raw <code>media.mimetype</code></td>
+<td><code>.jpg/.png/.gif/.webp/.ogg/.mp3/.m4a/.mp4/.3gp/.pdf/.bin</code></td>
+<td>Parameter-stripped for the <em>filename</em> only</td>
+</tr>
+<tr>
+<td>Media MIME → persisted</td>
+<td><code>conversation.service.ts</code></td>
+<td>raw <code>media.mimetype</code></td>
+<td>stored as <code>Message.mimeType</code></td>
+<td><strong>Parameters retained</strong> (§10.5)</td>
+</tr>
+<tr>
+<td>Media MIME → Gemini input</td>
+<td><code>gemini.client.ts</code> <code>toGeminiContents</code></td>
+<td><code>ContentPart.mimeType</code></td>
+<td><code>inlineData.mimeType</code></td>
+<td>Passed verbatim; no whitelist</td>
+</tr>
+<tr>
+<td>Output MIME resolution</td>
+<td><code>gemini.client.ts</code> <code>callLLM</code></td>
+<td><code>responseMimeType</code> / <code>responseSchema</code></td>
+<td><code>application/json</code> or <code>text/plain</code></td>
+<td>Currently broken by typo</td>
+</tr>
+<tr>
+<td>Caption category</td>
+<td><code>imageCaption.service.ts</code> + <code>agent.service.ts</code></td>
+<td>image category</td>
+<td><code>PRODUCT_PHOTO / PAYMENT_PROOF / DAMAGE_COMPLAINT / OTHER</code></td>
+<td>Second-order classification derived from the <em>image</em>, not the MIME</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-file-type-routing-matrix-as-implemented-today">4.2 File type routing matrix (as implemented today)</h3>
+<table>
+<thead>
+<tr>
+<th>OpenWA <code>data.type</code></th>
+<th><code>mapWaType</code></th>
+<th><code>messageType</code></th>
+<th>Enriched?</th>
+<th>Agent sees</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>text</code></td>
+<td><code>text</code></td>
+<td><code>text</code></td>
+<td>—</td>
+<td>body</td>
+</tr>
+<tr>
+<td><code>image</code></td>
+<td><code>image</code></td>
+<td><code>image</code></td>
+<td>✅ caption + category</td>
+<td><code>[Customer sent a photo...]</code> or <code>[Image received...]</code> + description</td>
+</tr>
+<tr>
+<td><code>audio</code></td>
+<td><code>audio</code></td>
+<td><code>voice</code></td>
+<td>✅ transcription</td>
+<td>transcript</td>
+</tr>
+<tr>
+<td><code>voice</code> (PTT)</td>
+<td><strong><code>text</code></strong></td>
+<td><strong><code>text</code></strong></td>
+<td>❌ (silently skipped)</td>
+<td><code>&quot;&quot;</code> (empty) — <strong>bug</strong></td>
+</tr>
+<tr>
+<td><code>video</code></td>
+<td><code>video</code></td>
+<td><code>text</code></td>
+<td>❌</td>
+<td><code>[video message]</code></td>
+</tr>
+<tr>
+<td><code>document</code></td>
+<td><code>document</code></td>
+<td><code>text</code></td>
+<td>❌</td>
+<td><code>[document message]</code></td>
+</tr>
+<tr>
+<td><code>sticker</code></td>
+<td><code>image</code></td>
+<td><code>image</code></td>
+<td>✅ caption</td>
+<td>description of the sticker</td>
+</tr>
+<tr>
+<td><code>location</code></td>
+<td><code>text</code> (default)</td>
+<td><code>text</code></td>
+<td>❌</td>
+<td><code>[location message]</code></td>
+</tr>
+<tr>
+<td><code>contact</code></td>
+<td><code>text</code> (default)</td>
+<td><code>text</code></td>
+<td>❌</td>
+<td><code>[contact message]</code></td>
+</tr>
+<tr>
+<td><code>revoked</code></td>
+<td><code>text</code> (default)</td>
+<td><code>text</code></td>
+<td>❌</td>
+<td><code>&quot;&quot;</code></td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td><code>text</code> (default)</td>
+<td><code>text</code></td>
+<td>❌</td>
+<td><code>[unknown message]</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-mime-types-referenced-across-the-codebase">4.3 MIME types referenced across the codebase</h3>
+<table>
+<thead>
+<tr>
+<th>MIME</th>
+<th>Purpose</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image/jpeg</code>, <code>image/png</code>, <code>image/gif</code>, <code>image/webp</code></td>
+<td>extension map</td>
+<td><code>mimeToExt</code></td>
+</tr>
+<tr>
+<td><code>audio/ogg</code>, <code>audio/mpeg</code>, <code>audio/mp4</code></td>
+<td>extension map</td>
+<td><code>mimeToExt</code></td>
+</tr>
+<tr>
+<td><code>video/mp4</code>, <code>video/3gpp</code></td>
+<td>extension map (unused downstream)</td>
+<td><code>mimeToExt</code></td>
+</tr>
+<tr>
+<td><code>application/pdf</code></td>
+<td>extension map (unused downstream)</td>
+<td><code>mimeToExt</code></td>
+</tr>
+<tr>
+<td><code>application/json</code></td>
+<td>output MIME when <code>responseSchema</code> set</td>
+<td><code>gemini.client.ts</code></td>
+</tr>
+<tr>
+<td><code>text/plain</code></td>
+<td>default output MIME</td>
+<td><code>gemini.client.ts</code></td>
+</tr>
+<tr>
+<td><code>image/png</code></td>
+<td>QR code / status posts</td>
+<td><code>OpenWA status.service.ts</code>, <code>whatsapp.controller.ts</code> QR strip</td>
+</tr>
+<tr>
+<td><code>application/octet-stream</code></td>
+<td>outbound fallback when base64 without mimetype</td>
+<td><code>OpenWA message.service.ts:656</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="5-sequence-diagrams">5. Sequence Diagrams</h2>
+<h3 id="51-inbound-media-message-eg-an-image-or-voice-note">5.1 Inbound media message (e.g. an image or voice note)</h3>
+<pre class="hljs"><code><div>Customer           OpenWA                    back: /whatsapp/webhook      conversation/DB         Gemini
+   │                   │                            │                         │                    │
+   │  image / ptt msg  │                            │                         │                    │
+   │──────────────────▶│  baileys adapter           │                         │                    │
+   │                   │  mapMessage():                            ───────────┐                    │
+   │                   │   type = neutral (image/voice)            │            │                    │
+   │                   │   media.mimetype = protobuf field          │           │                    │
+   │                   │   download → base64 / cap / omitted         ──────────┤                    │
+   │                   │ session.service.onMessage()                            │                    │
+   │                   │  persist (dedup by waMessageId)                        │                    │
+   │                   │  webhookService.dispatch(&quot;message.received&quot;)           │                    │
+   │                   │───────────────────────────────────────────────────────▶│                    │
+   │                   │  X-OpenWA-Signature (HMAC-SHA256)                      │                    │
+   │                   │                                                        │ handleWebhook      │
+   │                   │                                            verify sig  │                    │
+   │                   │                                            mapWaType    │                    │
+   │                   │                                            mimeToExt    │                    │
+   │                   │                                            write file to /app/uploads/media│
+   │                   │                                            addMessage(contentType,mimeType,│
+   │                   │                                              messageType,filePath)        │
+   │                   │                                            ──────────────▶ (Message row)  │
+   │                   │                                            if voice:                     │
+   │                   │                                              transcribeAudio(mime)────────▶│
+   │                   │                                            if image:                      │
+   │                   │                                              captionImage(mime)──────────▶│
+   │                   │                                            update Message (content/entities)
+   │                   │                                            enqueueMessageJob(id)          │
+   │                   │◀──────────────────────────── {status:&quot;received&quot;}                          │
+   │                   │                                            │                              │
+   │                   │                      BullMQ &quot;message&quot; queue │                              │
+   │                   │                          worker → processMessage(id)                       │
+   │                   │                             LLM#1 intent (text only)──────────────────────▶│
+   │                   │                             tools (DB)                                     │
+   │                   │                             LLM#2 reply───────────────────────────────────▶│
+   │                   │                             persist OUT messages; sendText back            │
+   │                   │◀────────────────────────────────────────── send-text ──────────────────────│
+</div></code></pre>
+<h3 id="52-where-mime-is-used-vs-ignored-decision-map">5.2 Where MIME is used vs. ignored (decision map)</h3>
+<pre class="hljs"><code><div>IncomingMessage.media.mimetype
+ ├─ mimeToExt() ──────────────► filename extension (persistence)
+ ├─ Message.mimeType ─────────► stored, never read again in the pipeline
+ ├─ ContentPart.mimeType ─────► Gemini inlineData.mimeType (input)
+ │
+ ├─ messageType = &quot;voice&quot; (from type==&quot;audio&quot;) ──► transcription
+ ├─ messageType = &quot;image&quot; (from type==&quot;image&quot;) ──► caption + category routing
+ └─ anything else ────────────► placeholder text, no MIME-driven processing
+</div></code></pre>
+<hr>
+<h2 id="6-component-responsibility-reference">6. Component Responsibility Reference</h2>
+<h3 id="openwa-openwasrc">OpenWA (<code>OpenWA/src</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility (MIME-relevant)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>engine/interfaces/whatsapp-engine.interface.ts</code></td>
+<td>Defines neutral <code>MessageType</code>, <code>IncomingMessage.media</code> envelope, <code>MediaInput</code> (outbound). The anti-corruption contract.</td>
+</tr>
+<tr>
+<td><code>engine/adapters/message-mapper.ts</code></td>
+<td>wwebjs token → neutral type; base IncomingMessage builder.</td>
+</tr>
+<tr>
+<td><code>engine/adapters/baileys-message-mapper.ts</code></td>
+<td>Baileys protobuf content type → neutral type (incl. <code>ptt → voice</code>).</td>
+</tr>
+<tr>
+<td><code>engine/adapters/baileys.adapter.ts</code></td>
+<td>Media extraction: reads protobuf <code>mimetype</code>, filename, declared size; capped streaming download; <code>capInboundMedia</code>.</td>
+</tr>
+<tr>
+<td><code>engine/adapters/inbound-media-cap.ts</code></td>
+<td>Size caps + coercion + omitted-envelope marker.</td>
+</tr>
+<tr>
+<td><code>engine/adapters/whatsapp-web-js.adapter.ts</code></td>
+<td>Same contract for the wwebjs engine (<code>downloadMedia()</code> + cap).</td>
+</tr>
+<tr>
+<td><code>modules/session/session.service.ts</code></td>
+<td><code>onMessage</code> → hook chain → dedup persist → webhook dispatch.</td>
+</tr>
+<tr>
+<td><code>modules/webhook/webhook.service.ts</code></td>
+<td>Payload envelope, filters, HMAC signing, queued/direct delivery + retries.</td>
+</tr>
+<tr>
+<td><code>modules/message/message.service.ts</code></td>
+<td>Outbound sends; <code>mimetype</code> required with base64; default <code>application/octet-stream</code>.</td>
+</tr>
+<tr>
+<td><code>modules/message/message-type-backfill.service.ts</code></td>
+<td>Startup migration of legacy wwebjs type tokens in its own DB.</td>
+</tr>
+<tr>
+<td><code>modules/status/status.service.ts</code></td>
+<td>Hardcodes <code>image/jpeg</code> / <code>video/mp4</code> for status posts.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="back-backsrc">Back (<code>back/src</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app.ts</code></td>
+<td>JSON body + <code>rawBody</code> capture; <code>/uploads</code> static serving; error handler.</td>
+</tr>
+<tr>
+<td><code>routes/index.ts</code>, <code>modules/whatsapp/whatsapp.routes.ts</code></td>
+<td>Route mounting; <code>POST /whatsapp/webhook</code> (unauthenticated).</td>
+</tr>
+<tr>
+<td><code>modules/whatsapp/whatsapp.controller.ts</code></td>
+<td>Webhook entry: signature, <code>mapWaType</code>, <code>mimeToExt</code>, disk write, persistence, voice/image enrichment, enqueue.</td>
+</tr>
+<tr>
+<td><code>modules/whatsapp/conversation.service.ts</code></td>
+<td><code>addMessage</code>: persists MIME metadata + defaults; conversation queries.</td>
+</tr>
+<tr>
+<td><code>modules/whatsapp/whatsapp.service.ts</code></td>
+<td><code>openwaService</code> HTTP client (send text/media/typing; session/webhook management).</td>
+</tr>
+<tr>
+<td><code>queues/message.queue.ts</code></td>
+<td>BullMQ queue config (5 attempts).</td>
+</tr>
+<tr>
+<td><code>workers/message.worker.ts</code></td>
+<td>Consumes queue → <code>processMessage</code>.</td>
+</tr>
+<tr>
+<td><code>modules/ai/agent.service.ts</code></td>
+<td>Two-pass agent: intent extraction, image-category routing, tool loop, reply generation, send, memory.</td>
+</tr>
+<tr>
+<td><code>modules/ai/clients/llm.client.ts</code></td>
+<td><code>ContentPart</code> union + <code>CallLLMParams</code>; the LLM-client abstraction.</td>
+</tr>
+<tr>
+<td><code>modules/ai/clients/gemini.client.ts</code></td>
+<td>Gemini adapter: <code>ContentPart → inlineData</code>, output-MIME resolution. <strong>Contains the active bug.</strong></td>
+</tr>
+<tr>
+<td><code>modules/ai/media/transcription.service.ts</code></td>
+<td>Audio → text via Gemini (<code>responseMimeType: text/plain</code>).</td>
+</tr>
+<tr>
+<td><code>modules/ai/media/imageCaption.service.ts</code></td>
+<td>Image → <code>{productName, description, category}</code> via Gemini + Zod.</td>
+</tr>
+<tr>
+<td><code>modules/ai/parser/response.parser.ts</code></td>
+<td><code>stripFences</code> + JSON.parse + Zod for agent responses.</td>
+</tr>
+<tr>
+<td><code>modules/ai/schemas/gemini.schemas.ts</code></td>
+<td>JSON-schema-style response schema for Gemini (shapes generation).</td>
+</tr>
+<tr>
+<td><code>modules/ai/schemas/ai.schemas.ts</code></td>
+<td>Zod schemas (verifies generation).</td>
+</tr>
+<tr>
+<td><code>modules/ai/prompts/promptBuilder.ts</code>, <code>systemPrompts.ts</code></td>
+<td>System prompts.</td>
+</tr>
+<tr>
+<td><code>modules/ai/tools/registry.ts</code>, <code>searchHelpers.ts</code></td>
+<td>Tool registry; product matching (also calls <code>callLLM</code>).</td>
+</tr>
+<tr>
+<td><code>prisma/schema.prisma</code></td>
+<td><code>Message</code> model fields for MIME/media metadata.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="7-design-patterns--abstractions">7. Design Patterns &amp; Abstractions</h2>
+<ol>
+<li><strong>Adapter / Anti-Corruption Layer (OpenWA).</strong> Each WhatsApp engine is wrapped by an adapter that maps library-specific tokens/protos to the neutral <code>MessageType</code> + <code>IncomingMessage</code> shape, so downstream never sees engine dialects. <em>Strength:</em> clean seam; <em>weakness:</em> the back API then duplicates the mapping instead of consuming the same vocabulary.</li>
+<li><strong>Strategy / Factory.</strong> <code>EngineFactory</code> selects the engine by <code>ENGINE_TYPE</code>. <code>MessageType</code> is the strategy interface.</li>
+<li><strong>Queued job / Command.</strong> Webhook → <code>enqueueMessageJob</code> → BullMQ → worker → <code>processMessage</code>. Decouples HTTP latency from AI latency; gives retries + concurrency.</li>
+<li><strong>Pipeline (two-pass LLM).</strong> LLM #1 (intent) → deterministic tools → LLM #2 (reply). Media enrichment (transcription/caption) is a <em>third</em>, pre-queue stage.</li>
+<li><strong>Schema-shaping vs. schema-verification.</strong> Gemini <code>responseSchema</code> (JSON-schema-ish, <code>gemini.schemas.ts</code>) constrains generation; Zod (<code>ai.schemas.ts</code>) validates afterward. Commented explicitly as two different jobs.</li>
+<li><strong>Discriminated union (ContentPart).</strong> <code>{type:'text'|'audio'|'image', ...}</code> as the input payload abstraction. Cleanly extensible (e.g. <code>video</code>) but currently only text+audio+image.</li>
+<li><strong>Contract-by-convention (no shared package).</strong> Back and OpenWA live in separate packages with no shared type/schema. <code>mapWaType</code> and <code>mimeToExt</code> are hand-maintained mirrors of OpenWA's behavior — the source of drift (§10.2).</li>
+</ol>
+<hr>
+<h2 id="8-weaknesses-inconsistencies--duplicated-logic">8. Weaknesses, Inconsistencies &amp; Duplicated Logic</h2>
+<h3 id="81-critical-active">8.1 Critical (active)</h3>
+<ol>
+<li>
+<p><strong><code>ReferenceError: resolvedMimeType is not defined</code> — <code>gemini.client.ts:34/41</code>.</strong><br>
+<code>resolvedMidmeType</code> (typo) is computed but <code>resolvedMimeType</code> (correct spelling) is referenced. Every <code>callLLM</code> throws. This breaks the whole AI pipeline. One-character fix on line 34.</p>
+</li>
+<li>
+<p><strong><code>mapWaType</code> lacks <code>voice</code> → voice notes never transcribed.</strong> OpenWA emits neutral <code>voice</code> for PTT voice notes (Baileys <code>audioMessage</code> + <code>ptt</code>). <code>mapWaType</code> only handles legacy <code>ptt</code>. So <code>data.type === &quot;voice&quot;</code> falls to the <code>&quot;text&quot;</code> default: no <code>messageType = &quot;voice&quot;</code>, no <code>transcribeAudio</code>, and the agent receives an <strong>empty string</strong> (PTT has no <code>body</code>). Evidence: <code>uploads/media/*.ogg</code> files exist, so voice notes do arrive — but the pipeline treats them as empty text. The <code>ptt: &quot;audio&quot;</code> entry is stale.</p>
+</li>
+<li>
+<p><strong>Webhook signature header mismatch (production outage risk).</strong> OpenWA signs with <code>X-OpenWA-Signature</code> (<code>webhook.service.ts:282</code>, format <code>sha256=…</code>). <code>back</code> verifies <code>x-hub-signature-256</code> (<code>whatsapp.controller.ts:79</code>) and <code>verifyHmac</code> returns <code>false</code> when no secret is set (<code>line 57</code>). In production (<code>isDev === false</code>) every webhook would be rejected 401 — <strong>unless</strong> the verification branch is effectively bypassed. This is likely why signatures are effectively a non-guard today; the two sides must agree on one header + one serialization.</p>
+</li>
+</ol>
+<h3 id="82-high">8.2 High</h3>
+<ol start="4">
+<li>
+<p><strong>Duplicated, drifting MIME knowledge.</strong> <code>mapWaType</code> + <code>mimeToExt</code> in the back re-implement OpenWA's normalization with their own literal maps. Any change on one side (like <code>ptt → voice</code>) silently breaks the other. No shared package, no test cross-checks.</p>
+</li>
+<li>
+<p><strong>Raw <code>mimeType</code> retained with parameters.</strong> <code>mimeToExt</code> strips <code>;codecs=…</code>, but <code>Message.mimeType</code> and the Gemini <code>inlineData.mimeType</code> receive the raw string (e.g. <code>audio/ogg; codecs=opus</code>). Gemini's documented input MIME types are plain (<code>audio/ogg</code>); parameterized strings may be rejected or treated as unknown. Should normalize once at the boundary.</p>
+</li>
+<li>
+<p><strong>URL→path reconstruction hack.</strong> <code>path.resolve(&quot;/app&quot;, filePath.slice(1))</code> (<code>whatsapp.controller.ts:185, 207</code>) treats the stored <code>mediaUrl</code> as a path by stripping the leading <code>/</code>. <code>MEDIA_DIR</code> is hardcoded to <code>/app/uploads/media</code> (line 16), so <strong>local (non-Docker) development cannot write media</strong> (no <code>/app</code> on a dev machine). Couples the webhook handler to the container mount layout.</p>
+</li>
+<li>
+<p><strong>Video, document, location, contact, revoked messages are MIME-dead ends.</strong> No <code>ContentPart</code> type for video, no routing for documents. A customer sending a <code>.mp4</code> or <code>.pdf</code> gets a <code>[video message]</code>/<code>[document message]</code> placeholder and the agent must guess. Sticker→image works but is incidental.</p>
+</li>
+<li>
+<p><strong><code>omitted</code>/over-cap media silently degrades.</strong> When <code>media.omitted === true</code> (or <code>data</code> missing), the branch at <code>whatsapp.controller.ts:151</code> is skipped entirely: <code>messageType</code> stays <code>text</code>, <code>mimeType</code>/<code>mediaUrl</code>/<code>filePath</code> are null, and the message is persisted with <code>content = &quot;[&lt;type&gt; message]&quot;</code>. The <code>omitted</code>/<code>sizeBytes</code> envelope is discarded — no signal to the agent or an operator that media existed but was dropped.</p>
+</li>
+</ol>
+<h3 id="83-medium">8.3 Medium</h3>
+<ol start="9">
+<li>
+<p><strong>Synchronous blocking work in the webhook handler.</strong> <code>fs.writeFileSync</code>, <code>transcribeAudio</code> (network + LLM), <code>captionImage</code> (network + LLM) all run inside the request handler. A slow Gemini call stalls the webhook response and the event loop (Redis/DB latency for all other requests). The queue exists precisely for async work but the expensive media enrichment happens <em>before</em> enqueueing.</p>
+</li>
+<li>
+<p><strong><code>rawPayload</code> declared but never populated</strong> (<code>whatsapp.controller.ts:139</code>), yet passed to <code>addMessage</code> — always <code>undefined</code>/null. Dead field.</p>
+</li>
+<li>
+<p><strong><code>whatsappMessageId</code> never stored</strong>, so back has no idempotency key for webhook redeliveries. OpenWA retries could create duplicate <code>Message</code> rows (and duplicate agent runs/replies), especially since <code>addMessage</code> is called before the queue.</p>
+</li>
+<li>
+<p><strong>No mime whitelist / size / count policy in <code>back</code>.</strong> Any <code>mimetype</code> with base64 data is accepted and written to disk (as <code>.bin</code> for unknown); the only cap lives in OpenWA. No cleanup of orphaned files (<code>uploads/media</code> accumulates — e.g. the <code>.bin</code> files are permanent).</p>
+</li>
+<li>
+<p><strong>Empty outputs not guarded.</strong> <code>transcribeAudio</code> returns <code>transcript.trim()</code> with no non-empty check; <code>callLLM</code> returns <code>response.text ?? &quot;&quot;</code>. A blocked/empty Gemini response produces an empty or garbage message that is still enqueued and replied to.</p>
+</li>
+<li>
+<p><strong><code>captionImage</code> parses with raw <code>JSON.parse(raw)</code></strong> (<code>imageCaption.service.ts:83</code>), whereas the agent path uses <code>stripFences</code>. Gemini wrapping the JSON in ``` fences would throw here; the fallback <code>&quot;[image - could not process]&quot;</code> would mask it.</p>
+</li>
+<li>
+<p><strong>Double prompt injection.</strong> <code>captionImage</code>/<code>transcribeAudio</code> pass the <em>same</em> prompt as both <code>systemPrompt</code> and a text <code>ContentPart</code> — redundant tokens and possible conflicting instructions.</p>
+</li>
+<li>
+<p><strong>Overlapping type taxonomies on <code>Message</code>.</strong> <code>contentType</code> (free string, OpenWA-ish: <code>image/video/document/audio/…</code>) coexists with <code>messageType</code> (<code>text|voice|image</code>, app-level) and <code>text</code> (the actual content). <code>filePath</code> stores a <em>URL</em>, not a path. Naming is inconsistent (<code>mimeType</code> vs OpenWA's <code>mimetype</code>, <code>mediaUrl</code> vs <code>filePath</code>).</p>
+</li>
+<li>
+<p><strong>Escalation UX gap.</strong> <code>PAYMENT_PROOF</code>/<code>DAMAGE_COMPLAINT</code> images are framed as escalations in text, but nothing sets <code>Conversation.escalatedAt</code>, and the frontend has no media renderer — the human operator can only see the image in the WhatsApp app.</p>
+</li>
+<li>
+<p><strong><code>verifyHmac</code> re-serializes <code>req.body</code> with <code>JSON.stringify</code></strong> rather than using the captured <code>req.rawBody</code> (available in <code>app.ts</code>). Serialization round-trip can reorder keys / escape differences → signature mismatches even if the header name were fixed.</p>
+</li>
+<li>
+<p><strong>Fragile placeholder/content contract.</strong> <code>content = body || (msgType === &quot;text&quot; ? &quot;&quot; : &quot;[...message]&quot;)</code> produces an empty string for text messages with empty bodies and for <code>revoked</code>/<code>voice</code> (empty body) — the empty string then flows into the agent as the user message.</p>
+</li>
+<li>
+<p><strong>Hardcoded model/prompt details.</strong> <code>MODEL_NAME</code> default <code>gemini-3.5-flash</code>, <code>temperature: 0.4</code> (gemini.client.ts:9,43) — fine, but MIME-relevant defaults (<code>text/plain</code> output) are implicit and duplicated in <code>transcription.service.ts:34</code> and <code>gemini.client.ts:34</code>.</p>
+</li>
+</ol>
+<h3 id="84-low">8.4 Low</h3>
+<ol start="21">
+<li>Fallback strings are English while the WhatsApp copy is French (<code>whatsapp.controller.ts</code> vs <code>sendOrderNotification</code>) — cosmetic inconsistency.</li>
+<li><code>mimeToExt</code> maps <code>video/3gpp</code>/<code>application/pdf</code> that no downstream code path ever consumes — dead mappings, but they document intent.</li>
+<li><code>message.queue</code> <code>removeOnComplete: 1000</code> / <code>removeOnFail: 5000</code> keeps no long-term audit of failures; failures are only visible in logs.</li>
+</ol>
+<hr>
+<h2 id="9-recommended-improvements-for-planning-not-implemented">9. Recommended Improvements (for planning; not implemented)</h2>
+<ol>
+<li><strong>Fix the typo</strong> <code>resolvedMidmeType → resolvedMimeType</code> (<code>gemini.client.ts:34</code>) — unblocks the entire pipeline.</li>
+<li><strong>Reconcile the type vocabularies.</strong> Add <code>voice: &quot;audio&quot;</code> (or <code>voice: &quot;voice&quot;</code>) to <code>mapWaType</code> and introduce a <strong>shared type/MIME module</strong> (e.g. a <code>shared/</code> package referenced by both back and OpenWA) so neutral types + MIME→extension mappings can't drift. At minimum, add cross-repo tests asserting <code>mapWaType</code> covers every <code>MessageType</code> enum value.</li>
+<li><strong>Fix the signature contract.</strong> Align on one header (<code>X-OpenWA-Signature</code>) and sign the exact payload bytes (<code>req.rawBody</code>) on both sides; fail-closed in production only after alignment.</li>
+<li><strong>Normalize MIME once at the boundary</strong> (strip <code>;</code> parameters, lowercase) before persisting and before sending to Gemini; keep a separate <code>filename</code>/extension field instead of overloading <code>filePath</code>/<code>mediaUrl</code>.</li>
+<li><strong>Move media enrichment into the worker</strong> (a <code>media.process</code> job before the agent job) so webhook latency and event-loop blocking are removed; make enrichment idempotent with <code>whatsappMessageId</code>.</li>
+<li><strong>Add a <code>video</code> ContentPart + routing</strong>, or explicitly reject/skip unsupported MIME families with a user-facing message instead of the current placeholder text.</li>
+<li><strong>Surface <code>omitted</code>/<code>sizeBytes</code></strong> in the stored message (entities or dedicated fields) and generate a helpful AI response (e.g. &quot;please resend a smaller file&quot;).</li>
+<li><strong>Whitelist supported input MIMEs</strong> and validate before disk write + before Gemini; enforce size/time budgets in <code>back</code>, not just OpenWA.</li>
+<li><strong>Use <code>req.rawBody</code> for HMAC</strong>; store <code>whatsappMessageId</code> for idempotency/dedup on redelivery.</li>
+<li><strong>Clean up the taxonomies</strong>: drop <code>rawPayload</code> if unused, rename <code>filePath→mediaLocalPath</code>, document <code>contentType</code> vs <code>messageType</code>, or collapse them.</li>
+</ol>
+<hr>
+<h2 id="10-appendix">10. Appendix</h2>
+<h3 id="101-environment--config-touchpoints">10.1 Environment &amp; config touchpoints</h3>
+<ul>
+<li><code>back/src/config/index.ts</code> — <code>openwaUrl</code>, <code>openwaApiKey</code>, <code>openwaWebhookSecret</code>, <code>internalUrl</code>, <code>appUrl</code>, <code>isDev</code>.</li>
+<li><code>back/src/modules/whatsapp/whatsapp.controller.ts</code> — <code>MEDIA_DIR = /app/uploads/media</code> (hardcoded).</li>
+<li><code>OpenWA</code> — <code>MEDIA_DOWNLOAD_MAX_BYTES</code> (default 50 MiB), <code>INBOUND_MEDIA_CONCURRENCY</code> (default 4), <code>ENGINE_TYPE</code>, <code>SSRF_ALLOWED_HOSTS</code>, <code>QUEUE_ENABLED</code>.</li>
+<li><code>docker-compose.yml</code> — <code>./uploads:/app/uploads</code> volume; <code>back</code> and <code>openwa</code> service wiring.</li>
+</ul>
+<h3 id="102-key-file-references">10.2 Key file references</h3>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Neutral <code>MessageType</code> + <code>media</code> envelope</td>
+<td><code>OpenWA/src/engine/interfaces/whatsapp-engine.interface.ts:44,57,90</code></td>
+</tr>
+<tr>
+<td><code>ptt → voice</code> mapping</td>
+<td><code>OpenWA/src/engine/adapters/message-mapper.ts:19</code>, <code>baileys-message-mapper.ts:18</code></td>
+</tr>
+<tr>
+<td>MIME read from protobuf</td>
+<td><code>OpenWA/src/engine/adapters/baileys.adapter.ts:1025</code></td>
+</tr>
+<tr>
+<td>Media size caps</td>
+<td><code>OpenWA/src/engine/adapters/inbound-media-cap.ts</code></td>
+</tr>
+<tr>
+<td>Webhook dispatch</td>
+<td><code>OpenWA/src/modules/session/session.service.ts:677</code></td>
+</tr>
+<tr>
+<td>HMAC signing header</td>
+<td><code>OpenWA/src/modules/webhook/webhook.service.ts:282,444</code></td>
+</tr>
+<tr>
+<td>Back webhook entry + maps</td>
+<td><code>back/src/modules/whatsapp/whatsapp.controller.ts:41,24,72</code></td>
+</tr>
+<tr>
+<td>Media persist</td>
+<td><code>back/src/modules/whatsapp/conversation.service.ts:21</code></td>
+</tr>
+<tr>
+<td>Voice/image enrichment</td>
+<td><code>back/src/modules/whatsapp/whatsapp.controller.ts:184,206</code></td>
+</tr>
+<tr>
+<td><code>ContentPart</code> union</td>
+<td><code>back/src/modules/ai/clients/llm.client.ts:1</code></td>
+</tr>
+<tr>
+<td><code>resolvedMimeType</code> bug</td>
+<td><code>back/src/modules/ai/clients/gemini.client.ts:34,41</code></td>
+</tr>
+<tr>
+<td>Agent two-pass</td>
+<td><code>back/src/modules/ai/agent.service.ts:55,96,231</code></td>
+</tr>
+<tr>
+<td><code>Message</code> model</td>
+<td><code>back/prisma/schema.prisma:195</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<p><em>End of document. No source files were modified.</em></p>
+
+</body>
+
+</html>

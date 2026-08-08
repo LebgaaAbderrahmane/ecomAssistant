@@ -74,4 +74,12 @@ export const getOrderIds = async (req: AuthenticatedRequest, res: Response) => {
 
   const ids = await listOrderIds(merchantId, status, search, dateRange);
   res.json({ ids });
+  try {
+    const order = req.body;
+    const result = await ingestOrder(order);
+    return res.status(202).json(result);
+  } catch (err: any) {
+    console.error('[orders] Failed to ingest order:', err.message || err);
+    return res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
+  }
 };
