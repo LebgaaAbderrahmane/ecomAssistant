@@ -23,6 +23,7 @@ import { api } from "../../lib/api.js";
 import { Input } from "../../components/ui/Input.js";
 import { useNotifications } from "../../lib/notifications.js";
 import { useTranslation } from 'react-i18next';
+import { DELIVERY_PROVIDERS, getProviderMeta, DeliveryProviderKey } from '@ecomassistant/shared';
 
 interface ShopInfo {
   name: string;
@@ -1196,31 +1197,34 @@ function DeliveryTab() {
   const { t } = useTranslation('settings');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(false);
-  const [showConnect, setShowConnect] = useState(false);
-  const [showDisconnect, setShowDisconnect] = useState(false);
+  const [connectedProvider, setConnectedProvider] = useState<DeliveryProviderKey | null>(null);
+  const [showConnectFor, setShowConnectFor] = useState<DeliveryProviderKey | null>(null);
+  const [showDisconnectFor, setShowDisconnectFor] = useState<DeliveryProviderKey | null>(null);
   const [apiId, setApiId] = useState('');
   const [apiToken, setApiToken] = useState('');
 
-  const PROVIDERS = [
-    { key: 'yalidine', name: 'Yalidine', logo: '/images/providers/yalidine.png', available: true },
-    { key: 'procolis', name: 'Procolis', logo: null, available: false },
-  ];
+  const PROVIDERS = DELIVERY_PROVIDERS;
 
   useEffect(() => {
     api.get<{ connected: boolean; provider: string | null }>('/delivery/status')
-      .then((res) => setConnected(res.connected))
+      .then((res) => setConnectedProvider(res.connected ? (res.provider as DeliveryProviderKey) : null))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   const handleConnect = async () => {
-    if (!apiId || !apiToken) return;
+    if (!showConnectFor) return;
+    const meta = getProviderMeta(showConnectFor);
+    if (!meta) return;
+    if (meta.credentialField !== 'apiToken' && !apiId) return;
+    if (!apiToken) return;
     setSaving(true);
     try {
-      await api.post('/delivery/connect', { provider: 'yalidine', apiId, apiToken });
-      setConnected(true);
-      setShowConnect(false);
+      await api.post('/delivery/connect', { provider: showConnectFor, apiId, apiToken });
+      setConnectedProvider(showConnectFor);
+      setShowConnectFor(null);
+      setApiId('');
+      setApiToken('');
       toast.success(t('delivery.saved'));
     } catch (err: any) {
       toast.error(err?.message || t('delivery.saveError'));
@@ -1233,8 +1237,8 @@ function DeliveryTab() {
     setSaving(true);
     try {
       await api.post('/delivery/disconnect', {});
-      setConnected(false);
-      setShowDisconnect(false);
+      setConnectedProvider(null);
+      setShowDisconnectFor(null);
       setApiId('');
       setApiToken('');
     } catch {} finally {
@@ -1265,7 +1269,7 @@ function DeliveryTab() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {PROVIDERS.map((p) => {
-          const isConnected = p.available && connected;
+          const isConnected = p.available && connectedProvider === p.key;
           const isAvailable = p.available;
 
           return (
@@ -1289,11 +1293,11 @@ function DeliveryTab() {
               <h3 className="text-lg font-semibold text-on text-center">{p.name}</h3>
 
               {isConnected ? (
-                <Button variant="secondary" onClick={() => setShowDisconnect(true)}>
+                <Button variant="secondary" onClick={() => setShowDisconnectFor(p.key)}>
                   {t('delivery.disconnect')}
                 </Button>
               ) : isAvailable ? (
-                <Button onClick={() => setShowConnect(true)}>
+                <Button onClick={() => { setShowConnectFor(p.key); setApiId(''); setApiToken(''); }}>
                   {t('delivery.connect')}
                 </Button>
               ) : (
@@ -1306,21 +1310,23 @@ function DeliveryTab() {
         })}
       </div>
 
-      {showConnect && (
+      {showConnectFor && getProviderMeta(showConnectFor) && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setShowConnect(false)} />
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowConnectFor(null)} />
           <div className="relative z-10 w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl border border-on">
-            <button onClick={() => setShowConnect(false)} className="absolute top-4 right-4 text-on-faint hover:text-on">
+            <button onClick={() => setShowConnectFor(null)} className="absolute top-4 right-4 text-on-faint hover:text-on">
               <X className="h-5 w-5" />
             </button>
-            <h2 className="text-lg font-semibold text-on">{t('delivery.modalTitle', { provider: 'Yalidine' })}</h2>
+            <h2 className="text-lg font-semibold text-on">{t('delivery.modalTitle', { provider: getProviderMeta(showConnectFor)!.name })}</h2>
             <div className="mt-4 space-y-3">
-              <Input
-                label={t('delivery.apiId')}
-                placeholder={t('delivery.apiIdPlaceholder')}
-                value={apiId}
-                onChange={(e) => setApiId(e.target.value)}
-              />
+              {getProviderMeta(showConnectFor)!.credentialField !== 'apiToken' && (
+                <Input
+                  label={t('delivery.apiId')}
+                  placeholder={t('delivery.apiIdPlaceholder')}
+                  value={apiId}
+                  onChange={(e) => setApiId(e.target.value)}
+                />
+              )}
               <Input
                 label={t('delivery.apiToken')}
                 type="password"
@@ -1331,10 +1337,10 @@ function DeliveryTab() {
               />
             </div>
             <div className="mt-6 flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setShowConnect(false)} disabled={saving}>
+              <Button variant="secondary" onClick={() => setShowConnectFor(null)} disabled={saving}>
                 {t('delivery.cancel')}
               </Button>
-              <Button onClick={handleConnect} loading={saving} disabled={!apiId || !apiToken}>
+              <Button onClick={handleConnect} loading={saving} disabled={!apiToken}>
                 {t('delivery.connect')}
               </Button>
             </div>
@@ -1342,17 +1348,17 @@ function DeliveryTab() {
         </div>
       )}
 
-      {showDisconnect && (
+      {showDisconnectFor && getProviderMeta(showDisconnectFor) && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setShowDisconnect(false)} />
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowDisconnectFor(null)} />
           <div className="relative z-10 w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl border border-on">
             <div className="flex items-center gap-3">
               <AlertTriangle className="h-6 w-6 text-amber-500 shrink-0" />
-              <h2 className="text-lg font-semibold text-on">{t('delivery.disconnectTitle', { provider: 'Yalidine' })}</h2>
+              <h2 className="text-lg font-semibold text-on">{t('delivery.disconnectTitle', { provider: getProviderMeta(showDisconnectFor)!.name })}</h2>
             </div>
-            <p className="mt-2 text-sm text-on-muted">{t('delivery.disconnectDesc', { provider: 'Yalidine' })}</p>
+            <p className="mt-2 text-sm text-on-muted">{t('delivery.disconnectDesc', { provider: getProviderMeta(showDisconnectFor)!.name })}</p>
             <div className="mt-6 flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setShowDisconnect(false)} disabled={saving}>
+              <Button variant="secondary" onClick={() => setShowDisconnectFor(null)} disabled={saving}>
                 {t('delivery.cancel')}
               </Button>
               <Button variant="danger" onClick={handleDisconnect} loading={saving}>

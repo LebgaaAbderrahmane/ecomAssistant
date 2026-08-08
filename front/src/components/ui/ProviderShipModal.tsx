@@ -4,16 +4,12 @@ import { Button } from './Button.js'
 import { api } from '../../lib/api.js'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { getProviderMeta } from '@ecomassistant/shared'
 
 interface ProviderInfo {
   key: string
   connected: boolean
   available: boolean
-}
-
-const PROVIDER_META: Record<string, { name: string; logo: string | null }> = {
-  yalidine: { name: 'Yalidine', logo: '/images/providers/yalidine.png' },
-  procolis: { name: 'Procolis', logo: null },
 }
 
 interface ProviderShipModalProps {
@@ -86,7 +82,7 @@ export function ProviderShipModal({ open, onClose, orderIds, onComplete }: Provi
           <>
             <div className="mt-4 grid grid-cols-2 gap-3">
               {providers.map((p) => {
-                const meta = PROVIDER_META[p.key]
+                const meta = getProviderMeta(p.key as any)
                 const isActive = p.connected && p.available
                 const isSelected = selectedProvider === p.key
 

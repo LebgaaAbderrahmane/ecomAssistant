@@ -1,4 +1,5 @@
 import { Response } from 'express'
+import { DELIVERY_PROVIDERS, DeliveryProviderKey } from '@ecomassistant/shared'
 import { AuthenticatedRequest } from '../../middlwares/auth.middlware.js'
 import { deliveryService } from './delivery.service.js'
 
@@ -14,10 +15,11 @@ export const getStatus = async (req: AuthenticatedRequest, res: Response) => {
 export const getProviders = async (req: AuthenticatedRequest, res: Response) => {
   const merchantId = req.merchant!.merchantId
   const config = await deliveryService.getConfig(merchantId)
-  const providers = [
-    { key: 'yalidine', connected: config?.provider === 'yalidine' && !!config?.isConnected, available: true },
-    { key: 'procolis', connected: false, available: false },
-  ]
+  const providers = DELIVERY_PROVIDERS.map((p) => ({
+    key: p.key,
+    connected: config?.provider === p.key && !!config?.isConnected,
+    available: p.available,
+  }))
   res.json(providers)
 }
 

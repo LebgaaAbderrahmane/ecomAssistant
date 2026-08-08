@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from './Button.js'
+import { DELIVERY_PROVIDERS } from '@ecomassistant/shared'
 
 interface TrackingModalProps {
   open: boolean
@@ -44,8 +45,9 @@ export function TrackingModal({ open, onClose, onConfirm, loading }: TrackingMod
               onChange={(e) => setDeliveryProvider(e.target.value)}
               className="block w-full h-10 rounded-md border border-on bg-surface px-3 text-sm text-on focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
             >
-              <option value="yalidine">Yalidine</option>
-              <option value="procolis">Procolis</option>
+              {DELIVERY_PROVIDERS.map((p) => (
+                <option key={p.key} value={p.key}>{p.name}</option>
+              ))}
             </select>
           </div>
           <div>
