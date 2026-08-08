@@ -19,8 +19,13 @@ export const config = {
   openwaUrl: env('OPENWA_URL', 'http://localhost:2785'),
   openwaApiKey: env('OPENWA_API_KEY', 'dev-admin-key'),
   openwaWebhookSecret: env('OPENWA_WEBHOOK_SECRET', 'whsec_dev'),
-  appUrl: env('APP_URL', 'http://localhost:3000'),
+  appUrl: env('APP_URL', 'http://localhost:3000').trim(),
   internalUrl: env('INTERNAL_URL', 'http://back:3000'),
+  chargily: {
+    baseUrl: env('CHARGILY_BASE_URL'),
+    publicKey: env('CHARGILY_PUBLIC_KEY'),
+    privateKey: env('CHARGILY_PRIVATE_KEY'),
+  },
 };
 
 
