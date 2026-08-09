@@ -123,6 +123,17 @@ export const processMessage = async (messageId: string) => {
   const { conversation } = message;
   const memory = (conversation.memory as ConversationMemory | null) ?? {};
 
+  // Last thing the assistant said before this message. LLM #1 needs it to
+  // interpret short follow-ups ("okay", "yes", "this one") relative to what
+  // the assistant actually did last — e.g. present search results — instead of
+  // reading them off the raw conversation state (which may be a stale
+  // WAITING_CONFIRMATION from an earlier order that was never confirmed).
+  const lastAssistantMessage = await prisma.message.findFirst({
+    where: { conversationId: conversation.id, direction: 'OUT', id: { not: messageId } },
+    orderBy: { createdAt: 'desc' },
+    select: { text: true },
+  });
+
   // --- Load AgentConfig ---
   const agentConfig = await prisma.agentConfig.findUnique({
     where: { merchantId: conversation.merchantId },
@@ -216,6 +227,7 @@ export const processMessage = async (messageId: string) => {
     allowedTools: ALL_TOOLS,
     memory,
     knownSuggestedIntents,
+    lastAssistantMessage: lastAssistantMessage?.text ?? null,
   };
   const rawIntent = await callLLM({
     systemPrompt: buildIntentPrompt(intentContext),

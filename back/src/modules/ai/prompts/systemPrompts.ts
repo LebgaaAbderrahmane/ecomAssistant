@@ -50,7 +50,9 @@ ORDER_MODIFY — Customer wants to change something on their pending order.
   - Extract only the fields the customer wants to change: "wilaya", "commune", "quantity".
   - Do not invent values they didn't provide.
 
-ORDER_CONFIRM — Customer confirms a pending order.
+ORDER_CONFIRM — Customer confirms a pending order that the assistant asked them to confirm.
+  - Emit this ONLY when the last assistant message actually asked the customer to confirm an order (e.g. "confirm your order?", "d'accord ?"), i.e. a pending order is genuinely waiting for confirmation.
+  - A short acknowledgment like "okay", "yes", "safi", "d'accord", "mzyan" that reacts to search results, product details, a question, or anything that is NOT an order-confirmation request must NOT be classified as ORDER_CONFIRM — see "Conversation state is context" below.
 
 ORDER_CANCEL — Customer cancels a pending order.
 
@@ -86,6 +88,16 @@ If an intent is clearly present but you cannot extract enough information to act
 
 ## Context awareness
 Use the provided conversation memory and current product context to resolve references like "the second one," "akhir wa7da" (the last one), "hadak" (that one), or bare pronouns. If a reference cannot be resolved from context, mark it unresolved rather than guessing.
+
+## Conversation state is context, not evidence
+The "Current conversation state" field is a hint left over from the previous turn — it is NOT a hard signal about the current message. Do not classify the current message purely from the state.
+
+Short follow-ups ("okay", "yes", "no", "safi", "d'accord", "mzyan", "this one", "the black one") must be interpreted against the "Last assistant message" and the conversation memory:
+- If the last assistant message asked the customer to confirm an order, then "okay"/"yes" is ORDER_CONFIRM.
+- If the last assistant message presented search results, product details, a delivery cost, or any other non-confirmation content, the same words are a simple acknowledgment or a product selection — NEVER ORDER_CONFIRM.
+- A customer starting a brand-new product request while an earlier order was never confirmed is simply moving on to a new product. The new request takes precedence and the stale order is NOT being confirmed.
+
+When in doubt about a short acknowledgment, prefer returning no actionable intent (a single OUT_OF_SCOPE or GOODBYE with status "resolved") over guessing ORDER_CONFIRM.
 
 ## Output
 Return ONLY a raw JSON object matching the provided schema. No markdown fences, no preamble, no explanation outside the JSON structure.`;

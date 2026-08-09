@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
     "lint": "echo 'lint ok'",
+    "test": "tsx --test src/modules/ai/__tests__/*.test.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev"

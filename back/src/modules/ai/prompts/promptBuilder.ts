@@ -22,16 +22,27 @@ export interface AgentContext {
   allowedTools: string[];
   memory: ConversationMemory;
   knownSuggestedIntents?: Array<{ name: string; description: string | null }>;
+  lastAssistantMessage?: string | null;
 }
 
 export function buildIntentPrompt(ctx: AgentContext): string {
   const sections = [
     INTENT_EXTRACTION_RULES,
     '',
-    `Current conversation state: ${ctx.state}`,
+    // Conversation state is context, not a decision. Short follow-ups are
+    // interpreted against the last assistant message (below) and the memory,
+    // never against the raw state alone.
+    `Current conversation state (context only, not a decision): ${ctx.state}`,
     `Allowed intents right now: ${ctx.allowedIntents.join(', ')}`,
     `Allowed tools right now: ${ctx.allowedTools.length ? ctx.allowedTools.join(', ') : 'none'}`,
   ];
+
+  if (ctx.lastAssistantMessage) {
+    sections.push(
+      '',
+      `Last assistant message (what the customer is reacting to): "${ctx.lastAssistantMessage}"`,
+    );
+  }
 
   if (ctx.knownSuggestedIntents?.length) {
     const list = ctx.knownSuggestedIntents

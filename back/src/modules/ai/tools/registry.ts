@@ -14,6 +14,7 @@ import {
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
 import { resolveProductRequest, fetchProductsByIds } from './searchHelpers';
+import { TOOL_STATE_TRANSITIONS } from '../conversationState';
 
 interface CommuneValidation {
   valid: boolean;
@@ -111,6 +112,10 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
   const resolved = await resolveProductRequest(query, ctx, ctx.merchantId);
 
   if (resolved.outcome === 'SUCCESS') {
+    await prisma.conversation.update({
+      where: { id: ctx.conversationId },
+      data: { state: TOOL_STATE_TRANSITIONS.searchProducts! },
+    });
     return { success: true, data: { products: formatProducts(resolved.products) } };
   }
 
@@ -173,6 +178,15 @@ const calculateShipping: ToolHandler = async (entities, ctx) => {
 const confirmOrder: ToolHandler = async (entities, ctx) => {
   const parsedArgs = ConfirmOrderArgsSchema.safeParse(entities);
 
+  // An order resolved implicitly from conversation context (the previous turn's
+  // currentOrderId) is only confirmable while the assistant is actually waiting
+  // for confirmation. A short acknowledgment like "okay" that the intent
+  // extractor misread as ORDER_CONFIRM must never confirm a stale order from an
+  // unrelated earlier exchange. An order the customer names explicitly in the
+  // message is a fresh request and stays confirmable.
+  const explicitlyReferenced =
+    (parsedArgs.success && (parsedArgs.data.orderId || parsedArgs.data.productName)) ?? false;
+
   let orderId = ctx.currentOrderId;
   if (!orderId && parsedArgs.success && parsedArgs.data.orderId) {
     orderId = parsedArgs.data.orderId;
@@ -197,6 +211,20 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
     };
   }
 
+  if (!explicitlyReferenced && orderId === ctx.currentOrderId) {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: ctx.conversationId },
+      select: { state: true },
+    });
+    if (conversation?.state !== 'WAITING_CONFIRMATION') {
+      return {
+        success: false,
+        outcome: 'AMBIGUOUS',
+        error: 'No order is waiting for confirmation right now. If you want to place a new order, tell me the product and delivery details.',
+      };
+    }
+  }
+
   try {
     const order = await prisma.order.update({
       where: {
@@ -207,6 +235,11 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
       data: {
         status: 'CONFIRMED',
       },
+    });
+
+    await prisma.conversation.update({
+      where: { id: ctx.conversationId },
+      data: { state: TOOL_STATE_TRANSITIONS.confirmOrder! },
     });
 
     return {
@@ -282,6 +315,11 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
       data: {
         status: 'CANCELLED',
       },
+    });
+
+    await prisma.conversation.update({
+      where: { id: ctx.conversationId },
+      data: { state: TOOL_STATE_TRANSITIONS.cancelOrder! },
     });
 
     return {
@@ -362,6 +400,11 @@ const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
     .map((name) => products.find((p: Product) => p.name.toLowerCase() === name.toLowerCase()))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
+  await prisma.conversation.update({
+    where: { id: ctx.conversationId },
+    data: { state: TOOL_STATE_TRANSITIONS.recallPreviousProducts! },
+  });
+
   return {
     success: true,
     data: {
@@ -410,7 +453,7 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
 
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
-    data: { currentProductId: product.id },
+    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.chooseProduct! },
   });
 
   return {
@@ -450,7 +493,7 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
 
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
-    data: { currentProductId: product.id },
+    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.getProductDetails! },
   });
 
   return {
