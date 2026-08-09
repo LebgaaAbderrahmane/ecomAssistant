@@ -7,14 +7,13 @@ import {
   CalculateShippingArgsSchema,
   ConfirmOrderArgsSchema,
   CancelOrderArgsSchema,
-  RecallPreviousProductsArgsSchema,
   CreateOrderArgsSchema,
   ChooseProductArgsSchema,
   GetProductDetailsArgsSchema,
   ModifyOrderArgsSchema,
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
-import { buildProductCatalog, matchProductsWithLLM, fetchProductsByIds } from './searchHelpers';
+import { resolveProductRequest, fetchProductsByIds } from './searchHelpers';
 
 interface CommuneValidation {
   valid: boolean;
@@ -71,10 +70,18 @@ export interface ToolExecutionContext {
   customerCommune?: string | null;
 }
 
+// Outcome refines `success`. It lets downstream code treat two very different
+// failures distinctly:
+//   - NOT_FOUND  → the item definitively does not exist (search came back empty).
+//   - AMBIGUOUS  → the request is too vague to identify an item (ask to clarify).
+// Absent on plain operational failures (bad args, missing context, infra errors).
+export type ToolOutcome = 'SUCCESS' | 'NOT_FOUND' | 'AMBIGUOUS';
+
 export interface ToolResult {
   success: boolean;
   data?: Record<string, unknown>;
   error?: string;
+  outcome?: ToolOutcome;
 }
 
 type ToolEntities = Record<string, string | number | boolean | null>;
@@ -97,36 +104,31 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
   }
   const query = parsedArgs.data.product;
 
-  // Step 1: Fast case-insensitive SQL search on product name
-  const fastResults = await prisma.product.findMany({
-    where: {
-      merchantId: ctx.merchantId,
-      name: { contains: query, mode: 'insensitive' },
-    },
-    take: 5,
-  });
+  // Resolve against conversation context first, then the catalog. The result
+  // distinguishes a resolved product (from memory or catalog) from a concrete
+  // query that is authoritatively absent (NOT_FOUND) and a bare reference that
+  // no context can resolve (AMBIGUOUS — ask the customer, don't guess).
+  const resolved = await resolveProductRequest(query, ctx, ctx.merchantId);
 
-  if (fastResults.length > 0) {
-    return { success: true, data: { products: formatProducts(fastResults) } };
+  if (resolved.outcome === 'SUCCESS') {
+    return { success: true, data: { products: formatProducts(resolved.products) } };
   }
 
-  // Step 2: LLM fallback — build catalog and let the model match
-  const catalog = await buildProductCatalog(ctx.merchantId);
-  if (catalog.length === 0) {
-    return { success: false, error: 'No products found in store catalog' };
+  if (resolved.outcome === 'AMBIGUOUS') {
+    return {
+      success: false,
+      outcome: 'AMBIGUOUS',
+      data: { query },
+      error: resolved.reason,
+    };
   }
 
-  const matchedIds = await matchProductsWithLLM(catalog, query);
-  if (matchedIds.length === 0) {
-    return { success: false, error: `No products found matching "${query}"` };
-  }
-
-  const products = await fetchProductsByIds(ctx.merchantId, matchedIds);
-  if (products.length === 0) {
-    return { success: false, error: `No products found matching "${query}"` };
-  }
-
-  return { success: true, data: { products: formatProducts(products.slice(0, 5)) } };
+  return {
+    success: false,
+    outcome: 'NOT_FOUND',
+    data: { query },
+    error: `No product matching "${resolved.query}" exists in the store's catalog.`,
+  };
 };
 
 const getOrderStatus: ToolHandler = async (entities, ctx) => {
@@ -301,10 +303,17 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
     throw err;
   }
 };
-const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
-  const parsedArgs = RecallPreviousProductsArgsSchema.safeParse(entities);
-  const limit = parsedArgs.success && parsedArgs.data.limit ? parsedArgs.data.limit : 5;
+const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
+  // The customer references a product without naming it ("the black one",
+  // "hadak"). Resolve from conversation context (memory.lastProductResults or
+  // currentProductId) first.
+  const fromContext = await resolveProductRequest(undefined, ctx, ctx.merchantId);
+  if (fromContext.outcome === 'SUCCESS') {
+    return { success: true, data: { products: formatProducts(fromContext.products) } };
+  }
 
+  // Deeper fallback: scan message history for product entities from earlier
+  // searches/details in this conversation.
   const messages = await prisma.message.findMany({
     where: {
       conversationId: ctx.conversationId,
@@ -322,26 +331,26 @@ const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
 
   for (const msg of messages) {
     let ents: Record<string, unknown> | null = null;
-    console.log(`[recallPreviousProducts] parsing entities string: ${msg.entities}`);
     if (typeof msg.entities === 'string') {
       try { ents = JSON.parse(msg.entities); } catch { /* skip */ }
-      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
     } else if (msg.entities && typeof msg.entities === 'object') {
       ents = msg.entities as Record<string, unknown>;
-      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
     }
     const name = ents?.product;
-    console.log('[recallPreviousProducts] extracted product name:', name);
     if (typeof name === 'string' && !seen.has(name)) {
       seen.add(name);
       productNames.push(name);
     }
-    if (productNames.length >= limit) break;
-    console.log(`[recallPreviousProducts] collected ${productNames.length} product names so far:`, productNames);
   }
 
   if (productNames.length === 0) {
-    return { success: false, error: 'No previous products found in this conversation' };
+    // Nothing recalled and no product context — we need the customer to name
+    // the product rather than claiming it doesn't exist.
+    return {
+      success: false,
+      outcome: 'AMBIGUOUS',
+      error: 'No previously mentioned product found. Ask the customer which product (name, color, or model) they are asking about.',
+    };
   }
 
   const products = await prisma.product.findMany({
@@ -376,6 +385,7 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
     if (!entry) {
       return {
         success: false,
+        outcome: 'NOT_FOUND',
         error: `No product at index ${parsedArgs.data.productIndex} (last search had ${lastResults.length} results)`,
       };
     }
@@ -395,7 +405,7 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
   }
 
   if (!product) {
-    return { success: false, error: 'Product not found' };
+    return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
   }
 
   await prisma.conversation.update({
@@ -435,7 +445,7 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
   }
 
   if (!product) {
-    return { success: false, error: 'Product not found' };
+    return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
   }
 
   await prisma.conversation.update({

@@ -82,6 +82,25 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
   for (const tr of ctx.toolResults) {
     if (!tr.result) {
       toolSections.push(`[${tr.intent}] No tool was needed for this intent.`);
+    } else if (tr.result.outcome === 'NOT_FOUND') {
+      // Definitive absence — the item does not exist. Never ask for more
+      // details, never suggest alternatives, and never imply it might be
+      // available later.
+      toolSections.push(
+        `[${tr.intent}] NOT_FOUND: ${tr.result.error} ` +
+        `This is definitive — the item does not exist in the store. Tell the customer directly that it is not available. ` +
+        `Do NOT ask follow-up questions about it, do NOT suggest alternative or similar products unless the customer explicitly asked for recommendations, ` +
+        `do NOT imply it might be in stock later, and do NOT search again for the same product.`,
+      );
+    } else if (tr.result.outcome === 'AMBIGUOUS') {
+      // Insufficient info — we can't say "not available", we need to know WHAT.
+      // This should only fire when neither the message nor the conversation
+      // memory could resolve the reference.
+      toolSections.push(
+        `[${tr.intent}] AMBIGUOUS: ${tr.result.error} ` +
+        `The reference could not be resolved from the message or from products already discussed in this conversation. ` +
+        `Ask the customer which product (name, color, or model) they mean. Do NOT tell them the product is unavailable.`,
+      );
     } else if (tr.result.success) {
       const sanitized = stripInternalIds(tr.result.data);
       toolSections.push(`[${tr.intent}] Result:\n${JSON.stringify(sanitized, null, 2)}`);

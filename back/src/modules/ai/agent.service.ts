@@ -15,6 +15,11 @@ import type { ImageCategory } from './media/imageCaption.service';
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
 const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
 
+// Product intents whose tools resolve references from conversation memory.
+// They are excluded from the "unresolved" short-circuit so the tool — not the
+// intent extractor — decides NOT_FOUND vs AMBIGUOUS using memory + catalog.
+const PRODUCT_INTENTS = new Set(['PRODUCT_SEARCH', 'PRODUCT_SELECT', 'PRODUCT_DETAILS']);
+
 const DEFAULT_TEMPLATES: Record<string, string> = {
   orderConfirmation: [
     "Bonjour {clientName},",
@@ -348,14 +353,27 @@ export const processMessage = async (messageId: string) => {
 
   // ─── Entity enrichment + tool execution loop ─────────────────────────
   const toolResults: Array<{ intent: string; result: ToolResult | null }> = [];
+  const toolResultCache = new Map<string, ToolResult | null>();
   let lastProductResults = memory.lastProductResults;
+  // A product search that definitively found nothing (or was too vague to run)
+  // invalidates any previously stored results — the reply and any PRODUCT_SELECT
+  // must not reference stale products from an unrelated earlier search.
+  let productSearchMissed = false;
 
   for (const item of sortedIntents) {
-    // Skip intents that are marked unresolved
-    if (item.status === 'unresolved') {
+    // Product intents are never short-circuited on "unresolved": their tools
+    // (searchProducts / chooseProduct / getProductDetails) resolve the
+    // reference from conversation memory first and only report AMBIGUOUS when
+    // neither the message nor the memory can identify a product. Other intents
+    // that the LLM could not act on are recorded as AMBIGUOUS and skipped.
+    if (item.status === 'unresolved' && !PRODUCT_INTENTS.has(intentToString(item.intent))) {
       toolResults.push({
         intent: intentToString(item.intent),
-        result: { success: false, error: item.unresolvedReason ?? 'Intent present but cannot be acted on' },
+        result: {
+          success: false,
+          outcome: 'AMBIGUOUS',
+          error: item.unresolvedReason ?? 'The request is too vague to act on. Ask the customer to clarify what they mean.',
+        },
       });
       continue;
     }
@@ -377,6 +395,15 @@ export const processMessage = async (messageId: string) => {
       }
     }
 
+    // Dedupe identical tool calls within one message (e.g. LLM #1 emitting the
+    // same PRODUCT_SEARCH twice) — never burn a second DB/LLM call on it.
+    const toolKey = `${toolName}:${JSON.stringify(entities)}`;
+    if (toolResultCache.has(toolKey)) {
+      const cached = toolResultCache.get(toolKey) ?? null;
+      toolResults.push({ intent: intentToString(item.intent), result: cached });
+      continue;
+    }
+
     // Execute tool with per-intent error handling
     let result: ToolResult;
     try {
@@ -385,6 +412,16 @@ export const processMessage = async (messageId: string) => {
     } catch (err) {
       console.error(`[agent] tool "${toolName}" failed for intent ${intentToString(item.intent)}`, err);
       result = { success: false, error: 'Tool execution failed' };
+    }
+    toolResultCache.set(toolKey, result);
+
+    // A product search that came back empty or too vague must not leave stale
+    // results behind — and must not trigger any further search for the same item.
+    if (
+      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
+      (result.outcome === 'NOT_FOUND' || result.outcome === 'AMBIGUOUS')
+    ) {
+      productSearchMissed = true;
     }
 
     toolResults.push({ intent: intentToString(item.intent), result });
@@ -416,6 +453,17 @@ export const processMessage = async (messageId: string) => {
     }
   }
 
+  // A product search that ended with NOT_FOUND/AMBIGUOUS invalidates stale
+  // results: the reply must not reference them, and a follow-up PRODUCT_SELECT
+  // must not resolve against products that were never offered in this exchange.
+  let replyMemory = memory;
+  let finalLastProductResults = lastProductResults;
+  if (productSearchMissed) {
+    finalLastProductResults = [];
+    replyMemory = { ...memory, lastProductResults: [] };
+    console.log(`[agent] ${messageId} -> product search missed, cleared stale lastProductResults`);
+  }
+
   // If a tool (e.g. ESCALATION → escalateConversation) took the conversation
   // over, the AI must not reply — the merchant responds directly.
   const conversationAfterTools = await prisma.conversation.findUnique({
@@ -423,7 +471,7 @@ export const processMessage = async (messageId: string) => {
     select: { takenOverByHuman: true },
   });
   if (conversationAfterTools?.takenOverByHuman) {
-    await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, lastProductResults);
+    await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults);
     console.log(`[agent] ${messageId} -> conversation escalated during tool execution, AI stopped (no reply)`);
     return;
   }
@@ -438,7 +486,7 @@ export const processMessage = async (messageId: string) => {
     })),
     conversationAct: parsed.conversationAct,
     toolResults,
-    memory,
+    memory: replyMemory,
     tone,
     language: defaultLanguage,
   };
@@ -497,7 +545,7 @@ export const processMessage = async (messageId: string) => {
   }
 
   // ─── Update conversation memory ─────────────────────────────────────
-  await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, lastProductResults);
+  await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults);
 
   console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => intentToString(i.intent)).join(',')}, reply (${replyParsed.messages.length} msgs):`,
     replyParsed.messages.map((m, i) => `[${i}] "${m.substring(0, 60)}${m.length > 60 ? '...' : ''}"`));
