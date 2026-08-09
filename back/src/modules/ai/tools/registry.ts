@@ -10,11 +10,20 @@ import {
   CreateOrderArgsSchema,
   ChooseProductArgsSchema,
   GetProductDetailsArgsSchema,
+  SuggestProductsArgsSchema,
   ModifyOrderArgsSchema,
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
-import { resolveProductRequest, fetchProductsByIds } from './searchHelpers';
+import { resolveProductRequest, fetchProductsByIds, matchProductsWithLLM } from './searchHelpers';
 import { TOOL_STATE_TRANSITIONS } from '../conversationState';
+import {
+  consolidatePreferences,
+  computeExclusionIds,
+  buildSuggestionCatalog,
+  recentProducts,
+  type PreferenceEntities,
+} from './suggestionHelpers';
+import type { ConversationMemory } from '../memory.types';
 
 interface CommuneValidation {
   valid: boolean;
@@ -509,6 +518,78 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
   };
 };
 
+const suggestProducts: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = SuggestProductsArgsSchema.safeParse(entities);
+  const messagePrefs = parsedArgs.success ? parsedArgs.data : {};
+
+  // Load conversation memory (accumulated preferences + rejected products) so
+  // the customer never has to repeat what they already told us.
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: ctx.conversationId },
+    select: { memory: true, currentProductId: true },
+  });
+  const memory = (conversation?.memory ?? {}) as ConversationMemory;
+
+  const prefs = consolidatePreferences(messagePrefs as PreferenceEntities, memory);
+  const excludeIds = computeExclusionIds(
+    memory,
+    conversation?.currentProductId ?? ctx.currentProductId,
+  );
+
+  const hasPreferences =
+    prefs.terms.length > 0 ||
+    prefs.category !== undefined ||
+    prefs.minPrice !== undefined ||
+    prefs.maxPrice !== undefined;
+
+  let products: Product[];
+  let basedOn: 'preferences' | 'popular';
+
+  if (!hasPreferences) {
+    // Bare "what do you recommend?" with no prior context → recent in-stock items.
+    products = await recentProducts(ctx.merchantId, excludeIds);
+    basedOn = 'popular';
+  } else {
+    const catalog = await buildSuggestionCatalog(ctx.merchantId, prefs, excludeIds);
+    if (catalog.length === 0) {
+      return {
+        success: false,
+        outcome: 'NOT_FOUND',
+        error: 'No products in the store match those preferences.',
+      };
+    }
+
+    // Rank the SQL-filtered candidates with the LLM matcher (same ranking path
+    // as searchProducts); fall back to the SQL order when the matcher yields
+    // nothing.
+    const query = prefs.terms.join(', ') || 'recommended product';
+    const { ids } = await matchProductsWithLLM(catalog, query);
+    const ranked = ids.length ? await fetchProductsByIds(ctx.merchantId, ids) : [];
+    products = ranked.length
+      ? ranked.slice(0, 5)
+      : await fetchProductsByIds(ctx.merchantId, catalog.slice(0, 5).map((c) => c.id));
+    basedOn = 'preferences';
+  }
+
+  if (products.length === 0) {
+    return {
+      success: false,
+      outcome: 'NOT_FOUND',
+      error: 'No products available to recommend right now.',
+    };
+  }
+
+  await prisma.conversation.update({
+    where: { id: ctx.conversationId },
+    data: { state: TOOL_STATE_TRANSITIONS.suggestProducts! },
+  });
+
+  return {
+    success: true,
+    data: { products: formatProducts(products), recommended: true, basedOn },
+  };
+};
+
 const createOrder: ToolHandler = async (entities, ctx) => {
   const parsedArgs = CreateOrderArgsSchema.safeParse(entities);
   if (!parsedArgs.success) {
@@ -775,6 +856,7 @@ export const toolRegistry: Record<ToolName, ToolHandler> = {
   recallPreviousProducts,
   chooseProduct,
   getProductDetails,
+  suggestProducts,
   createOrder,
   confirmOrder,
   modifyOrder,

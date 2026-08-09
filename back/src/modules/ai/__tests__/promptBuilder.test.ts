@@ -21,6 +21,12 @@ describe('buildIntentPrompt', () => {
     assert.match(prompt, /short follow-ups/i);
   });
 
+  it('includes the search-vs-suggest routing rule', () => {
+    const prompt = buildIntentPrompt(BASE_CTX);
+    assert.match(prompt, /PRODUCT_SEARCH vs PRODUCT_SUGGEST/);
+    assert.match(prompt, /PRODUCT_SUGGEST/);
+  });
+
   it('includes the last assistant message so "okay" is interpreted against it', () => {
     const prompt = buildIntentPrompt({
       ...BASE_CTX,

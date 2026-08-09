@@ -5,7 +5,7 @@
 
 ## What it is
 
-The assistant ships with **12 covered intents** (`PRODUCT_SEARCH`, `STATUS_CHECK`, …).
+The assistant ships with **13 covered intents** (`PRODUCT_SEARCH`, `PRODUCT_SUGGEST`, `STATUS_CHECK`, …).
 Before this feature, anything else fell into `OUT_OF_SCOPE` and was simply
 forgotten. **Suggested intents** add a feedback loop:
 

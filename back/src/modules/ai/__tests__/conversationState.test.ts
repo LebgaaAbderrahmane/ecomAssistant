@@ -10,6 +10,7 @@ describe('TOOL_STATE_TRANSITIONS', () => {
   it('maps every flow-moving tool to the right state', () => {
     assert.equal(TOOL_STATE_TRANSITIONS.searchProducts, 'PRODUCT_DISCOVERY');
     assert.equal(TOOL_STATE_TRANSITIONS.recallPreviousProducts, 'PRODUCT_DISCOVERY');
+    assert.equal(TOOL_STATE_TRANSITIONS.suggestProducts, 'PRODUCT_DISCOVERY');
     assert.equal(TOOL_STATE_TRANSITIONS.chooseProduct, 'PRODUCT_SELECTED');
     assert.equal(TOOL_STATE_TRANSITIONS.getProductDetails, 'PRODUCT_SELECTED');
     assert.equal(TOOL_STATE_TRANSITIONS.createOrder, 'WAITING_CONFIRMATION');
@@ -71,6 +72,13 @@ describe('nextConversationState', () => {
     assert.equal(
       nextConversationState('IDLE', 'createOrder', true),
       'WAITING_CONFIRMATION',
+    );
+  });
+
+  it('a recommendation while WAITING_CONFIRMATION moves to PRODUCT_DISCOVERY', () => {
+    assert.equal(
+      nextConversationState('WAITING_CONFIRMATION', 'suggestProducts', true),
+      'PRODUCT_DISCOVERY',
     );
   });
 

@@ -24,6 +24,7 @@ export type ConversationState =
 export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>> = {
   searchProducts: 'PRODUCT_DISCOVERY',
   recallPreviousProducts: 'PRODUCT_DISCOVERY',
+  suggestProducts: 'PRODUCT_DISCOVERY',
   chooseProduct: 'PRODUCT_SELECTED',
   getProductDetails: 'PRODUCT_SELECTED',
   createOrder: 'WAITING_CONFIRMATION',

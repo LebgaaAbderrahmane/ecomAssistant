@@ -8,6 +8,7 @@ export const IntentSchema = z.enum([
   'PRODUCT_SEARCH',
   'PRODUCT_SELECT',
   'PRODUCT_DETAILS',
+  'PRODUCT_SUGGEST',
   // Order lifecycle
   'ORDER_CREATE',
   'ORDER_CONFIRM',
@@ -67,6 +68,7 @@ export const ToolNameSchema = z.enum([
   'recallPreviousProducts',
   'chooseProduct',
   'getProductDetails',
+  'suggestProducts',
   'createOrder',
   'confirmOrder',
   'modifyOrder',
@@ -85,6 +87,7 @@ export type ToolName = z.infer<typeof ToolNameSchema>;
 const INTENT_TOOL_MAP: Partial<Record<Intent, ToolName>> = {
   PRODUCT_SELECT: 'chooseProduct',
   PRODUCT_DETAILS: 'getProductDetails',
+  PRODUCT_SUGGEST: 'suggestProducts',
   ORDER_CREATE: 'createOrder',
   ORDER_CONFIRM: 'confirmOrder',
   ORDER_MODIFY: 'modifyOrder',
@@ -123,6 +126,15 @@ export const ChooseProductArgsSchema = z.object({
 
 export const GetProductDetailsArgsSchema = z.object({
   productName: z.string().min(1).optional(),
+});
+
+export const SuggestProductsArgsSchema = z.object({
+  category: z.string().min(1).optional(),
+  color: z.string().min(1).optional(),
+  size: z.string().min(1).optional(),
+  minPrice: z.number().min(0).optional(),
+  maxPrice: z.number().min(0).optional(),
+  preferences: z.string().min(1).optional(),
 });
 
 export const CreateOrderArgsSchema = z.object({

@@ -18,7 +18,7 @@ const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
 // Product intents whose tools resolve references from conversation memory.
 // They are excluded from the "unresolved" short-circuit so the tool — not the
 // intent extractor — decides NOT_FOUND vs AMBIGUOUS using memory + catalog.
-const PRODUCT_INTENTS = new Set(['PRODUCT_SEARCH', 'PRODUCT_SELECT', 'PRODUCT_DETAILS']);
+const PRODUCT_INTENTS = new Set(['PRODUCT_SEARCH', 'PRODUCT_SELECT', 'PRODUCT_DETAILS', 'PRODUCT_SUGGEST']);
 
 const DEFAULT_TEMPLATES: Record<string, string> = {
   orderConfirmation: [
@@ -48,6 +48,7 @@ const INTENT_PRIORITY: Record<string, number> = {
   PRODUCT_SEARCH: 1,
   PRODUCT_SELECT: 1,
   PRODUCT_DETAILS: 1,
+  PRODUCT_SUGGEST: 1,
   ORDER_MODIFY: 2,
   SHIPPING_CHECK: 3,
   ORDER_CREATE: 4,
@@ -90,6 +91,7 @@ async function persistMemory(
   primaryIntent: IntentItem,
   conversationAct: string,
   lastProductResults?: ConversationMemory['lastProductResults'],
+  rejectedToRecord?: ConversationMemory['rejectedProducts'],
 ) {
   const intentSummaries: IntentSummary[] = sortedIntents.map(item => ({
     intent: intentToString(item.intent),
@@ -105,6 +107,22 @@ async function persistMemory(
     lastProductResults: lastProductResults ?? memory.lastProductResults,
     updatedAt: new Date().toISOString(),
   };
+
+  // A NEGATE message appends the products it is rejecting to the persistent
+  // rejected list, so suggestProducts never offers them again. Only the
+  // previously presented products are recorded — never a freshly suggested set.
+  if (rejectedToRecord?.length) {
+    const seen = new Set((updatedMemory.rejectedProducts ?? []).map((p) => p.id));
+    for (const entry of rejectedToRecord) {
+      if (entry?.id && !seen.has(entry.id)) {
+        seen.add(entry.id);
+        updatedMemory.rejectedProducts = [
+          ...(updatedMemory.rejectedProducts ?? []),
+          { id: entry.id, name: entry.name ?? '' },
+        ];
+      }
+    }
+  }
 
   await prisma.conversation.update({
     where: { id: conversationId },
@@ -261,6 +279,16 @@ export const processMessage = async (messageId: string) => {
 
   // Save primary intent to message record (backward compat)
   const primaryIntent = sortedIntents[0];
+
+  // A NEGATE message reacting to a presented product list records that list as
+  // rejected, so future suggestProducts calls skip it. Computed from the
+  // ORIGINAL memory — the customer rejects what was shown before this turn,
+  // never a freshly suggested set.
+  const rejectedToRecord: ConversationMemory['rejectedProducts'] =
+    parsed.conversationAct === 'NEGATE' && memory.lastProductResults?.length
+      ? memory.lastProductResults
+      : undefined;
+
   await prisma.message.update({
     where: { id: messageId },
     data: {
@@ -358,7 +386,7 @@ export const processMessage = async (messageId: string) => {
   // not execute tools or generate replies once a human owns the conversation —
   // the merchant responds directly.
   if (takenOver) {
-    await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, memory.lastProductResults);
+    await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, memory.lastProductResults, rejectedToRecord);
     console.log(`[agent] ${messageId} -> conversation taken over by human, AI stopped (no reply)`);
     return;
   }
@@ -371,13 +399,28 @@ export const processMessage = async (messageId: string) => {
   // invalidates any previously stored results — the reply and any PRODUCT_SELECT
   // must not reference stale products from an unrelated earlier search.
   let productSearchMissed = false;
+  // Fresh search/suggestion results stored this message protect against the
+  // miss-clear above: a suggestion that ran after a failed search must keep
+  // its own results in memory for follow-up selection.
+  let resultsStoredThisMessage = false;
+  // Whether an exact product request (search/recall) succeeded this message.
+  // When true, paired suggestions are skipped — a search that matched what the
+  // customer asked needs no recommendation on top.
+  let searchSucceededThisMessage = false;
+  // suggestProducts intents are executed after the main loop so the outcome of
+  // a paired PRODUCT_SEARCH is already known before deciding to recommend.
+  const deferredSuggestions: Array<{
+    item: IntentItem;
+    entities: Record<string, string | number | boolean | null>;
+    toolKey: string;
+  }> = [];
 
   for (const item of sortedIntents) {
     // Product intents are never short-circuited on "unresolved": their tools
-    // (searchProducts / chooseProduct / getProductDetails) resolve the
-    // reference from conversation memory first and only report AMBIGUOUS when
-    // neither the message nor the memory can identify a product. Other intents
-    // that the LLM could not act on are recorded as AMBIGUOUS and skipped.
+    // (searchProducts / chooseProduct / getProductDetails / suggestProducts)
+    // resolve the reference from conversation memory first and only report
+    // AMBIGUOUS when neither the message nor the memory can identify a product.
+    // Other intents that the LLM could not act on are recorded as AMBIGUOUS and skipped.
     if (item.status === 'unresolved' && !PRODUCT_INTENTS.has(intentToString(item.intent))) {
       toolResults.push({
         intent: intentToString(item.intent),
@@ -410,6 +453,13 @@ export const processMessage = async (messageId: string) => {
     // Dedupe identical tool calls within one message (e.g. LLM #1 emitting the
     // same PRODUCT_SEARCH twice) — never burn a second DB/LLM call on it.
     const toolKey = `${toolName}:${JSON.stringify(entities)}`;
+
+    // Suggestions run last, after every other intent (see below).
+    if (toolName === 'suggestProducts') {
+      deferredSuggestions.push({ item, entities, toolKey });
+      continue;
+    }
+
     if (toolResultCache.has(toolKey)) {
       const cached = toolResultCache.get(toolKey) ?? null;
       toolResults.push({ intent: intentToString(item.intent), result: cached });
@@ -440,7 +490,7 @@ export const processMessage = async (messageId: string) => {
 
     // Post-processing: store search results in memory for index-based selection
     if (
-      toolName === 'searchProducts' &&
+      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
       result.success &&
       result.data?.products &&
       Array.isArray(result.data.products)
@@ -461,16 +511,67 @@ export const processMessage = async (messageId: string) => {
 
       lastProductResults = productsList;
       executionContext.lastProductResults = productsList;
+      searchSucceededThisMessage = true;
+      resultsStoredThisMessage = true;
       console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
+    }
+  }
+
+  // ─── Deferred suggestions ────────────────────────────────────────────
+  // Run PRODUCT_SUGGEST after every other intent so a paired search's outcome
+  // is known. If the exact search already returned results, skip the
+  // recommendation — never suggest merely because a search succeeded.
+  for (const { item, entities, toolKey } of deferredSuggestions) {
+    if (searchSucceededThisMessage) {
+      toolResults.push({ intent: intentToString(item.intent), result: null });
+      continue;
+    }
+
+    let result: ToolResult;
+    if (toolResultCache.has(toolKey)) {
+      result = toolResultCache.get(toolKey) as ToolResult;
+    } else {
+      try {
+        result = await executeTool('suggestProducts', entities, executionContext);
+        console.log(`[agent] tool "suggestProducts" (intent=${intentToString(item.intent)}) ->`, result);
+      } catch (err) {
+        console.error(`[agent] tool "suggestProducts" failed for intent ${intentToString(item.intent)}`, err);
+        result = { success: false, error: 'Tool execution failed' };
+      }
+      toolResultCache.set(toolKey, result);
+    }
+
+    toolResults.push({ intent: intentToString(item.intent), result });
+
+    if (result.success && result.data?.products && Array.isArray(result.data.products)) {
+      const productsArray = result.data.products as Array<{ id: string; name: string }>;
+      const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
+
+      // Store on the customer message entities
+      await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          entities: {
+            ...(entities as Record<string, unknown>),
+            products: productsList,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      lastProductResults = productsList;
+      executionContext.lastProductResults = productsList;
+      resultsStoredThisMessage = true;
+      console.log(`[agent] ${messageId} -> stored ${productsList.length} suggested products in message entities + memory`);
     }
   }
 
   // A product search that ended with NOT_FOUND/AMBIGUOUS invalidates stale
   // results: the reply must not reference them, and a follow-up PRODUCT_SELECT
   // must not resolve against products that were never offered in this exchange.
+  // Fresh suggestion results from this same message are kept.
   let replyMemory = memory;
   let finalLastProductResults = lastProductResults;
-  if (productSearchMissed) {
+  if (productSearchMissed && !resultsStoredThisMessage) {
     finalLastProductResults = [];
     replyMemory = { ...memory, lastProductResults: [] };
     console.log(`[agent] ${messageId} -> product search missed, cleared stale lastProductResults`);
@@ -483,7 +584,7 @@ export const processMessage = async (messageId: string) => {
     select: { takenOverByHuman: true },
   });
   if (conversationAfterTools?.takenOverByHuman) {
-    await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults);
+    await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults, rejectedToRecord);
     console.log(`[agent] ${messageId} -> conversation escalated during tool execution, AI stopped (no reply)`);
     return;
   }
@@ -557,7 +658,7 @@ export const processMessage = async (messageId: string) => {
   }
 
   // ─── Update conversation memory ─────────────────────────────────────
-  await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults);
+  await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults, rejectedToRecord);
 
   console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => intentToString(i.intent)).join(',')}, reply (${replyParsed.messages.length} msgs):`,
     replyParsed.messages.map((m, i) => `[${i}] "${m.substring(0, 60)}${m.length > 60 ? '...' : ''}"`));

@@ -18,5 +18,8 @@ export interface ConversationMemory {
   entities?: Record<string, string | number | boolean | null>;
   recentIntents?: string[];
   lastProductResults?: ProductResult[];
+  // Products the customer explicitly rejected ("no, not that one"). Excluded
+  // from future suggestProducts recommendations but still findable by search.
+  rejectedProducts?: ProductResult[];
   updatedAt?: string;
 }

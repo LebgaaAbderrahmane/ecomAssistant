@@ -32,6 +32,12 @@ const INTENT_ITEM_SCHEMA = {
       properties: {
         product: { type: 'string' as const },
         productName: { type: 'string' as const },
+        category: { type: 'string' as const },
+        color: { type: 'string' as const },
+        size: { type: 'string' as const },
+        minPrice: { type: 'number' as const },
+        maxPrice: { type: 'number' as const },
+        preferences: { type: 'string' as const },
         orderId: { type: 'string' as const },
         wilaya: { type: 'string' as const },
         commune: { type: 'string' as const },
