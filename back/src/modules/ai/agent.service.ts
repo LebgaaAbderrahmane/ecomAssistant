@@ -381,16 +381,6 @@ export const processMessage = async (messageId: string) => {
     }
   }
 
-  // ─── Human takeover: keep LLM #1, stop everything else ─────────────
-  // LLM #1 already ran (intent data + suggestions recorded above). The AI must
-  // not execute tools or generate replies once a human owns the conversation —
-  // the merchant responds directly.
-  if (takenOver) {
-    await persistMemory(conversation.id, memory, sortedIntents, primaryIntent, parsed.conversationAct, memory.lastProductResults, rejectedToRecord);
-    console.log(`[agent] ${messageId} -> conversation taken over by human, AI stopped (no reply)`);
-    return;
-  }
-
   // ─── Entity enrichment + tool execution loop ─────────────────────────
   const toolResults: Array<{ intent: string; result: ToolResult | null }> = [];
   const toolResultCache = new Map<string, ToolResult | null>();
@@ -436,6 +426,15 @@ export const processMessage = async (messageId: string) => {
     // Resolve tool from intent
     const toolName = resolveTool(item.intent, item.entities);
     if (!toolName) {
+      toolResults.push({ intent: intentToString(item.intent), result: null });
+      continue;
+    }
+
+    // Execution policy: while a human owns the conversation, only write tools
+    // run (order lifecycle, customer profile, escalation). Read tools are
+    // suppressed until takenOverByHuman is false.
+    if (takenOver && isReadTool(toolName)) {
+      console.log(`[agent] ${messageId} -> read tool "${toolName}" suppressed (human owns conversation)`);
       toolResults.push({ intent: intentToString(item.intent), result: null });
       continue;
     }
@@ -577,15 +576,16 @@ export const processMessage = async (messageId: string) => {
     console.log(`[agent] ${messageId} -> product search missed, cleared stale lastProductResults`);
   }
 
-  // If a tool (e.g. ESCALATION → escalateConversation) took the conversation
-  // over, the AI must not reply — the merchant responds directly.
+  // If the conversation is under human takeover (either from before this message
+  // or escalated during tool execution), the AI stays silent — the merchant
+  // responds directly. Write tools may still have executed; that is intended.
   const conversationAfterTools = await prisma.conversation.findUnique({
     where: { id: conversation.id },
     select: { takenOverByHuman: true },
   });
   if (conversationAfterTools?.takenOverByHuman) {
     await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults, rejectedToRecord);
-    console.log(`[agent] ${messageId} -> conversation escalated during tool execution, AI stopped (no reply)`);
+    console.log(`[agent] ${messageId} -> conversation under human takeover, AI stays silent`);
     return;
   }
 

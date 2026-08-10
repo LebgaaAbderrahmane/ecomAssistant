@@ -62,22 +62,49 @@ export function intentToString(intent: IntentField): string {
 }
 
 // ─── Tool names ──────────────────────────────────────────────────────────
-// Must match the keys registered in tools/registry.ts exactly.
-export const ToolNameSchema = z.enum([
+// Must match the keys registered in tools/registry.ts exactly. Each tool has
+// an explicit execution policy:
+//
+//   READ  — no business side-effects (orders, customer, takeover are untouched;
+//           conversation navigation state/memory is fine). Suppressed while a
+//           human owns the conversation.
+//   WRITE — mutates business data (order lifecycle, customer profile, takeover
+//           flag). Executed even while a human owns the conversation.
+//
+// ToolNameSchema is the union of both; a tool must appear in exactly one of
+// the two enums (enforced by the registry typing + a test).
+export const ReadToolNameSchema = z.enum([
   'searchProducts',
   'recallPreviousProducts',
   'chooseProduct',
   'getProductDetails',
   'suggestProducts',
+  'calculateShipping',
+  'getOrderStatus',
+]);
+export type ReadToolName = z.infer<typeof ReadToolNameSchema>;
+
+export const WriteToolNameSchema = z.enum([
   'createOrder',
   'confirmOrder',
   'modifyOrder',
   'cancelOrder',
-  'calculateShipping',
-  'getOrderStatus',
   'escalateConversation',
 ]);
+export type WriteToolName = z.infer<typeof WriteToolNameSchema>;
+
+export const ToolNameSchema = z.union([ReadToolNameSchema, WriteToolNameSchema]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
+
+/** Type guard: whether a tool is classified as READ (no business side-effects). */
+export function isReadTool(name: ToolName): name is ReadToolName {
+  return ReadToolNameSchema.safeParse(name).success;
+}
+
+/** Type guard: whether a tool is classified as WRITE (mutates business data). */
+export function isWriteTool(name: ToolName): name is WriteToolName {
+  return WriteToolNameSchema.safeParse(name).success;
+}
 
 // ─── Intent → Tool mapping ──────────────────────────────────────────────
 // Deterministic lookup — tool resolution is never guessed by the LLM.

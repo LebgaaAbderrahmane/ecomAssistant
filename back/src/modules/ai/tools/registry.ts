@@ -1,5 +1,5 @@
 import type { Product } from '@prisma/client';
-import type { ToolName } from '../schemas/intents.schemas';
+import type { ReadToolName, WriteToolName, ToolName } from '../schemas/intents.schemas';
 import prisma from '../../../config/db.config';
 import {
   SearchProductsArgsSchema,
@@ -851,19 +851,34 @@ const escalateConversation: ToolHandler = async (_entities, ctx) => {
   return { success: true, data: { escalated: true } };
 };
 
-export const toolRegistry: Record<ToolName, ToolHandler> = {
+// Read tools have no business side-effects (orders/customer/takeover untouched;
+// conversation navigation state/memory is fine). They are suppressed while a
+// human owns the conversation.
+export const readToolRegistry: Record<ReadToolName, ToolHandler> = {
   searchProducts,
   recallPreviousProducts,
   chooseProduct,
   getProductDetails,
   suggestProducts,
+  calculateShipping,
+  getOrderStatus,
+};
+
+// Write tools mutate business data (order lifecycle, customer profile, takeover
+// flag). They execute even while a human owns the conversation.
+export const writeToolRegistry: Record<WriteToolName, ToolHandler> = {
   createOrder,
   confirmOrder,
   modifyOrder,
   cancelOrder,
-  calculateShipping,
-  getOrderStatus,
   escalateConversation,
+};
+
+// Combined registry — the union of the two policy groups. `Record<ToolName,
+// ToolHandler>` (plus a test) enforces that every tool lands in exactly one.
+export const toolRegistry: Record<ToolName, ToolHandler> = {
+  ...readToolRegistry,
+  ...writeToolRegistry,
 };
 
 export const executeTool = async (
