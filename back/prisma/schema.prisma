@@ -232,6 +232,10 @@ model Message {
 
   confidence Float?
 
+  parsedIntents Json?
+
+  toolResults Json?
+  
   createdAt DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
