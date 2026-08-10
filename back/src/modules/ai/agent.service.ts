@@ -3,7 +3,7 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema, ToolNameSchema, resolveTool, isSuggestedIntent, intentToString, type IntentField } from './schemas/intents.schemas';
+import { IntentSchema, ToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
@@ -133,6 +133,408 @@ async function persistMemory(
   });
 }
 
+// ─── Image category routing ─────────────────────────────────────────────
+// If the message is an image, route by category before LLM #1 sees it.
+// The description is already in message.content from the captioning service.
+function buildEffectiveText(message: {
+  messageType: string;
+  entities: Prisma.JsonValue | null;
+  text: string;
+}): string {
+  let effectiveText = message.text;
+
+  if (message.messageType === 'image') {
+    const entities = (message.entities as Record<string, unknown>) ?? {};
+    const category = entities.imageCategory as ImageCategory | undefined;
+    const productName = entities.productName as string | null;
+
+    if (category === 'PAYMENT_PROOF' || category === 'DAMAGE_COMPLAINT') {
+      // Escalate directly — human agent can view the image in WhatsApp
+      effectiveText = `[Image received: ${category === 'PAYMENT_PROOF' ? 'payment proof' : 'damage complaint'}] ${message.text}`;
+    } else if (category === 'PRODUCT_PHOTO') {
+      // Prepend image context so LLM #1 sees a rich query for PRODUCT_SEARCH
+      const namePart = productName ? ` (product: ${productName})` : '';
+      effectiveText = `[Customer sent a photo${namePart}] ${message.text}`;
+    }
+    // OTHER or uncategorized: fall through with effectiveText = message.text
+  }
+
+  return effectiveText;
+}
+
+// ─── Layer 2 types ───────────────────────────────────────────────────────
+type ToolResultEntry = { intent: string; result: ToolResult | null };
+
+type ToolExecutionOutcome = {
+  toolResults: ToolResultEntry[];
+  replyMemory: ConversationMemory;
+  finalLastProductResults: ConversationMemory['lastProductResults'];
+};
+
+type Layer2ReplyState = {
+  sortedIntents: IntentItem[];
+  primaryIntent: IntentItem;
+  conversationAct: string;
+  rejectedToRecord?: ConversationMemory['rejectedProducts'];
+  tone: string;
+  language: string;
+  replyMemory: ConversationMemory;
+  finalLastProductResults: ConversationMemory['lastProductResults'];
+};
+
+// ─── Layer 2, step 1: tool execution ────────────────────────────────────
+// Runs the backend functions for the message's intents and returns the results
+// plus the memory state the reply needs. `opts.only` restricts which tools run:
+// during human takeover, write tools execute immediately while read tools are
+// deferred and handled separately.
+async function executeTools(
+  messageId: string,
+  sortedIntents: IntentItem[],
+  opts: { only?: 'read' | 'write' } = {},
+): Promise<ToolExecutionOutcome> {
+  const message = await prisma.message.findUniqueOrThrow({
+    where: { id: messageId },
+    include: { conversation: true },
+  });
+  const { conversation } = message;
+  const memory = (conversation.memory as ConversationMemory | null) ?? {};
+  const takenOver = conversation.takenOverByHuman;
+
+  const customer = await prisma.customer.findUniqueOrThrow({
+    where: { id: conversation.customerId },
+  });
+
+  const executionContext = {
+    merchantId: conversation.merchantId,
+    customerId: conversation.customerId,
+    conversationId: conversation.id,
+    currentOrderId: conversation.currentOrderId,
+    currentProductId: conversation.currentProductId ?? null,
+    lastProductResults: memory.lastProductResults,
+    customerWilaya: customer.wilaya,
+    customerCommune: customer.commune,
+  };
+
+  const intents = opts.only
+    ? sortedIntents.filter((item) => {
+        const toolName = resolveTool(item.intent, item.entities);
+        if (!toolName) return false;
+        return opts.only === 'read' ? isReadTool(toolName) : isWriteTool(toolName);
+      })
+    : sortedIntents;
+
+  // ─── Entity enrichment + tool execution loop ─────────────────────────
+  const toolResults: ToolResultEntry[] = [];
+  const toolResultCache = new Map<string, ToolResult | null>();
+  let lastProductResults = memory.lastProductResults;
+  // A product search that definitively found nothing (or was too vague to run)
+  // invalidates any previously stored results — the reply and any PRODUCT_SELECT
+  // must not reference stale products from an unrelated earlier search.
+  let productSearchMissed = false;
+  // Fresh search/suggestion results stored this message protect against the
+  // miss-clear above: a suggestion that ran after a failed search must keep
+  // its own results in memory for follow-up selection.
+  let resultsStoredThisMessage = false;
+  // Whether an exact product request (search/recall) succeeded this message.
+  // When true, paired suggestions are skipped — a search that matched what the
+  // customer asked needs no recommendation on top.
+  let searchSucceededThisMessage = false;
+  // suggestProducts intents are executed after the main loop so the outcome of
+  // a paired PRODUCT_SEARCH is already known before deciding to recommend.
+  const deferredSuggestions: Array<{
+    item: IntentItem;
+    entities: Record<string, string | number | boolean | null>;
+    toolKey: string;
+  }> = [];
+
+  for (const item of intents) {
+    // Product intents are never short-circuited on "unresolved": their tools
+    // (searchProducts / chooseProduct / getProductDetails / suggestProducts)
+    // resolve the reference from conversation memory first and only report
+    // AMBIGUOUS when neither the message nor the memory can identify a product.
+    // Other intents that the LLM could not act on are recorded as AMBIGUOUS and skipped.
+    if (item.status === 'unresolved' && !PRODUCT_INTENTS.has(intentToString(item.intent))) {
+      toolResults.push({
+        intent: intentToString(item.intent),
+        result: {
+          success: false,
+          outcome: 'AMBIGUOUS',
+          error: item.unresolvedReason ?? 'The request is too vague to act on. Ask the customer to clarify what they mean.',
+        },
+      });
+      continue;
+    }
+
+    // Resolve tool from intent
+    const toolName = resolveTool(item.intent, item.entities);
+    if (!toolName) {
+      toolResults.push({ intent: intentToString(item.intent), result: null });
+      continue;
+    }
+
+    // Execution policy: while a human owns the conversation, only write tools
+    // run (order lifecycle, customer profile, escalation). Read tools are
+    // suppressed until takenOverByHuman is false.
+    if (takenOver && isReadTool(toolName)) {
+      console.log(`[agent] ${messageId} -> read tool "${toolName}" suppressed (human owns conversation)`);
+      toolResults.push({ intent: intentToString(item.intent), result: null });
+      continue;
+    }
+
+    // Enrich productId from product name (for intents that have a product entity)
+    const entities = { ...item.entities };
+    if (entities.product && !entities.productId) {
+      const resolvedId = await resolveProductId(conversation.merchantId, entities.product as string);
+      if (resolvedId) {
+        entities.productId = resolvedId;
+        console.log(`[agent] ${messageId} -> resolved productId "${resolvedId}" for product "${entities.product}"`);
+      }
+    }
+
+    // Dedupe identical tool calls within one message (e.g. LLM #1 emitting the
+    // same PRODUCT_SEARCH twice) — never burn a second DB/LLM call on it.
+    const toolKey = `${toolName}:${JSON.stringify(entities)}`;
+
+    // Suggestions run last, after every other intent (see below).
+    if (toolName === 'suggestProducts') {
+      deferredSuggestions.push({ item, entities, toolKey });
+      continue;
+    }
+
+    if (toolResultCache.has(toolKey)) {
+      const cached = toolResultCache.get(toolKey) ?? null;
+      toolResults.push({ intent: intentToString(item.intent), result: cached });
+      continue;
+    }
+
+    // Execute tool with per-intent error handling
+    let result: ToolResult;
+    try {
+      result = await executeTool(toolName, entities, executionContext);
+      console.log(`[agent] tool "${toolName}" (intent=${intentToString(item.intent)}) ->`, result);
+    } catch (err) {
+      console.error(`[agent] tool "${toolName}" failed for intent ${intentToString(item.intent)}`, err);
+      result = { success: false, error: 'Tool execution failed' };
+    }
+    toolResultCache.set(toolKey, result);
+
+    // A product search that came back empty or too vague must not leave stale
+    // results behind — and must not trigger any further search for the same item.
+    if (
+      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
+      (result.outcome === 'NOT_FOUND' || result.outcome === 'AMBIGUOUS')
+    ) {
+      productSearchMissed = true;
+    }
+
+    toolResults.push({ intent: intentToString(item.intent), result });
+
+    // Post-processing: store search results in memory for index-based selection
+    if (
+      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
+      result.success &&
+      result.data?.products &&
+      Array.isArray(result.data.products)
+    ) {
+      const productsArray = result.data.products as Array<{ id: string; name: string }>;
+      const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
+
+      // Store on the customer message entities
+      await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          entities: {
+            ...(entities as Record<string, unknown>),
+            products: productsList,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      lastProductResults = productsList;
+      executionContext.lastProductResults = productsList;
+      searchSucceededThisMessage = true;
+      resultsStoredThisMessage = true;
+      console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
+    }
+  }
+
+  // ─── Deferred suggestions ────────────────────────────────────────────
+  // Run PRODUCT_SUGGEST after every other intent so a paired search's outcome
+  // is known. If the exact search already returned results, skip the
+  // recommendation — never suggest merely because a search succeeded.
+  for (const { item, entities, toolKey } of deferredSuggestions) {
+    if (searchSucceededThisMessage) {
+      toolResults.push({ intent: intentToString(item.intent), result: null });
+      continue;
+    }
+
+    let result: ToolResult;
+    if (toolResultCache.has(toolKey)) {
+      result = toolResultCache.get(toolKey) as ToolResult;
+    } else {
+      try {
+        result = await executeTool('suggestProducts', entities, executionContext);
+        console.log(`[agent] tool "suggestProducts" (intent=${intentToString(item.intent)}) ->`, result);
+      } catch (err) {
+        console.error(`[agent] tool "suggestProducts" failed for intent ${intentToString(item.intent)}`, err);
+        result = { success: false, error: 'Tool execution failed' };
+      }
+      toolResultCache.set(toolKey, result);
+    }
+
+    toolResults.push({ intent: intentToString(item.intent), result });
+
+    if (result.success && result.data?.products && Array.isArray(result.data.products)) {
+      const productsArray = result.data.products as Array<{ id: string; name: string }>;
+      const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
+
+      // Store on the customer message entities
+      await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          entities: {
+            ...(entities as Record<string, unknown>),
+            products: productsList,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      lastProductResults = productsList;
+      executionContext.lastProductResults = productsList;
+      resultsStoredThisMessage = true;
+      console.log(`[agent] ${messageId} -> stored ${productsList.length} suggested products in message entities + memory`);
+    }
+  }
+
+  // A product search that ended with NOT_FOUND/AMBIGUOUS invalidates stale
+  // results: the reply must not reference them, and a follow-up PRODUCT_SELECT
+  // must not resolve against products that were never offered in this exchange.
+  // Fresh suggestion results from this same message are kept.
+  let replyMemory = memory;
+  let finalLastProductResults = lastProductResults;
+  if (productSearchMissed && !resultsStoredThisMessage) {
+    finalLastProductResults = [];
+    replyMemory = { ...memory, lastProductResults: [] };
+    console.log(`[agent] ${messageId} -> product search missed, cleared stale lastProductResults`);
+  }
+
+  return { toolResults, replyMemory, finalLastProductResults };
+}
+
+// ─── Layer 2, step 2: reply generation ───────────────────────────────────
+// Builds the reply from the executed tool results: LLM #2 → persist messages
+// → send via WhatsApp → update memory. Skips entirely if a human now owns the
+// conversation (write tools may still have executed; that is intended).
+async function generateResponse(
+  messageId: string,
+  toolResults: ToolResultEntry[],
+  state: Layer2ReplyState,
+): Promise<void> {
+  const {
+    sortedIntents,
+    primaryIntent,
+    conversationAct,
+    rejectedToRecord,
+    tone,
+    language,
+    replyMemory,
+    finalLastProductResults,
+  } = state;
+
+  const message = await prisma.message.findUniqueOrThrow({
+    where: { id: messageId },
+    include: { conversation: true },
+  });
+  const { conversation } = message;
+  const effectiveText = buildEffectiveText(message);
+  const customer = await prisma.customer.findUniqueOrThrow({
+    where: { id: conversation.customerId },
+  });
+
+  // If the conversation is under human takeover (either from before this message
+  // or escalated during tool execution), the AI stays silent — the merchant
+  // responds directly. Write tools may still have executed; that is intended.
+  if (conversation.takenOverByHuman) {
+    await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, conversationAct, finalLastProductResults, rejectedToRecord);
+    console.log(`[agent] ${messageId} -> conversation under human takeover, AI stays silent`);
+    return;
+  }
+
+  // ─── LLM #2: reply generation (single call for all intents) ─────────
+  const replyContext: ReplyContext = {
+    intents: sortedIntents.map(item => ({
+      intent: intentToString(item.intent),
+      entities: item.entities,
+      status: item.status,
+      candidates: item.candidates,
+    })),
+    conversationAct,
+    toolResults,
+    memory: replyMemory,
+    tone,
+    language,
+  };
+
+  const rawReply = await callLLM({
+    systemPrompt: buildReplyPrompt(replyContext),
+    userMessage: effectiveText,
+    responseSchema: REPLY_RESPONSE_SCHEMA,
+  });
+
+  let replyParsed;
+  try {
+    replyParsed = parseReplyResponse(rawReply);
+  } catch (err) {
+    if (err instanceof LLMParseError) {
+      console.error('[agent] failed to parse reply response', { messageId, raw: err.raw });
+    }
+    throw err;
+  }
+
+  // Persist each reply message as a separate DB row
+  for (const text of replyParsed.messages) {
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: 'OUT',
+        sender: 'AI',
+        content: text,
+        text,
+        role: 'assistant',
+      },
+    });
+  }
+
+  // ─── Send reply via WhatsApp (sequential with typing indicators) ─────
+  try {
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId: conversation.merchantId },
+    });
+    if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
+      if (customer?.phone) {
+        await openwaService.sendMessagesSequentially(
+          waSession.sessionId,
+          customer.phone,
+          replyParsed.messages,
+        );
+        console.log(`[agent] Reply sent via WhatsApp to ${customer.phone} (${replyParsed.messages.length} messages)`);
+      } else {
+        console.log(`[agent] No phone found for customer ${conversation.customerId}, reply not sent`);
+      }
+    } else {
+      console.log(`[agent] WhatsApp not connected for merchant ${conversation.merchantId}, reply not sent`);
+    }
+  } catch (err) {
+    console.error(`[agent] Failed to send reply via WhatsApp:`, err);
+  }
+
+  // ─── Update conversation memory ─────────────────────────────────────
+  await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, conversationAct, finalLastProductResults, rejectedToRecord);
+
+  console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => intentToString(i.intent)).join(',')}, reply (${replyParsed.messages.length} msgs):`,
+    replyParsed.messages.map((m, i) => `[${i}] "${m.substring(0, 60)}${m.length > 60 ? '...' : ''}"`));
+}
+
 export const processMessage = async (messageId: string) => {
   const message = await prisma.message.findUniqueOrThrow({
     where: { id: messageId },
@@ -170,23 +572,7 @@ export const processMessage = async (messageId: string) => {
   // ─── Image category routing ─────────────────────────────────────────
   // If the message is an image, route by category before LLM #1 sees it.
   // The description is already in message.content from the captioning service.
-  let effectiveText = message.text;
-
-  if (message.messageType === 'image') {
-    const entities = (message.entities as Record<string, unknown>) ?? {};
-    const category = entities.imageCategory as ImageCategory | undefined;
-    const productName = entities.productName as string | null;
-
-    if (category === 'PAYMENT_PROOF' || category === 'DAMAGE_COMPLAINT') {
-      // Escalate directly — human agent can view the image in WhatsApp
-      effectiveText = `[Image received: ${category === 'PAYMENT_PROOF' ? 'payment proof' : 'damage complaint'}] ${message.text}`;
-    } else if (category === 'PRODUCT_PHOTO') {
-      // Prepend image context so LLM #1 sees a rich query for PRODUCT_SEARCH
-      const namePart = productName ? ` (product: ${productName})` : '';
-      effectiveText = `[Customer sent a photo${namePart}] ${message.text}`;
-    }
-    // OTHER or uncategorized: fall through with effectiveText = message.text
-  }
+  const effectiveText = buildEffectiveText(message);
 
   // ─── Empty message guard ────────────────────────────────────────────
   // No transcribable content (e.g. media omitted by the gateway). Skip the LLM
@@ -381,285 +767,19 @@ export const processMessage = async (messageId: string) => {
     }
   }
 
-  // ─── Entity enrichment + tool execution loop ─────────────────────────
-  const toolResults: Array<{ intent: string; result: ToolResult | null }> = [];
-  const toolResultCache = new Map<string, ToolResult | null>();
-  let lastProductResults = memory.lastProductResults;
-  // A product search that definitively found nothing (or was too vague to run)
-  // invalidates any previously stored results — the reply and any PRODUCT_SELECT
-  // must not reference stale products from an unrelated earlier search.
-  let productSearchMissed = false;
-  // Fresh search/suggestion results stored this message protect against the
-  // miss-clear above: a suggestion that ran after a failed search must keep
-  // its own results in memory for follow-up selection.
-  let resultsStoredThisMessage = false;
-  // Whether an exact product request (search/recall) succeeded this message.
-  // When true, paired suggestions are skipped — a search that matched what the
-  // customer asked needs no recommendation on top.
-  let searchSucceededThisMessage = false;
-  // suggestProducts intents are executed after the main loop so the outcome of
-  // a paired PRODUCT_SEARCH is already known before deciding to recommend.
-  const deferredSuggestions: Array<{
-    item: IntentItem;
-    entities: Record<string, string | number | boolean | null>;
-    toolKey: string;
-  }> = [];
+  // ─── Layer 2: tool execution + reply generation ─────────────────────
+  // Split into two reusable steps so a deferred (human-takeover) path can run
+  // them separately: write tools execute immediately, read tools + reply wait.
+  const outcome = await executeTools(messageId, sortedIntents);
 
-  for (const item of sortedIntents) {
-    // Product intents are never short-circuited on "unresolved": their tools
-    // (searchProducts / chooseProduct / getProductDetails / suggestProducts)
-    // resolve the reference from conversation memory first and only report
-    // AMBIGUOUS when neither the message nor the memory can identify a product.
-    // Other intents that the LLM could not act on are recorded as AMBIGUOUS and skipped.
-    if (item.status === 'unresolved' && !PRODUCT_INTENTS.has(intentToString(item.intent))) {
-      toolResults.push({
-        intent: intentToString(item.intent),
-        result: {
-          success: false,
-          outcome: 'AMBIGUOUS',
-          error: item.unresolvedReason ?? 'The request is too vague to act on. Ask the customer to clarify what they mean.',
-        },
-      });
-      continue;
-    }
-
-    // Resolve tool from intent
-    const toolName = resolveTool(item.intent, item.entities);
-    if (!toolName) {
-      toolResults.push({ intent: intentToString(item.intent), result: null });
-      continue;
-    }
-
-    // Execution policy: while a human owns the conversation, only write tools
-    // run (order lifecycle, customer profile, escalation). Read tools are
-    // suppressed until takenOverByHuman is false.
-    if (takenOver && isReadTool(toolName)) {
-      console.log(`[agent] ${messageId} -> read tool "${toolName}" suppressed (human owns conversation)`);
-      toolResults.push({ intent: intentToString(item.intent), result: null });
-      continue;
-    }
-
-    // Enrich productId from product name (for intents that have a product entity)
-    const entities = { ...item.entities };
-    if (entities.product && !entities.productId) {
-      const resolvedId = await resolveProductId(conversation.merchantId, entities.product as string);
-      if (resolvedId) {
-        entities.productId = resolvedId;
-        console.log(`[agent] ${messageId} -> resolved productId "${resolvedId}" for product "${entities.product}"`);
-      }
-    }
-
-    // Dedupe identical tool calls within one message (e.g. LLM #1 emitting the
-    // same PRODUCT_SEARCH twice) — never burn a second DB/LLM call on it.
-    const toolKey = `${toolName}:${JSON.stringify(entities)}`;
-
-    // Suggestions run last, after every other intent (see below).
-    if (toolName === 'suggestProducts') {
-      deferredSuggestions.push({ item, entities, toolKey });
-      continue;
-    }
-
-    if (toolResultCache.has(toolKey)) {
-      const cached = toolResultCache.get(toolKey) ?? null;
-      toolResults.push({ intent: intentToString(item.intent), result: cached });
-      continue;
-    }
-
-    // Execute tool with per-intent error handling
-    let result: ToolResult;
-    try {
-      result = await executeTool(toolName, entities, executionContext);
-      console.log(`[agent] tool "${toolName}" (intent=${intentToString(item.intent)}) ->`, result);
-    } catch (err) {
-      console.error(`[agent] tool "${toolName}" failed for intent ${intentToString(item.intent)}`, err);
-      result = { success: false, error: 'Tool execution failed' };
-    }
-    toolResultCache.set(toolKey, result);
-
-    // A product search that came back empty or too vague must not leave stale
-    // results behind — and must not trigger any further search for the same item.
-    if (
-      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
-      (result.outcome === 'NOT_FOUND' || result.outcome === 'AMBIGUOUS')
-    ) {
-      productSearchMissed = true;
-    }
-
-    toolResults.push({ intent: intentToString(item.intent), result });
-
-    // Post-processing: store search results in memory for index-based selection
-    if (
-      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
-      result.success &&
-      result.data?.products &&
-      Array.isArray(result.data.products)
-    ) {
-      const productsArray = result.data.products as Array<{ id: string; name: string }>;
-      const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
-
-      // Store on the customer message entities
-      await prisma.message.update({
-        where: { id: messageId },
-        data: {
-          entities: {
-            ...(entities as Record<string, unknown>),
-            products: productsList,
-          } as Prisma.InputJsonValue,
-        },
-      });
-
-      lastProductResults = productsList;
-      executionContext.lastProductResults = productsList;
-      searchSucceededThisMessage = true;
-      resultsStoredThisMessage = true;
-      console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
-    }
-  }
-
-  // ─── Deferred suggestions ────────────────────────────────────────────
-  // Run PRODUCT_SUGGEST after every other intent so a paired search's outcome
-  // is known. If the exact search already returned results, skip the
-  // recommendation — never suggest merely because a search succeeded.
-  for (const { item, entities, toolKey } of deferredSuggestions) {
-    if (searchSucceededThisMessage) {
-      toolResults.push({ intent: intentToString(item.intent), result: null });
-      continue;
-    }
-
-    let result: ToolResult;
-    if (toolResultCache.has(toolKey)) {
-      result = toolResultCache.get(toolKey) as ToolResult;
-    } else {
-      try {
-        result = await executeTool('suggestProducts', entities, executionContext);
-        console.log(`[agent] tool "suggestProducts" (intent=${intentToString(item.intent)}) ->`, result);
-      } catch (err) {
-        console.error(`[agent] tool "suggestProducts" failed for intent ${intentToString(item.intent)}`, err);
-        result = { success: false, error: 'Tool execution failed' };
-      }
-      toolResultCache.set(toolKey, result);
-    }
-
-    toolResults.push({ intent: intentToString(item.intent), result });
-
-    if (result.success && result.data?.products && Array.isArray(result.data.products)) {
-      const productsArray = result.data.products as Array<{ id: string; name: string }>;
-      const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
-
-      // Store on the customer message entities
-      await prisma.message.update({
-        where: { id: messageId },
-        data: {
-          entities: {
-            ...(entities as Record<string, unknown>),
-            products: productsList,
-          } as Prisma.InputJsonValue,
-        },
-      });
-
-      lastProductResults = productsList;
-      executionContext.lastProductResults = productsList;
-      resultsStoredThisMessage = true;
-      console.log(`[agent] ${messageId} -> stored ${productsList.length} suggested products in message entities + memory`);
-    }
-  }
-
-  // A product search that ended with NOT_FOUND/AMBIGUOUS invalidates stale
-  // results: the reply must not reference them, and a follow-up PRODUCT_SELECT
-  // must not resolve against products that were never offered in this exchange.
-  // Fresh suggestion results from this same message are kept.
-  let replyMemory = memory;
-  let finalLastProductResults = lastProductResults;
-  if (productSearchMissed && !resultsStoredThisMessage) {
-    finalLastProductResults = [];
-    replyMemory = { ...memory, lastProductResults: [] };
-    console.log(`[agent] ${messageId} -> product search missed, cleared stale lastProductResults`);
-  }
-
-  // If the conversation is under human takeover (either from before this message
-  // or escalated during tool execution), the AI stays silent — the merchant
-  // responds directly. Write tools may still have executed; that is intended.
-  const conversationAfterTools = await prisma.conversation.findUnique({
-    where: { id: conversation.id },
-    select: { takenOverByHuman: true },
-  });
-  if (conversationAfterTools?.takenOverByHuman) {
-    await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults, rejectedToRecord);
-    console.log(`[agent] ${messageId} -> conversation under human takeover, AI stays silent`);
-    return;
-  }
-
-  // ─── LLM #2: reply generation (single call for all intents) ─────────
-  const replyContext: ReplyContext = {
-    intents: sortedIntents.map(item => ({
-      intent: intentToString(item.intent),
-      entities: item.entities,
-      status: item.status,
-      candidates: item.candidates,
-    })),
+  await generateResponse(messageId, outcome.toolResults, {
+    sortedIntents,
+    primaryIntent,
     conversationAct: parsed.conversationAct,
-    toolResults,
-    memory: replyMemory,
+    rejectedToRecord,
     tone,
     language: defaultLanguage,
-  };
-
-  const rawReply = await callLLM({
-    systemPrompt: buildReplyPrompt(replyContext),
-    userMessage: effectiveText,
-    responseSchema: REPLY_RESPONSE_SCHEMA,
+    replyMemory: outcome.replyMemory,
+    finalLastProductResults: outcome.finalLastProductResults,
   });
-
-  let replyParsed;
-  try {
-    replyParsed = parseReplyResponse(rawReply);
-  } catch (err) {
-    if (err instanceof LLMParseError) {
-      console.error('[agent] failed to parse reply response', { messageId, raw: err.raw });
-    }
-    throw err;
-  }
-
-  // Persist each reply message as a separate DB row
-  for (const text of replyParsed.messages) {
-    await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        direction: 'OUT',
-        sender: 'AI',
-        content: text,
-        text,
-        role: 'assistant',
-      },
-    });
-  }
-
-  // ─── Send reply via WhatsApp (sequential with typing indicators) ─────
-  try {
-    const waSession = await prisma.whatsAppSession.findUnique({
-      where: { merchantId: conversation.merchantId },
-    });
-    if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
-      if (customer?.phone) {
-        await openwaService.sendMessagesSequentially(
-          waSession.sessionId,
-          customer.phone,
-          replyParsed.messages,
-        );
-        console.log(`[agent] Reply sent via WhatsApp to ${customer.phone} (${replyParsed.messages.length} messages)`);
-      } else {
-        console.log(`[agent] No phone found for customer ${conversation.customerId}, reply not sent`);
-      }
-    } else {
-      console.log(`[agent] WhatsApp not connected for merchant ${conversation.merchantId}, reply not sent`);
-    }
-  } catch (err) {
-    console.error(`[agent] Failed to send reply via WhatsApp:`, err);
-  }
-
-  // ─── Update conversation memory ─────────────────────────────────────
-  await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, parsed.conversationAct, finalLastProductResults, rejectedToRecord);
-
-  console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => intentToString(i.intent)).join(',')}, reply (${replyParsed.messages.length} msgs):`,
-    replyParsed.messages.map((m, i) => `[${i}] "${m.substring(0, 60)}${m.length > 60 ? '...' : ''}"`));
 };
