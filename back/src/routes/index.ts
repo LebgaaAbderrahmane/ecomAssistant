@@ -8,6 +8,7 @@ import productsRoutes from "../modules/products/products.routes"
 import customersRoutes from "../modules/customers/customers.routes"
 import escalationsRoutes from "../modules/escalations/escalations.routes"
 import messagesRoutes from "../modules/fakeMessages/fakeMessage.routes"
+import billingRoutes from "../modules/billing/billing.routes"
 import deliveryRoutes from "../modules/delivery/index"
 
 const router: Router = express.Router()
@@ -21,6 +22,7 @@ router.use('/products', productsRoutes)
 router.use('/customers', customersRoutes)
 router.use('/escalations', escalationsRoutes)
 router.use('/messages', messagesRoutes)
+router.use('/billing', billingRoutes)
 router.use('/delivery', deliveryRoutes)
 
 export default router;
