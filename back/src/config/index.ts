@@ -26,6 +26,10 @@ export const config = {
     publicKey: env('CHARGILY_PUBLIC_KEY'),
     privateKey: env('CHARGILY_PRIVATE_KEY'),
   },
+  googleClientId: env('GOOGLE_CLIENT_ID'),
+  googleClientSecret: env('GOOGLE_CLIENT_SECRET'),
+  frontendUrl: env('FRONTEND_URL', 'http://localhost:5173'),
+  googleCallbackUrl: env('GOOGLE_CALLBACK_URL', 'http://localhost:3000/auth/google/callback'),
 };
 
 

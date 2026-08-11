@@ -1,0 +1,21 @@
+{
+  "title": "Tableau de bord",
+  "subtitle": "Aperçu des performances de votre agent WhatsApp IA",
+  "kpi": {
+    "ordersThisMonth": "Commandes ce mois",
+    "confirmationRate": "Taux de confirmation",
+    "avgDelay": "Délai moyen",
+    "pendingFollowUps": "Relances en attente"
+  },
+  "chart": {
+    "title": "Confirmations vs Annulations",
+    "period": "14 derniers jours",
+    "confirmed": "Confirmées",
+    "cancelled": "Annulées"
+  },
+  "recentEscalations": "Escalades récentes",
+  "viewAll": "Voir tout",
+  "noEscalations": "Aucune escalade ouverte",
+  "escalated": "Escaladée",
+  "recentOrders": "Commandes récentes"
+}

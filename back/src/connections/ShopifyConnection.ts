@@ -173,36 +173,32 @@ export class ShopifyConnection extends AbstractStoreConnection {
     const accessToken = await this.getValidAccessToken();
     const headers = { "X-Shopify-Access-Token": accessToken };
     const base = `https://${this.shopDomain}/admin/api/${API_VERSION}`;
-    const address = `${APP_URL}/store-connection/shopify/webhooks/orders`;
 
-    // Check if already registered
-    const { data } = await axios.get(
-      `${base}/webhooks.json?topic=orders/create`,
-      {
-        headers,
-      },
-    );
+    const topics: { topic: string; address: string }[] = [
+      { topic: "orders/create", address: `${APP_URL}/store-connection/shopify/webhooks/orders` },
+      { topic: "products/create", address: `${APP_URL}/store-connection/shopify/webhooks/products` },
+      { topic: "products/update", address: `${APP_URL}/store-connection/shopify/webhooks/products` },
+      { topic: "products/delete", address: `${APP_URL}/store-connection/shopify/webhooks/products` },
+    ];
 
-    const alreadyRegistered = data.webhooks.some(
-      (w: { address: string }) => w.address === address,
-    );
+    const { data } = await axios.get(`${base}/webhooks.json`, { headers });
+    const registered: { topic: string; address: string }[] = data.webhooks ?? [];
 
-    if (alreadyRegistered) {
-      console.log("Webhook already registered, skipping.");
-      return;
+    for (const { topic, address } of topics) {
+      const already = registered.some(
+        (w) => w.topic === topic && w.address === address,
+      );
+      if (already) {
+        console.log(`[Shopify] Webhook ${topic} already registered, skipping.`);
+        continue;
+      }
+      await axios.post(
+        `${base}/webhooks.json`,
+        { webhook: { topic, address, format: "json" } },
+        { headers },
+      );
+      console.log(`[Shopify] Registered webhook: ${topic}`);
     }
-
-    await axios.post(
-      `${base}/webhooks.json`,
-      {
-        webhook: {
-          topic: "orders/create",
-          address,
-          format: "json",
-        },
-      },
-      { headers },
-    );
   }
 
   verifyWebhookSignature(payload: Buffer, signature: string): boolean {
@@ -266,6 +262,41 @@ export class ShopifyConnection extends AbstractStoreConnection {
       { fulfillment: { status } },
       { headers: { "X-Shopify-Access-Token": accessToken } },
     );
+  }
+
+  // ─────────────────────────────────────────────
+  // Shop info & settings
+  // ─────────────────────────────────────────────
+
+  async getShopInfo(): Promise<Record<string, unknown>> {
+    const accessToken = await this.getValidAccessToken();
+    const { data } = await axios.get(
+      `https://${this.shopDomain}/admin/api/${API_VERSION}/shop.json`,
+      { headers: { "X-Shopify-Access-Token": accessToken } },
+    );
+    return data.shop;
+  }
+
+  async listWebhooks(): Promise<unknown[]> {
+    const accessToken = await this.getValidAccessToken();
+    const { data } = await axios.get(
+      `https://${this.shopDomain}/admin/api/${API_VERSION}/webhooks.json`,
+      { headers: { "X-Shopify-Access-Token": accessToken } },
+    );
+    return data.webhooks ?? [];
+  }
+
+  async updateSettings(settings: { currency?: string; defaultOrderStatus?: string }): Promise<void> {
+    const data: Record<string, unknown> = {};
+    if (settings.currency !== undefined) data.currency = settings.currency;
+    if (settings.defaultOrderStatus !== undefined) data.defaultOrderStatus = settings.defaultOrderStatus;
+    
+    if (Object.keys(data).length > 0) {
+      await prisma.shopifyConnection.update({
+        where: { storeConnectionId: this.storeConnectionId },
+        data,
+      });
+    }
   }
 
   // ─────────────────────────────────────────────

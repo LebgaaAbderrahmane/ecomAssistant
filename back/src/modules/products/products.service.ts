@@ -1,6 +1,7 @@
 import prisma from "../../config/db.config";
 import { PaginatedResult } from "../../types/pagination.types";
 import type { Product } from "@prisma/client";
+import eventBus from "../../events/eventBus";
 
 interface GetProductsParams {
   merchantId: string;
@@ -18,20 +19,25 @@ const decodeCursor = (cursor: string): { createdAt: Date; id: string } => {
   return { createdAt: new Date(decoded.createdAt), id: decoded.id };
 };
 
-export const getProducts = async (
-  params: GetProductsParams,
-): Promise<PaginatedResult<Product>> => {
-  const { merchantId, cursor, search, stockStatus } = params;
-  const limit = Math.min(Number(params.limit) || 20, 100);
-
+function buildWhere(merchantId: string, search?: string, stockStatus?: string): any {
   const where: any = { merchantId };
-  if (stockStatus) where.stockStatus = stockStatus;
+  if (stockStatus) where.stockStatus = { in: stockStatus.split(',') };
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },
       { description: { contains: search, mode: "insensitive" } },
     ];
   }
+  return where;
+}
+
+export const getProducts = async (
+  params: GetProductsParams,
+): Promise<PaginatedResult<any>> => {
+  const { merchantId, cursor, search, stockStatus } = params;
+  const limit = Math.min(Number(params.limit) || 20, 100);
+
+  const where = buildWhere(merchantId, search, stockStatus);
 
   let cursorWhere = {};
   let decodedCursor: { createdAt: Date; id: string } | null = null;
@@ -49,14 +55,28 @@ export const getProducts = async (
     };
   }
 
-  const products = await prisma.product.findMany({
-    where: { ...where, ...cursorWhere },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: limit + 1,
-  });
+  const [products, total, shopConnection] = await Promise.all([
+    prisma.product.findMany({
+      where: { ...where, ...cursorWhere },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+    }),
+    prisma.product.count({ where }),
+    prisma.shopifyConnection.findFirst({
+      where: { storeConnection: { merchantId } },
+      select: { shopDomain: true },
+    }),
+  ]);
 
   const hasNextPage = products.length > limit;
   if (hasNextPage) products.pop();
+
+  const shopDomain = shopConnection?.shopDomain ?? null;
+
+  const data = products.map((p) => ({
+    ...p,
+    shopDomain,
+  }));
 
   const nextCursor =
     hasNextPage
@@ -68,12 +88,101 @@ export const getProducts = async (
     : null;
 
   return {
-    data: products,
+    data,
     pagination: {
+      total,
       hasNextPage,
       hasPrevPage: !!cursor,
       nextCursor,
       prevCursor,
     },
   };
+};
+
+export const listProductIds = async (
+  merchantId: string,
+  search?: string,
+  stockStatus?: string,
+): Promise<string[]> => {
+  const where = buildWhere(merchantId, search, stockStatus);
+
+  const products = await prisma.product.findMany({
+    where,
+    select: { id: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+
+  return products.map((p) => p.id);
+};
+
+export const bulkToggleAgent = async (
+  merchantId: string,
+  productIds: string[],
+  agentEnabled: boolean,
+): Promise<number> => {
+  const result = await prisma.product.updateMany({
+    where: { merchantId, id: { in: productIds } },
+    data: { agentEnabled },
+  });
+  return result.count;
+};
+
+export const upsertSingleProduct = async (
+  merchantId: string,
+  shopifyProduct: any,
+): Promise<void> => {
+  const p = shopifyProduct;
+  const price = parseFloat(p.variants?.[0]?.price ?? "0");
+  const images = (p.images ?? []).map((img: { src: string }) => img.src);
+  const stockStatus =
+    (p.variants?.[0]?.inventory_quantity ?? 0) > 0
+      ? "in_stock"
+      : "out_of_stock";
+
+  await prisma.product.upsert({
+    where: {
+      merchantId_platformProductId: {
+        merchantId,
+        platformProductId: String(p.id),
+      },
+    },
+    update: {
+      name: p.title,
+      description: p.body_html ?? "",
+      price,
+      images,
+      variants: p.variants,
+      stockStatus,
+      category: p.product_type || null,
+    },
+    create: {
+      merchantId,
+      platformProductId: String(p.id),
+      name: p.title,
+      description: p.body_html ?? "",
+      price,
+      currency: "DZD",
+      images,
+      variants: p.variants,
+      stockStatus,
+      category: p.product_type || null,
+    },
+  });
+};
+
+export interface ProductsSyncedEvent {
+  merchantId: string;
+  count: number;
+}
+
+export const emitProductsSynced = (data: ProductsSyncedEvent) => {
+  eventBus.emit("products.synced", data);
+};
+
+export const onProductsSynced = (listener: (data: ProductsSyncedEvent) => void) => {
+  eventBus.on("products.synced", listener);
+};
+
+export const offProductsSynced = (listener: (data: ProductsSyncedEvent) => void) => {
+  eventBus.off("products.synced", listener);
 };

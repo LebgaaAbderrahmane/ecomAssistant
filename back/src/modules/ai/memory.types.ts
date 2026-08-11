@@ -16,6 +16,7 @@ export interface ConversationMemory {
   lastIntents?: IntentSummary[];
   lastConversationAct?: string;
   entities?: Record<string, string | number | boolean | null>;
+  recentIntents?: string[];
   lastProductResults?: ProductResult[];
   updatedAt?: string;
 }

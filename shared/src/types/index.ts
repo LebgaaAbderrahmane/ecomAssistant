@@ -1,11 +1,11 @@
 // ─── Enums ───────────────────────────────────────────
 
-export type OrderStatus = 'pending' | 'confirmed' | 'cancelled' | 'failed'
+export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled' | 'failed'
 export type ConversationStatus = 'active' | 'waiting' | 'confirmed' | 'cancelled' | 'escalated' | 'expired'
 export type Language = 'derdja' | 'french' | 'arabic'
 export type AgentTone = 'formal' | 'friendly'
 export type StorePlatform = 'shopify' | 'woocommerce'
-export type DeliveryProvider = 'yalidine' | 'procolis'
+export type DeliveryProvider = 'yalidine' | 'procolis' | 'maystro' | 'noest'
 export type FollowUpStep = 1 | 2 | 3
 
 // ─── Merchant ────────────────────────────────────────

@@ -1,0 +1,21 @@
+{
+  "title": "Escalades",
+  "openCount": "{{count}} ouvert(es)",
+  "resolveAll": "Tout marquer comme résolu",
+  "resolved": "Escalade résolue",
+  "resolveError": "Erreur lors de la résolution",
+  "allResolved": "Toutes les escalades ont été résolues",
+  "columns": {
+    "client": "Client",
+    "lastMessage": "Dernier message",
+    "status": "Statut",
+    "since": "Depuis"
+  },
+  "status": {
+    "takenOver": "Pris en main",
+    "pending": "En attente"
+  },
+  "resolve": "Résoudre",
+  "empty": "Aucune escalade",
+  "emptyDescription": "Les conversations nécessitant votre attention apparaîtront ici"
+}

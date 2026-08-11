@@ -7,6 +7,7 @@ export interface CursorPaginationParams {
 export interface PaginatedResult<T> {
   data: T[];
   pagination: {
+    total: number;
     hasNextPage: boolean;
     hasPrevPage: boolean;
     nextCursor: string | null;

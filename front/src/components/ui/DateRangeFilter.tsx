@@ -1,0 +1,81 @@
+import { useState, useRef, useEffect } from 'react'
+import { Calendar } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+
+interface DateRangeOption {
+  value: string
+  label: string
+}
+
+interface DateRangeFilterProps {
+  value: string | null
+  onChange: (value: string | null) => void
+}
+
+export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
+  const { t } = useTranslation('common')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const defaultOptions: DateRangeOption[] = [
+    { value: 'today', label: t('dateRange.today') },
+    { value: 'week', label: t('dateRange.thisWeek') },
+    { value: 'month', label: t('dateRange.thisMonth') },
+    { value: 'year', label: t('dateRange.thisYear') },
+    { value: 'all', label: t('dateRange.allDates') }
+  ]
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const active = value !== null
+  const activeLabel = defaultOptions.find(o => o.value === value)?.label
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors ${
+          active
+            ? 'border-brand-600 bg-brand-50 text-brand-600'
+            : 'border-on text-on-secondary hover:bg-surface-secondary'
+        }`}
+      >
+        <Calendar className="h-4 w-4 shrink-0" />
+        <span className="hidden sm:inline">{active ? activeLabel : t('dateRange.label')}</span>
+        {active && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-semibold text-white">
+            1
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-on bg-surface shadow-lg z-20 py-1">
+          {defaultOptions.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => {
+                   onChange(opt.value === 'all' ? null : value === opt.value ? null : opt.value)
+                   setOpen(false)
+                 }}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                value === opt.value || (opt.value === 'all' && value === null)
+                  ? 'text-brand-600 font-medium bg-brand-50'
+                  : 'text-on-secondary hover:bg-surface-secondary'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,28 @@
+{
+  "title": "Customers",
+  "subtitle": "{{count}} customer(s)",
+  "filters": {
+    "withOrders": "With orders",
+    "withoutOrders": "Without orders",
+    "allClients": "All customers",
+    "label": "Customers"
+  },
+  "columns": {
+    "client": "Customer",
+    "confirmed": "Confirmed",
+    "cancelled": "Cancelled",
+    "total": "Total",
+    "since": "Customer since"
+  },
+  "actions": {
+    "viewOrders": "View orders",
+    "block": "Block",
+    "unblock": "Unblock"
+  },
+  "blocked": "Blocked",
+  "toast": {
+    "blocked": "{{count}} customer(s) blocked",
+    "unblocked": "{{count}} customer(s) unblocked",
+    "newOrder": "New order received"
+  }
+}

@@ -10,6 +10,7 @@ import {
 import { Badge } from "../../components/ui/Badge.js";
 import { Button } from "../../components/ui/Button.js";
 import { api } from "../../lib/api.js";
+import { useTranslation } from 'react-i18next';
 
 interface Notification {
   id: string;
@@ -39,7 +40,7 @@ function notifIcon(type: string) {
     return <AlertTriangle className="h-5 w-5 text-red-500" />;
   if (type.includes("reconnected") || type.includes("connected"))
     return <CheckCircle2 className="h-5 w-5 text-green-500" />;
-  return <Bell className="h-5 w-5 text-gray-400" />;
+  return <Bell className="h-5 w-5 text-on-faint" />;
 }
 
 export function Notifications() {
@@ -49,6 +50,7 @@ export function Notifications() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const { t } = useTranslation('notifications');
 
   const fetchNotifications = useCallback(
     async (reset = false) => {
@@ -111,13 +113,13 @@ export function Notifications() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Restez informé des événements importants
+          <h1 className="text-2xl font-bold text-on">{t('title')}</h1>
+          <p className="mt-1 text-sm text-on-muted">
+            {t('subtitle')}
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={markAllAsRead}>
-          Tout marquer comme lu
+          {t('markAllRead')}
         </Button>
       </div>
 
@@ -127,33 +129,33 @@ export function Notifications() {
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             !unreadOnly
               ? "bg-brand-600 text-white"
-              : "text-gray-500 hover:bg-gray-100"
+              : "text-on-muted hover:bg-gray-100"
           }`}
         >
-          Toutes
+          {t('tabs.all')}
         </button>
         <button
           onClick={() => setUnreadOnly(true)}
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             unreadOnly
               ? "bg-brand-600 text-white"
-              : "text-gray-500 hover:bg-gray-100"
+              : "text-on-muted hover:bg-gray-100"
           }`}
         >
-          Non lues
+          {t('tabs.unread')}
         </button>
       </div>
 
-      <div className="mt-4 rounded-lg border border-gray-200 bg-white">
+      <div className="mt-4 rounded-lg border border-on bg-surface">
         {loading && notifications.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-gray-500">
+          <div className="px-4 py-12 text-center text-sm text-on-muted">
             <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-            Chargement...
+            {t('loading', { ns: 'common' })}
           </div>
         ) : notifications.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-gray-500">
+          <div className="px-4 py-12 text-center text-sm text-on-muted">
             <Inbox className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-            Aucune notification
+            {t('empty')}
           </div>
         ) : (
           <>
@@ -161,7 +163,7 @@ export function Notifications() {
               <button
                 key={notif.id}
                 onClick={() => handleNotifClick(notif)}
-                className={`flex w-full items-start gap-4 border-b border-gray-100 px-4 py-4 text-left hover:bg-gray-50 transition-colors last:border-0 ${
+                className={`flex w-full items-start gap-4 border-b border-on-light px-4 py-4 text-left hover:bg-surface-secondary transition-colors last:border-0 ${
                   !notif.read ? "bg-brand-50/30" : ""
                 }`}
               >
@@ -173,8 +175,8 @@ export function Notifications() {
                     <p
                       className={`text-sm ${
                         !notif.read
-                          ? "font-semibold text-gray-900"
-                          : "font-medium text-gray-700"
+                          ? "font-semibold text-on"
+                          : "font-medium text-on-secondary"
                       }`}
                     >
                       {notif.title}
@@ -183,27 +185,27 @@ export function Notifications() {
                       <span className="h-2 w-2 shrink-0 rounded-full bg-brand-500" />
                     )}
                   </div>
-                  <p className="mt-1 text-sm text-gray-500">{notif.message}</p>
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-sm text-on-muted">{notif.message}</p>
+                  <p className="mt-1 text-xs text-on-faint">
                     {timeAgo(notif.createdAt)}
                   </p>
                 </div>
                 {notif.link && (
                   <Badge variant="info" className="shrink-0">
-                    Voir
+                    {t('view')}
                   </Badge>
                 )}
               </button>
             ))}
             {hasMore && (
-              <div className="p-3 text-center border-t border-gray-100">
+              <div className="p-3 text-center border-t border-on-light">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => fetchNotifications(false)}
                   loading={loading}
                 >
-                  Charger plus
+                  {t('loadMore', { ns: 'common' })}
                 </Button>
               </div>
             )}

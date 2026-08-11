@@ -263,11 +263,14 @@ export async function handleWebhook(
 
         if (status === "connected") {
           try {
+            const remote = await openwaService.getSession(sessionId);
+            if (remote.phone && waSession?.phoneNumber !== remote.phone) {
+              await prisma.whatsAppSession.update({
             const session = await openwaService.getSession(sessionId);
             if (waSession?.phoneNumber !== session.name) {
               await prisma.whatsAppSession.updateMany({
                 where: { sessionId },
-                data: { phoneNumber: session.name },
+                data: { phoneNumber: remote.phone },
               });
             }
           } catch {
@@ -337,7 +340,7 @@ export async function createSession(
 
     try {
       const all = await openwaService.listSessions();
-      const stale = all.find((s) => s.name === merchantId);
+      const stale = all.find((s) => s.name.startsWith(merchantId));
       if (stale) {
         try {
           await openwaService.stopSession(stale.id);
@@ -351,7 +354,7 @@ export async function createSession(
       // best-effort cleanup
     }
 
-    const session = await openwaService.createSession(merchantId);
+    const session = await openwaService.createSession(`${merchantId}-${Date.now()}`);
     await openwaService.startSession(session.id);
 
     let qr: string | null = null;
@@ -394,14 +397,12 @@ export async function createSession(
         merchantId,
         sessionId: session.id,
         status: sessionStatus,
-        phoneNumber: session.name,
       },
     });
 
     notificationService.emitSessionStatus({
       merchantId,
       status: sessionStatus,
-      phoneNumber: session.name,
     });
 
     if (qr) {
@@ -429,19 +430,27 @@ export async function getSessionStatus(
       where: { merchantId },
     });
     if (!waSession) {
-      return res.json({ status: "disconnected" });
+      return res.json({ status: "disconnected", hasSession: false });
     }
 
     let currentStatus = waSession.status;
 
     try {
       const remote = await openwaService.getSession(waSession.sessionId);
+      const updates: any = {};
       if (remote.status !== currentStatus) {
+        updates.status = remote.status;
+        currentStatus = remote.status;
+      }
+      if (remote.status === "ready" && remote.phone && remote.phone !== waSession.phoneNumber) {
+        updates.phoneNumber = remote.phone;
+      }
+      if (Object.keys(updates).length > 0) {
         await prisma.whatsAppSession.update({
           where: { id: waSession.id },
-          data: { status: remote.status },
+          data: updates,
         });
-        currentStatus = remote.status;
+        if (updates.phoneNumber) waSession.phoneNumber = updates.phoneNumber;
       }
     } catch {
       currentStatus = "disconnected";
@@ -454,6 +463,7 @@ export async function getSessionStatus(
     return res.json({
       status: currentStatus === "ready" ? "connected" : currentStatus,
       phoneNumber: waSession.phoneNumber,
+      hasSession: true,
     });
   } catch (err) {
     next(err);
@@ -485,10 +495,11 @@ export async function deleteSession(
     }
 
     try {
+      await openwaService.logoutSession(waSession.sessionId);
+    } catch {}
+    try {
       await openwaService.deleteSession(waSession.sessionId);
-    } catch {
-      // session may already be gone
-    }
+    } catch {}
 
     await prisma.whatsAppSession.delete({ where: { id: waSession.id } });
 
@@ -498,6 +509,139 @@ export async function deleteSession(
     });
 
     return res.json({ message: "Session deleted" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function disconnectSession(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const merchantId = req.merchant!.merchantId;
+
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId },
+    });
+    if (!waSession) {
+      return res.status(404).json({ message: "No session found" });
+    }
+
+    try {
+      await openwaService.stopSession(waSession.sessionId);
+    } catch {}
+
+    await prisma.whatsAppSession.update({
+      where: { id: waSession.id },
+      data: { status: "disconnected" },
+    });
+
+    notificationService.emitSessionStatus({
+      merchantId,
+      status: "disconnected",
+    });
+
+    return res.json({ message: "Session disconnected" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function reconnectSession(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const merchantId = req.merchant!.merchantId;
+
+    const waSession = await prisma.whatsAppSession.findUnique({
+      where: { merchantId },
+    });
+    if (!waSession) {
+      return res.status(404).json({ message: "No session found" });
+    }
+
+    try {
+      await openwaService.startSession(waSession.sessionId);
+    } catch {}
+
+    return res.json({ status: "connecting" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function requestPairingCode(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const merchantId = req.merchant!.merchantId;
+    const { phoneNumber } = req.body as { phoneNumber?: string };
+
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "phoneNumber is required" });
+    }
+
+    const existing = await prisma.whatsAppSession.findUnique({
+      where: { merchantId },
+    });
+
+    let sessionId: string;
+
+    if (existing) {
+      try { await openwaService.stopSession(existing.sessionId); } catch {}
+      try { await openwaService.logoutSession(existing.sessionId); } catch {}
+      try { await openwaService.deleteSession(existing.sessionId); } catch {}
+      await prisma.whatsAppSession.delete({ where: { id: existing.id } });
+    }
+
+    try {
+      const all = await openwaService.listSessions();
+      const stale = all.find((s) => s.name.startsWith(merchantId));
+      if (stale) {
+        try { await openwaService.stopSession(stale.id); } catch {}
+        try { await openwaService.logoutSession(stale.id); } catch {}
+        await openwaService.deleteSession(stale.id);
+      }
+    } catch {}
+
+    const session = await openwaService.createSession(`${merchantId}-${Date.now()}`);
+    await openwaService.startSession(session.id);
+    sessionId = session.id;
+
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const code = await openwaService.getPairingCode(sessionId, phoneNumber);
+
+    const webhookUrl = `${config.internalUrl.replace(/\/+$/, "")}/whatsapp/webhook`;
+    await openwaService.registerWebhook(
+      sessionId,
+      webhookUrl,
+      WEBHOOK_EVENTS,
+      config.openwaWebhookSecret,
+    );
+
+    await prisma.whatsAppSession.create({
+      data: {
+        merchantId,
+        sessionId,
+        status: "connecting",
+        phoneNumber,
+      },
+    });
+
+    notificationService.emitSessionStatus({
+      merchantId,
+      status: "connecting",
+      phoneNumber,
+    });
+
+    return res.status(201).json({ code, sessionId });
   } catch (err) {
     next(err);
   }
@@ -553,16 +697,35 @@ export async function sendOrderNotification(order: {
     customerPhone,
   );
 
-  const text = [
-    `Bonjour ${customerName},`,
-    "",
-    `Votre commande #${platformOrderId} pour "${productName}" a bien été reçue.`,
-    "",
-    `Montant: ${totalAmount.toLocaleString("fr-FR")} DA`,
-    `Wilaya: ${wilaya}`,
-    "",
-    "Merci pour votre confiance !",
-  ].join("\n");
+  // Load merchant templates from AgentConfig
+  const agentConfig = await prisma.agentConfig.findUnique({
+    where: { merchantId },
+  });
+
+  const templates = (agentConfig?.templates as Record<string, string> | null) ?? {};
+  const shopifyConnection = await prisma.shopifyConnection.findFirst({
+    where: { storeConnection: { merchantId } },
+  });
+
+  const template =
+    templates.orderConfirmation ||
+    [
+      "Bonjour {clientName},",
+      "",
+      "Votre commande #{orderId} pour \"{productName}\" a bien été reçue.",
+      "",
+      "Montant: {totalAmount} DA",
+      "Wilaya: {wilaya}",
+      "",
+      "Merci pour votre confiance !",
+    ].join("\n");
+
+  const text = template
+    .replace(/\{clientName\}/g, customerName || "Client")
+    .replace(/\{orderId\}/g, platformOrderId)
+    .replace(/\{productName\}/g, productName)
+    .replace(/\{totalAmount\}/g, totalAmount.toLocaleString("fr-FR"))
+    .replace(/\{wilaya\}/g, wilaya);
 
   try {
     await openwaService.sendText(waSession.sessionId, customerPhone, text);
@@ -573,6 +736,113 @@ export async function sendOrderNotification(order: {
   } catch (err) {
     console.error(
       `[WhatsApp] Failed to send order confirmation for ${platformOrderId}:`,
+      err,
+    );
+  }
+}
+
+export async function sendDeliveryStatusNotification(order: {
+  orderId: string;
+  merchantId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  productName: string;
+  platformOrderId: string;
+  totalAmount: number;
+  wilaya: string;
+  trackingNumber: string;
+  status: "shipped" | "delivered";
+  provider: string;
+}): Promise<void> {
+  const {
+    merchantId,
+    customerPhone,
+    customerName,
+    customerId,
+    productName,
+    platformOrderId,
+    totalAmount,
+    wilaya,
+    orderId,
+    trackingNumber,
+    status,
+    provider,
+  } = order;
+
+  if (!customerPhone) {
+    console.log(
+      `[WhatsApp] Skipping delivery status — no phone for order ${platformOrderId}`,
+    );
+    return;
+  }
+
+  const waSession = await prisma.whatsAppSession.findUnique({
+    where: { merchantId },
+  });
+  if (
+    !waSession ||
+    (waSession.status !== "connected" && waSession.status !== "ready")
+  ) {
+    console.log(
+      `[WhatsApp] Skipping delivery status — WhatsApp not connected for merchant ${merchantId}`,
+    );
+    return;
+  }
+
+  const conversation = await conversationService.createFromOrder(
+    merchantId,
+    orderId,
+    customerId,
+    customerPhone,
+  );
+
+  const agentConfig = await prisma.agentConfig.findUnique({
+    where: { merchantId },
+  });
+  const templates = (agentConfig?.templates as Record<string, string> | null) ?? {};
+
+  const isShipped = status === "shipped";
+  const template =
+    (isShipped
+      ? templates.deliveryShipped
+      : templates.deliveryDelivered) ||
+    (isShipped
+      ? [
+          "Bonjour {clientName},",
+          "",
+          "Votre commande #{orderId} pour \"{productName}\" a été expédiée !",
+          "",
+          "Suivi: {trackingNumber} ({provider})",
+          "",
+          "Merci de votre confiance !",
+        ].join("\n")
+      : [
+          "Bonjour {clientName},",
+          "",
+          "Votre commande #{orderId} pour \"{productName}\" a été livrée.",
+          "",
+          "Merci pour votre achat !",
+        ].join("\n"));
+
+  const text = template
+    .replace(/\{clientName\}/g, customerName || "Client")
+    .replace(/\{orderId\}/g, platformOrderId)
+    .replace(/\{productName\}/g, productName)
+    .replace(/\{trackingNumber\}/g, trackingNumber)
+    .replace(/\{provider\}/g, provider)
+    .replace(/\{totalAmount\}/g, totalAmount.toLocaleString("fr-FR"))
+    .replace(/\{wilaya\}/g, wilaya);
+
+  try {
+    await openwaService.sendText(waSession.sessionId, customerPhone, text);
+    await conversationService.addMessage(conversation.id, "agent", text);
+    console.log(
+      `[WhatsApp] Delivery status "${status}" sent for order ${platformOrderId}`,
+    );
+  } catch (err) {
+    console.error(
+      `[WhatsApp] Failed to send delivery status for ${platformOrderId}:`,
       err,
     );
   }

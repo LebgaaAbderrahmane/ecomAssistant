@@ -16,6 +16,7 @@ export default defineConfig({
       "/uploads": { target: "http://back:3000", changeOrigin: true },
       "/customers": { target: "http://back:3000", changeOrigin: true },
       "/escalations": { target: "http://back:3000", changeOrigin: true },
+      '/delivery': { target: 'http://back:3000', changeOrigin: true },
     },
   },
 });

@@ -13,6 +13,9 @@ export const agentConfigService = {
       followUpDelays?: number[];
       maxFollowUps?: number;
       deliveryProvider?: string;
+      templates?: Record<string, string>;
+      escalationThreshold?: number;
+      isActive?: boolean;
     },
   ) => {
     return prisma.agentConfig.upsert({

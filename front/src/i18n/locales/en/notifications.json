@@ -1,0 +1,11 @@
+{
+  "title": "Notifications",
+  "subtitle": "Stay informed about important events",
+  "markAllRead": "Mark all as read",
+  "tabs": {
+    "all": "All",
+    "unread": "Unread"
+  },
+  "empty": "No notifications",
+  "view": "View"
+}

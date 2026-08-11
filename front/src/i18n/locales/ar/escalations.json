@@ -1,0 +1,21 @@
+{
+  "title": "التصعيدات",
+  "openCount": "{{count}} مفتوحة",
+  "resolveAll": "تحديد الكل كمحلول",
+  "resolved": "تم حل التصعيد",
+  "resolveError": "خطأ أثناء الحل",
+  "allResolved": "تم حل جميع التصعيدات",
+  "columns": {
+    "client": "العميل",
+    "lastMessage": "آخر رسالة",
+    "status": "الحالة",
+    "since": "منذ"
+  },
+  "status": {
+    "takenOver": "تمت المتابعة",
+    "pending": "قيد الانتظار"
+  },
+  "resolve": "حل",
+  "empty": "لا توجد تصعيدات",
+  "emptyDescription": "ستظهر هنا المحادثات التي تحتاج إلى انتباهك"
+}

@@ -1,0 +1,55 @@
+{
+  "loading": "Chargement...",
+  "cancel": "Annuler",
+  "confirm": "Confirmer",
+  "save": "Enregistrer",
+  "search": "Rechercher...",
+  "noResults": "Aucun résultat",
+  "retry": "Réessayer",
+  "ignore": "Ignorer",
+  "reconnect": "Reconnecter",
+  "disconnect": "Déconnecter",
+  "saveError": "Erreur lors de la sauvegarde",
+  "updateError": "Erreur lors de la mise à jour",
+  "selectAll": "Tout sélectionner",
+  "selected": "sélectionné",
+  "selected_plural": "sélectionnés",
+  "deselect": "Désélectionner",
+  "action": "Action",
+  "actions": "Actions",
+  "client": "Client",
+  "product": "Produit",
+  "total": "Total",
+  "status": "Statut",
+  "date": "Date",
+  "since": "Depuis",
+  "amount": "Montant",
+  "whatsapp": "WhatsApp",
+  "loadMore": "Charger plus",
+  "timeAgo": {
+    "justNow": "à l'instant",
+    "minutes": "il y a {{count}}min",
+    "hours": "il y a {{count}}h",
+    "days": "il y a {{count}}j"
+  },
+  "dateRange": {
+    "today": "Aujourd'hui",
+    "thisWeek": "Cette semaine",
+    "thisMonth": "Ce mois-ci",
+    "thisYear": "Cette année",
+    "allDates": "Toutes les dates",
+    "label": "Date"
+  },
+  "tracking": {
+    "title": "Attribuer un suivi",
+    "description": "Entrez les informations de suivi pour les commandes sélectionnées.",
+    "provider": "Transporteur",
+    "number": "Numéro de suivi",
+    "success": "Suivi attribué à {{count}} commande(s)",
+    "error": "Erreur lors de l'attribution du suivi"
+  },
+  "disconnectModal": {
+    "title": "WhatsApp Déconnecté",
+    "description": "Votre session WhatsApp est déconnectée. Veuillez la reconnecter pour continuer à recevoir et envoyer des messages."
+  }
+}

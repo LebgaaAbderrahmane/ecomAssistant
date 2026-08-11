@@ -1,46 +1,42 @@
 import type { ApiError } from "./api.js";
+import i18n from 'i18next';
 
 const ERROR_MESSAGES: Record<number, (err: ApiError) => string> = {
   400: (err) => {
     const map: Record<string, string> = {
-      "Invalid verification code": "Code de vérification incorrect.",
-      "Verification code expired or invalid":
-        "Code expiré ou invalide. Demandez un nouveau code.",
-      "Merchant not found": "Aucun compte trouvé avec cet email.",
-      "Email already verified": "Cet email est déjà vérifié.",
+      "Invalid verification code": i18n.t('auth:errors.invalidCode'),
+      "Verification code expired or invalid": i18n.t('auth:errors.expiredCode'),
+      "Merchant not found": i18n.t('auth:errors.noAccount'),
+      "Email already verified": i18n.t('auth:errors.alreadyVerified'),
     };
     return (
       map[err.message] ||
       err.message ||
-      "Veuillez corriger les champs ci-dessous."
+      i18n.t('auth:errors.fixFields')
     );
   },
-  401: () => "Email ou mot de passe incorrect.",
+  401: () => i18n.t('auth:errors.invalidCredentials'),
   403: (err) =>
     err.message?.toLowerCase().includes("verify")
-      ? "Veuillez vérifier votre email avant de vous connecter."
-      : "Accès refusé.",
-  404: () => "Aucun compte trouvé avec cet email.",
-  409: () => "Cet email est déjà utilisé.",
-  429: () => "Trop de tentatives. Veuillez réessayer dans quelques instants.",
+      ? i18n.t('auth:errors.verifyEmailFirst')
+      : i18n.t('auth:errors.accessDenied'),
+  404: () => i18n.t('auth:errors.noAccount'),
+  409: () => i18n.t('auth:errors.emailTaken'),
+  429: () => i18n.t('auth:errors.tooManyAttempts'),
 };
-
-const NETWORK_ERROR =
-  "Impossible de contacter le serveur. Vérifiez votre connexion.";
-const SERVER_ERROR = "Erreur serveur. Veuillez réessayer plus tard.";
 
 export function getAuthErrorMessage(err: unknown): string {
   if (isApiError(err)) {
-    if (err.status >= 500) return SERVER_ERROR;
+    if (err.status >= 500) return i18n.t('auth:errors.serverError');
     const translator = ERROR_MESSAGES[err.status];
     if (translator) return translator(err);
-    return err.message || SERVER_ERROR;
+    return err.message || i18n.t('auth:errors.serverError');
   }
   if (err instanceof TypeError && err.message === "Failed to fetch") {
-    return NETWORK_ERROR;
+    return i18n.t('auth:errors.networkError');
   }
   if (err instanceof Error) return err.message;
-  return "Une erreur inattendue est survenue.";
+  return i18n.t('auth:errors.unknownError');
 }
 
 function isApiError(err: unknown): err is ApiError {

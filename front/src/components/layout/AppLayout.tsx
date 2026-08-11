@@ -6,7 +6,7 @@ import { MobileMenuProvider } from "../../lib/mobileMenu.js";
 export function AppLayout() {
   return (
     <MobileMenuProvider>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-surface-secondary">
         <Sidebar />
         <Topbar />
         <main className="lg:ml-[250px] pt-6 px-4 sm:px-6 py-6">

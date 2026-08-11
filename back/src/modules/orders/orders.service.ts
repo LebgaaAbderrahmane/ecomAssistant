@@ -4,12 +4,15 @@ import { PaginatedResult } from '../../types/pagination.types';
 import { Order } from '@prisma/client';
 import { enqueueOrderJob } from '../../queues/order.queue';
 import { FakeOrderInput } from '../../validators/order.validator';
+import eventBus from '../../events/eventBus';
 
 interface GetOrdersParams {
   merchantId: string;
   cursor?: string;
   limit?: number | string; 
   status?: string;
+  search?: string;
+  dateRange?: string;
   storeConnectionId?: string;
 }
 
@@ -25,13 +28,45 @@ const decodeCursor = (cursor: string): { createdAt: Date; id: string } => {
 export const getOrders = async (
   params: GetOrdersParams
 ): Promise<PaginatedResult<Order>> => {
-  const { merchantId, cursor, status, storeConnectionId } = params;
+  const { merchantId, cursor, status, search, dateRange } = params;
   const limit = Math.min(Number(params.limit) || 20, 100);  
-  const where = {
+  const where: any = {
     merchantId,
-    ...(status && { status }),
-    // storeConnectionId is not on Order directly — filter via product or skip if not needed
+    ...(status && { status: { in: status.split(',') } }),
   };
+  if (search) {
+    where.OR = [
+      { customer: { name: { contains: search, mode: 'insensitive' } } },
+      { customer: { phone: { contains: search } } },
+      { productName: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+  if (dateRange) {
+    const now = new Date();
+    let start: Date;
+    switch (dateRange) {
+      case 'today':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week': {
+        start = new Date(now);
+        const day = start.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        start.setDate(start.getDate() - diff);
+        start.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'month':
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'year':
+        start = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        start = null;
+    }
+    if (start) where.createdAt = { gte: start };
+  }
 
   let cursorWhere = {};
   let decodedCursor: { createdAt: Date; id: string } | null = null;
@@ -51,12 +86,15 @@ export const getOrders = async (
     };
   }
 
-  const rawOrders = await prisma.order.findMany({
-    where: { ...where, ...cursorWhere },
-    include: { customer: true },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    take: limit + 1,
-  });
+  const [rawOrders, total] = await Promise.all([
+    prisma.order.findMany({
+      where: { ...where, ...cursorWhere },
+      include: { customer: true, conversation: { select: { takenOverByHuman: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    }),
+    prisma.order.count({ where }),
+  ]);
 
   const orders = rawOrders.map((o) => ({
     ...o,
@@ -77,6 +115,7 @@ export const getOrders = async (
   return {
     data: orders,
     pagination: {
+      total,
       hasNextPage,
       hasPrevPage: !!cursor,
       nextCursor,
@@ -160,4 +199,109 @@ export const ingestOrder = async (input: FakeOrderInput) => {
   await enqueueOrderJob(order.id);
 
   return { orderId: order.id, conversationId: conversation.id };
+};
+
+export interface OrderCreatedEvent {
+  merchantId: string;
+  orderId: string;
+}
+
+export const emitOrderCreated = (data: OrderCreatedEvent) => {
+  eventBus.emit("order.created", data);
+};
+
+export const onOrderCreated = (listener: (data: OrderCreatedEvent) => void) => {
+  eventBus.on("order.created", listener);
+};
+
+export const offOrderCreated = (listener: (data: OrderCreatedEvent) => void) => {
+  eventBus.off("order.created", listener);
+};
+
+export const bulkUpdateStatus = async (
+  merchantId: string,
+  orderIds: string[],
+  status: string,
+): Promise<number> => {
+  const result = await prisma.order.updateMany({
+    where: { merchantId, id: { in: orderIds } },
+    data: { status: status as any },
+  });
+  return result.count;
+};
+
+export const bulkHoldAgent = async (
+  merchantId: string,
+  orderIds: string[],
+  hold: boolean,
+): Promise<number> => {
+  const result = await prisma.conversation.updateMany({
+    where: { merchantId, currentOrderId: { in: orderIds } },
+    data: { takenOverByHuman: hold },
+  });
+  return result.count;
+};
+
+export const listOrderIds = async (
+  merchantId: string,
+  status?: string,
+  search?: string,
+  dateRange?: string,
+): Promise<string[]> => {
+  const where: any = {
+    merchantId,
+    ...(status && { status: { in: status.split(',') } }),
+  };
+  if (search) {
+    where.OR = [
+      { customer: { name: { contains: search, mode: 'insensitive' } } },
+      { customer: { phone: { contains: search } } },
+      { productName: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+  if (dateRange) {
+    const now = new Date();
+    let start: Date | null = null;
+    switch (dateRange) {
+      case 'today':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week': {
+        start = new Date(now);
+        const day = start.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        start.setDate(start.getDate() - diff);
+        start.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'month':
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'year':
+        start = new Date(now.getFullYear(), 0, 1);
+        break;
+    }
+    if (start) where.createdAt = { gte: start };
+  }
+
+  const orders = await prisma.order.findMany({
+    where,
+    select: { id: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  });
+
+  return orders.map(o => o.id);
+};
+
+export const bulkUpdateTracking = async (
+  merchantId: string,
+  orderIds: string[],
+  trackingNumber: string,
+  deliveryProvider: string,
+): Promise<number> => {
+  const result = await prisma.order.updateMany({
+    where: { merchantId, id: { in: orderIds } },
+    data: { trackingNumber, deliveryProvider },
+  });
+  return result.count;
 };

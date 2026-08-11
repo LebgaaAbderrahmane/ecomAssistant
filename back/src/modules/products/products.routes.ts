@@ -5,5 +5,7 @@ import { authenticate } from "../../middlwares/auth.middlware";
 const router = Router();
 
 router.get("/", authenticate, controller.listProducts);
+router.get("/ids", authenticate, controller.getProductIds);
+router.patch("/bulk-agent", authenticate, controller.patchBulkAgent);
 
 export default router;

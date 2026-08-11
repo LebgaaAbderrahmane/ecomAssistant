@@ -276,7 +276,7 @@ export const resetPassword = async (
     }
   }
 
-  return { message: "Password updated successfully. You can now log in." };
+  return { message: "Updated successfully. You can now log in." };
 };
 
 export const getMerchantProfile = async (merchantId: string) => {
@@ -292,6 +292,26 @@ export const getMerchantProfile = async (merchantId: string) => {
     name: merchant.name,
     shopName: merchant.shopName,
     isVerified: merchant.isVerified,
+  };
+};
+
+export const googleAuth = async (merchant: any) => {
+  const accessToken = generateToken({
+    merchantId: merchant.id,
+    email: merchant.email,
+  });
+  const refreshToken = await storeRefreshToken(merchant.id, merchant.email);
+
+  return {
+    accessToken,
+    refreshToken,
+    merchant: {
+      id: merchant.id,
+      email: merchant.email,
+      name: merchant.name,
+      shopName: merchant.shopName,
+      isVerified: merchant.isVerified,
+    },
   };
 };
 

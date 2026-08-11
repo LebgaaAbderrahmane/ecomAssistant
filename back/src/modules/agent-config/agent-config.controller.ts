@@ -10,13 +10,25 @@ export async function getConfig(req: AuthenticatedRequest, res: Response) {
 
 export async function saveConfig(req: AuthenticatedRequest, res: Response) {
   const merchantId = req.merchant!.merchantId;
-  const { defaultLanguage, tone, followUpDelays, maxFollowUps, deliveryProvider } = req.body;
+  const {
+    defaultLanguage,
+    tone,
+    followUpDelays,
+    maxFollowUps,
+    deliveryProvider,
+    templates,
+    escalationThreshold,
+    isActive,
+  } = req.body;
   const config = await agentConfigService.upsert(merchantId, {
     defaultLanguage,
     tone,
     followUpDelays,
     maxFollowUps,
     deliveryProvider,
+    templates,
+    escalationThreshold,
+    isActive,
   });
   res.json(config);
 }

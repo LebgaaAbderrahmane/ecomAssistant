@@ -64,6 +64,8 @@ export interface Session {
   id: string;
   name: string;
   status: string;
+  phone?: string | null;
+  pushName?: string | null;
 }
 
 export interface SessionQR {
@@ -227,6 +229,15 @@ export const openwaService = {
     } catch {
       return false;
     }
+  },
+
+  getPairingCode: async (sessionId: string, phoneNumber: string): Promise<string> => {
+    const result = await request<{ code: string }>(
+      "POST",
+      `/sessions/${sessionId}/pairing-code`,
+      { phoneNumber: stripSuffix(phoneNumber) },
+    );
+    return result.code;
   },
 
   stripSuffix,
