@@ -10,6 +10,7 @@ import type { ConversationMemory, IntentSummary } from './memory.types';
 import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 import { openwaService } from '../whatsapp/whatsapp.service';
+import { enqueueLayer2Job } from '../../queues/layer2.queue';
 import type { ImageCategory } from './media/imageCaption.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
@@ -198,7 +199,6 @@ async function executeTools(
   });
   const { conversation } = message;
   const memory = (conversation.memory as ConversationMemory | null) ?? {};
-  const takenOver = conversation.takenOverByHuman;
 
   const customer = await prisma.customer.findUniqueOrThrow({
     where: { id: conversation.customerId },
@@ -268,15 +268,6 @@ async function executeTools(
     // Resolve tool from intent
     const toolName = resolveTool(item.intent, item.entities);
     if (!toolName) {
-      toolResults.push({ intent: intentToString(item.intent), result: null });
-      continue;
-    }
-
-    // Execution policy: while a human owns the conversation, only write tools
-    // run (order lifecycle, customer profile, escalation). Read tools are
-    // suppressed until takenOverByHuman is false.
-    if (takenOver && isReadTool(toolName)) {
-      console.log(`[agent] ${messageId} -> read tool "${toolName}" suppressed (human owns conversation)`);
       toolResults.push({ intent: intentToString(item.intent), result: null });
       continue;
     }
@@ -423,8 +414,8 @@ async function executeTools(
 
 // ─── Layer 2, step 2: reply generation ───────────────────────────────────
 // Builds the reply from the executed tool results: LLM #2 → persist messages
-// → send via WhatsApp → update memory. Skips entirely if a human now owns the
-// conversation (write tools may still have executed; that is intended).
+// → send via WhatsApp → update memory. Only called when the AI owns the
+// conversation (inline path) or after de-escalation (deferred path).
 async function generateResponse(
   messageId: string,
   toolResults: ToolResultEntry[],
@@ -450,15 +441,6 @@ async function generateResponse(
   const customer = await prisma.customer.findUniqueOrThrow({
     where: { id: conversation.customerId },
   });
-
-  // If the conversation is under human takeover (either from before this message
-  // or escalated during tool execution), the AI stays silent — the merchant
-  // responds directly. Write tools may still have executed; that is intended.
-  if (conversation.takenOverByHuman) {
-    await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, conversationAct, finalLastProductResults, rejectedToRecord);
-    console.log(`[agent] ${messageId} -> conversation under human takeover, AI stays silent`);
-    return;
-  }
 
   // ─── LLM #2: reply generation (single call for all intents) ─────────
   const replyContext: ReplyContext = {
@@ -542,6 +524,11 @@ export const processMessage = async (messageId: string) => {
   });
   const { conversation } = message;
   const memory = (conversation.memory as ConversationMemory | null) ?? {};
+
+  // Was the human already in control when this message arrived? Read before any
+  // processing: the deferred path applies only to pre-existing takeover, not to
+  // escalations triggered by this very message.
+  const wasTakenOver = conversation.takenOverByHuman;
 
   // Last thing the assistant said before this message. LLM #1 needs it to
   // interpret short follow-ups ("okay", "yes", "this one") relative to what
@@ -681,6 +668,7 @@ export const processMessage = async (messageId: string) => {
       intent: intentToString(primaryIntent.intent),
       entities: primaryIntent.entities,
       confidence: primaryIntent.confidence,
+      parsedIntents: sortedIntents as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -721,6 +709,10 @@ export const processMessage = async (messageId: string) => {
       console.log(`[agent] ${messageId} -> escalated conversation (suggested intent), tool ->`, result);
       takenOver = true;
     }
+
+    // A suggested intent hands the conversation to a human immediately — no
+    // tools, no reply, no deferral. The merchant picks it up from the dashboard.
+    return;
   }
 
   // ─── Escalation threshold (existing safety net) ─────────────────────
@@ -767,9 +759,39 @@ export const processMessage = async (messageId: string) => {
     }
   }
 
-  // ─── Layer 2: tool execution + reply generation ─────────────────────
-  // Split into two reusable steps so a deferred (human-takeover) path can run
-  // them separately: write tools execute immediately, read tools + reply wait.
+  // ─── Layer 2: dispatch ────────────────────────────────────────────────
+  // wasTakenOver → the human already owned the conversation when this message
+  // arrived. Write tools execute immediately; their results + the parsed
+  // intents are persisted, and read tools + the reply are deferred to the
+  // agent-layer2 queue (which de-escalates before generating).
+  if (wasTakenOver) {
+    const outcome = await executeTools(messageId, sortedIntents, { only: 'write' });
+
+    await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        toolResults: outcome.toolResults as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    const hasReadIntents = sortedIntents.some((item) => {
+      const toolName = resolveTool(item.intent, item.entities);
+      return toolName ? isReadTool(toolName) : false;
+    });
+    const kind = hasReadIntents ? 'execute-read-tools' : 'generate-response';
+    await enqueueLayer2Job(message.id, conversation.id, kind);
+    console.log(`[agent] ${messageId} -> deferred layer-2 (${kind})`);
+    return;
+  }
+
+  // Escalated by this message itself (threshold safety net): write tools still
+  // run, but the AI stays silent — the merchant now owns the conversation.
+  if (takenOver) {
+    await executeTools(messageId, sortedIntents, { only: 'write' });
+    return;
+  }
+
+  // AI owns the conversation: full inline pipeline.
   const outcome = await executeTools(messageId, sortedIntents);
 
   await generateResponse(messageId, outcome.toolResults, {
