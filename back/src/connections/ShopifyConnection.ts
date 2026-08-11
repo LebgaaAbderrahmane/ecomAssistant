@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import axios from "axios";
 import prisma from "../config/db.config";
+import { OrderStatus } from "@prisma/client";
 import { redis } from "../config";
 import { decryptToken, encryptToken } from "../lib/crypto";
 import {
@@ -439,8 +440,8 @@ export class ShopifyConnection extends AbstractStoreConnection {
     return saved;
   }
 
-  private mapFinancialStatus(status: string): string {
-    const map: Record<string, string> = {
+  private mapFinancialStatus(status: string): OrderStatus {
+    const map: Record<string, OrderStatus> = {
       pending: "PENDING",
       authorized: "PENDING",
       paid: "CONFIRMED",

@@ -112,10 +112,11 @@ export async function handleWebhook(
           return res.status(200).json({ status: "ignored" });
         }
 
-        let conversation = await conversationService.getByPhone(
-          waSession.merchantId,
-          phone,
-        );
+        let conversation: Awaited<ReturnType<typeof conversationService.findOrCreateByCustomer>> | null =
+          await conversationService.getByPhone(
+            waSession.merchantId,
+            phone,
+          );
         if (!conversation) {
           const customer = await prisma.customer.findFirst({
             where: {

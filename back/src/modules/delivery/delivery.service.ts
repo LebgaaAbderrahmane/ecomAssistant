@@ -52,7 +52,7 @@ export const deliveryService = {
       firstName,
       familyName,
       phone: order.customer?.phone ?? '',
-      address: order.address,
+      address: order.address ?? '',
       wilaya: order.wilaya,
       commune: order.commune ?? '',
       productList: `${order.productName} x${order.quantity}`,

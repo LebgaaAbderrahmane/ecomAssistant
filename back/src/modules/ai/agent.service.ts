@@ -3,7 +3,7 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema, ToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField } from './schemas/intents.schemas';
+import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
@@ -13,7 +13,7 @@ import { openwaService } from '../whatsapp/whatsapp.service';
 import type { ImageCategory } from './media/imageCaption.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
-const ALL_TOOLS = ToolNameSchema.options as readonly string[] as string[];
+const ALL_TOOLS = [...ReadToolNameSchema.options, ...WriteToolNameSchema.options];
 
 // Product intents whose tools resolve references from conversation memory.
 // They are excluded from the "unresolved" short-circuit so the tool — not the
@@ -779,6 +779,69 @@ export const processMessage = async (messageId: string) => {
     rejectedToRecord,
     tone,
     language: defaultLanguage,
+    replyMemory: outcome.replyMemory,
+    finalLastProductResults: outcome.finalLastProductResults,
+  });
+};
+
+// ─── Deferred Layer 2 (after human takeover) ─────────────────────────────
+// Runs when a message that arrived under human takeover is processed after the
+// fact. The write tools already ran during the takeover (their results are
+// stored on the message); here the conversation is handed back to the AI, the
+// deferred read tools execute, and the final reply is generated from the merged
+// results.
+export const processDeferredLayer2 = async (messageId: string) => {
+  const message = await prisma.message.findUniqueOrThrow({
+    where: { id: messageId },
+    include: { conversation: true },
+  });
+  const { conversation } = message;
+
+  // Hand the conversation back to the AI: read tools are no longer suppressed
+  // and generateResponse will produce a reply instead of staying silent.
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: { takenOverByHuman: false, escalatedAt: null },
+  });
+
+  const parsedIntents = (message.parsedIntents as unknown as IntentItem[] | null) ?? [];
+  if (parsedIntents.length === 0) {
+    console.log(`[agent] ${messageId} -> no parsedIntents to process, nothing deferred`);
+    return;
+  }
+
+  const memory = (conversation.memory as ConversationMemory | null) ?? {};
+  const agentConfig = await prisma.agentConfig.findUnique({
+    where: { merchantId: conversation.merchantId },
+  });
+  const tone = agentConfig?.tone ?? 'friendly';
+  const language = agentConfig?.defaultLanguage ?? 'auto';
+
+  // Deferred read tools — write tools already ran while the human owned the
+  // conversation and their results are persisted on the message.
+  const outcome = await executeTools(messageId, parsedIntents, { only: 'read' });
+
+  // Merge the write-tool results stored at execution time with the reads just
+  // executed. Read tools were excluded from the write-only pass, so no intent
+  // appears twice.
+  const storedToolResults = (message.toolResults as unknown as ToolResultEntry[] | null) ?? [];
+  const toolResults = [...storedToolResults, ...outcome.toolResults];
+
+  const sortedIntents = sortIntents(parsedIntents);
+  const primaryIntent = sortedIntents[0];
+  const conversationAct = memory.lastConversationAct ?? 'ANSWER';
+  const rejectedToRecord: ConversationMemory['rejectedProducts'] =
+    conversationAct === 'NEGATE' && memory.lastProductResults?.length
+      ? memory.lastProductResults
+      : undefined;
+
+  await generateResponse(messageId, toolResults, {
+    sortedIntents,
+    primaryIntent,
+    conversationAct,
+    rejectedToRecord,
+    tone,
+    language,
     replyMemory: outcome.replyMemory,
     finalLastProductResults: outcome.finalLastProductResults,
   });

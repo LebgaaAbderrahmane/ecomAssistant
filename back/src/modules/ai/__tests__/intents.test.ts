@@ -36,8 +36,8 @@ describe('tool execution policies (read / write)', () => {
   const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
 
   it('every tool has exactly one execution policy', () => {
-    const readSet = new Set(READ_TOOLS);
-    const writeSet = new Set(WRITE_TOOLS);
+    const readSet = new Set<string>(READ_TOOLS);
+    const writeSet = new Set<string>(WRITE_TOOLS);
 
     for (const tool of ALL_TOOLS) {
       assert.equal(isReadTool(tool), readSet.has(tool), `${tool} isReadTool mismatch`);
@@ -52,14 +52,14 @@ describe('tool execution policies (read / write)', () => {
   });
 
   it('classifies the navigation tools as READ', () => {
-    for (const tool of ['searchProducts', 'recallPreviousProducts', 'chooseProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus']) {
+    for (const tool of ['searchProducts', 'recallPreviousProducts', 'chooseProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
       assert.equal(isReadTool(tool), true, `${tool} should be READ`);
       assert.equal(isWriteTool(tool), false, `${tool} should not be WRITE`);
     }
   });
 
   it('classifies the business-mutating tools as WRITE', () => {
-    for (const tool of ['createOrder', 'confirmOrder', 'modifyOrder', 'cancelOrder', 'escalateConversation']) {
+    for (const tool of ['createOrder', 'confirmOrder', 'modifyOrder', 'cancelOrder', 'escalateConversation'] as const) {
       assert.equal(isWriteTool(tool), true, `${tool} should be WRITE`);
       assert.equal(isReadTool(tool), false, `${tool} should not be READ`);
     }

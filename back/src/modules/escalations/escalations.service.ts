@@ -24,7 +24,7 @@ export const getEscalations = async (
   const where: any = {
     merchantId,
     escalatedAt: { not: null },
-    status: { not: "resolved" },
+    status: { not: "RESOLVED" },
   };
 
   let cursorWhere = {};
@@ -72,6 +72,7 @@ export const getEscalations = async (
       hasPrevPage: !!cursor,
       nextCursor,
       prevCursor,
+      
     },
   };
 };
@@ -84,7 +85,7 @@ export const resolveEscalation = async (conversationId: string, merchantId: stri
 
   return prisma.conversation.update({
     where: { id: conversationId },
-    data: { status: "resolved" },
+    data: { status: "RESOLVED" },
   });
 };
 
@@ -93,8 +94,8 @@ export const resolveAllEscalations = async (merchantId: string) => {
     where: {
       merchantId,
       escalatedAt: { not: null },
-      status: { not: "resolved" },
+      status: { not: "RESOLVED" },
     },
-    data: { status: "resolved" },
+    data: { status: "RESOLVED" },
   });
 };
