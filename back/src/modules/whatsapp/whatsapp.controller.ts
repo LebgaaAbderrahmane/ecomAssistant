@@ -269,7 +269,7 @@ export async function handleWebhook(
             if (remote.phone && waSession?.phoneNumber !== remote.phone) {
               await prisma.whatsAppSession.updateMany({
                 where: { sessionId },
-                data: { phoneNumber: remote.phone },
+                data: { phoneNumber: session.name },
               });
             }
           } catch {

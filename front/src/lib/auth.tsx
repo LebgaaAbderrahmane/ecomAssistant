@@ -207,11 +207,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(fresh);
         setIsAuthenticated(true);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        localStorage.removeItem("user");
-        setUser(null);
-        setIsAuthenticated(false);
+        if (isApiError(err) && err.status === 401) {
+          localStorage.removeItem("user");
+          setUser(null);
+          setIsAuthenticated(false);
+        }
       })
       .finally(() => {
         if (cancelled) return;

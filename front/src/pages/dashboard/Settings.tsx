@@ -978,7 +978,7 @@ function WhatsAppTab() {
     setActionLoading(true);
     suppressDisconnectModal();
     try {
-      await api.post("/whatsapp/session/disconnect");
+      await api.postWithoutBody("/whatsapp/session/disconnect");
       setConnected(false);
       setPhoneNumber(null);
       toast.success(t('whatsapp.sessionDeactivated'));
@@ -1011,7 +1011,7 @@ function WhatsAppTab() {
     setReconnecting(true);
     setError("");
     try {
-      await api.post("/whatsapp/session/reconnect");
+      await api.postWithoutBody("/whatsapp/session/reconnect");
 
       const poll = setInterval(async () => {
         try {
