@@ -3,7 +3,7 @@ import shopifyRoutes from "./shopify/shopify.routes";
 import { authenticate, AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import prisma from "../../config/db.config";
 
-const router = Router();
+const router: Router = Router();
 
 router.use('/shopify', shopifyRoutes);
 

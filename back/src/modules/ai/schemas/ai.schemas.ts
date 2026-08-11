@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IntentSchema, ConversationActSchema } from './intents.schemas';
+import { IntentFieldSchema, ConversationActSchema } from './intents.schemas';
 
 // Entities are intentionally loose at this layer — each tool tightens its own
 // argument shape via its own Zod schema. This just guards against the
@@ -10,7 +10,7 @@ export const EntitiesSchema = z
 
 // ─── Single intent item ─────────────────────────────────────────────────
 export const IntentItemSchema = z.object({
-  intent: IntentSchema,
+  intent: IntentFieldSchema,
   entities: EntitiesSchema,
   confidence: z.number().min(0).max(1),
   order: z.number().int().min(1).max(4),

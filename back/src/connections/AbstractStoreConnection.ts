@@ -89,4 +89,20 @@ export abstract class AbstractStoreConnection {
   ): Promise<void>;
 
   abstract upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]>;
+
+  // ─────────────────────────────────────────────
+  // Shop info & settings
+  // ─────────────────────────────────────────────
+
+  /** Fetch platform shop info */
+  abstract getShopInfo(): Promise<Record<string, unknown>>;
+
+  /** List registered webhooks on the platform */
+  abstract listWebhooks(): Promise<unknown[]>;
+
+  /** Update connection-level settings (currency, default order status, …) */
+  abstract updateSettings(settings: {
+    currency?: string;
+    defaultOrderStatus?: string;
+  }): Promise<void>;
 }

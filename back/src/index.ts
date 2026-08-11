@@ -4,6 +4,7 @@ import { app } from './app.js'
 import "./workers/email.worker";
 import "./workers/message.worker";
 import "./workers/order.worker";
+import "./workers/layer2.worker";
 
 
 const PORT = process.env.PORT ?? 3000;

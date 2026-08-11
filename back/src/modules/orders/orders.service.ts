@@ -43,7 +43,7 @@ export const getOrders = async (
   }
   if (dateRange) {
     const now = new Date();
-    let start: Date;
+    let start: Date | null = null;
     switch (dateRange) {
       case 'today':
         start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -161,7 +161,7 @@ export const ingestOrder = async (input: FakeOrderInput) => {
         customerId: customer.id,
         platformOrderId,
         wilaya: input.wilaya,
-        commune: input.commune,
+        commune: input.commune ?? "",
         address: input.address,
         productId: product.id,
         productName: product.name, // snapshot at order time — product name/price can change later
