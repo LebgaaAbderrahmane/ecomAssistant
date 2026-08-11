@@ -11,6 +11,7 @@ import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 import { openwaService } from '../whatsapp/whatsapp.service';
 import { enqueueLayer2Job } from '../../queues/layer2.queue';
+import { decideLayer2JobKind } from './layer2JobKind';
 import type { ImageCategory } from './media/imageCaption.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
@@ -774,11 +775,7 @@ export const processMessage = async (messageId: string) => {
       },
     });
 
-    const hasReadIntents = sortedIntents.some((item) => {
-      const toolName = resolveTool(item.intent, item.entities);
-      return toolName ? isReadTool(toolName) : false;
-    });
-    const kind = hasReadIntents ? 'execute-read-tools' : 'generate-response';
+    const kind = decideLayer2JobKind(sortedIntents);
     await enqueueLayer2Job(message.id, conversation.id, kind);
     console.log(`[agent] ${messageId} -> deferred layer-2 (${kind})`);
     return;

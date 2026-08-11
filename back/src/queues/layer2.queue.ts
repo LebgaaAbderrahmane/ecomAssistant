@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import { redisConnection } from '../config';
+import { cancelPendingLayer2JobsFrom } from './layer2.cancel';
 
 export const LAYER2_DELAY_MS = 30_000;
 
@@ -31,9 +32,5 @@ export const enqueueLayer2Job = async (
 
 export const cancelPendingLayer2Jobs = async (
   conversationId: string,
-): Promise<number> => {
-  const jobs = await layer2Queue.getJobs(['delayed', 'waiting']);
-  const pending = jobs.filter((job) => job.data.conversationId === conversationId);
-  await Promise.all(pending.map((job) => job.remove()));
-  return pending.length;
-};
+): Promise<number> =>
+  cancelPendingLayer2JobsFrom(conversationId, layer2Queue);
