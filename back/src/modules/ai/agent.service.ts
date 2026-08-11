@@ -264,6 +264,7 @@ export const processMessage = async (messageId: string) => {
       currentOrderId: conversation.currentOrderId,
     });
     console.log(`[agent] tool "${parsed.toolSuggestion}" ->`, toolResult);
+  }
   // ─── Entity enrichment + tool execution loop ─────────────────────────
   const executionContext = {
     merchantId: conversation.merchantId,
