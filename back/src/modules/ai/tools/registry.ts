@@ -1,5 +1,5 @@
 import type { Product } from '@prisma/client';
-import type { ToolName } from '../schemas/intents.schemas';
+import type { ReadToolName, WriteToolName, ToolName } from '../schemas/intents.schemas';
 import prisma from '../../../config/db.config';
 import {
   SearchProductsArgsSchema,
@@ -7,14 +7,23 @@ import {
   CalculateShippingArgsSchema,
   ConfirmOrderArgsSchema,
   CancelOrderArgsSchema,
-  RecallPreviousProductsArgsSchema,
   CreateOrderArgsSchema,
   ChooseProductArgsSchema,
   GetProductDetailsArgsSchema,
+  SuggestProductsArgsSchema,
   ModifyOrderArgsSchema,
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
-import { buildProductCatalog, matchProductsWithLLM, fetchProductsByIds } from './searchHelpers';
+import { resolveProductRequest, fetchProductsByIds, matchProductsWithLLM } from './searchHelpers';
+import { TOOL_STATE_TRANSITIONS } from '../conversationState';
+import {
+  consolidatePreferences,
+  computeExclusionIds,
+  buildSuggestionCatalog,
+  recentProducts,
+  type PreferenceEntities,
+} from './suggestionHelpers';
+import type { ConversationMemory } from '../memory.types';
 
 interface CommuneValidation {
   valid: boolean;
@@ -71,19 +80,22 @@ export interface ToolExecutionContext {
   customerCommune?: string | null;
 }
 
+// Outcome refines `success`. It lets downstream code treat two very different
+// failures distinctly:
+//   - NOT_FOUND  → the item definitively does not exist (search came back empty).
+//   - AMBIGUOUS  → the request is too vague to identify an item (ask to clarify).
+// Absent on plain operational failures (bad args, missing context, infra errors).
+export type ToolOutcome = 'SUCCESS' | 'NOT_FOUND' | 'AMBIGUOUS';
+
 export interface ToolResult {
   success: boolean;
   data?: Record<string, unknown>;
   error?: string;
+  outcome?: ToolOutcome;
 }
 
 type ToolEntities = Record<string, string | number | boolean | null>;
 type ToolHandler = (entities: ToolEntities, ctx: ToolExecutionContext) => Promise<ToolResult>;
-
-const notImplemented: ToolHandler = async () => ({
-  success: false,
-  error: 'This tool is not implemented yet',
-});
 
 function formatProducts(products: Product[]) {
   return products.map((p) => ({
@@ -102,36 +114,35 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
   }
   const query = parsedArgs.data.product;
 
-  // Step 1: Fast case-insensitive SQL search on product name
-  const fastResults = await prisma.product.findMany({
-    where: {
-      merchantId: ctx.merchantId,
-      name: { contains: query, mode: 'insensitive' },
-    },
-    take: 5,
-  });
+  // Resolve against conversation context first, then the catalog. The result
+  // distinguishes a resolved product (from memory or catalog) from a concrete
+  // query that is authoritatively absent (NOT_FOUND) and a bare reference that
+  // no context can resolve (AMBIGUOUS — ask the customer, don't guess).
+  const resolved = await resolveProductRequest(query, ctx, ctx.merchantId);
 
-  if (fastResults.length > 0) {
-    return { success: true, data: { products: formatProducts(fastResults) } };
+  if (resolved.outcome === 'SUCCESS') {
+    await prisma.conversation.update({
+      where: { id: ctx.conversationId },
+      data: { state: TOOL_STATE_TRANSITIONS.searchProducts! },
+    });
+    return { success: true, data: { products: formatProducts(resolved.products) } };
   }
 
-  // Step 2: LLM fallback — build catalog and let the model match
-  const catalog = await buildProductCatalog(ctx.merchantId);
-  if (catalog.length === 0) {
-    return { success: false, error: 'No products found in store catalog' };
+  if (resolved.outcome === 'AMBIGUOUS') {
+    return {
+      success: false,
+      outcome: 'AMBIGUOUS',
+      data: { query },
+      error: resolved.reason,
+    };
   }
 
-  const matchedIds = await matchProductsWithLLM(catalog, query);
-  if (matchedIds.length === 0) {
-    return { success: false, error: `No products found matching "${query}"` };
-  }
-
-  const products = await fetchProductsByIds(ctx.merchantId, matchedIds);
-  if (products.length === 0) {
-    return { success: false, error: `No products found matching "${query}"` };
-  }
-
-  return { success: true, data: { products: formatProducts(products.slice(0, 5)) } };
+  return {
+    success: false,
+    outcome: 'NOT_FOUND',
+    data: { query },
+    error: `No product matching "${resolved.query}" exists in the store's catalog.`,
+  };
 };
 
 const getOrderStatus: ToolHandler = async (entities, ctx) => {
@@ -176,6 +187,15 @@ const calculateShipping: ToolHandler = async (entities, ctx) => {
 const confirmOrder: ToolHandler = async (entities, ctx) => {
   const parsedArgs = ConfirmOrderArgsSchema.safeParse(entities);
 
+  // An order resolved implicitly from conversation context (the previous turn's
+  // currentOrderId) is only confirmable while the assistant is actually waiting
+  // for confirmation. A short acknowledgment like "okay" that the intent
+  // extractor misread as ORDER_CONFIRM must never confirm a stale order from an
+  // unrelated earlier exchange. An order the customer names explicitly in the
+  // message is a fresh request and stays confirmable.
+  const explicitlyReferenced =
+    (parsedArgs.success && (parsedArgs.data.orderId || parsedArgs.data.productName)) ?? false;
+
   let orderId = ctx.currentOrderId;
   if (!orderId && parsedArgs.success && parsedArgs.data.orderId) {
     orderId = parsedArgs.data.orderId;
@@ -200,6 +220,20 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
     };
   }
 
+  if (!explicitlyReferenced && orderId === ctx.currentOrderId) {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: ctx.conversationId },
+      select: { state: true },
+    });
+    if (conversation?.state !== 'WAITING_CONFIRMATION') {
+      return {
+        success: false,
+        outcome: 'AMBIGUOUS',
+        error: 'No order is waiting for confirmation right now. If you want to place a new order, tell me the product and delivery details.',
+      };
+    }
+  }
+
   try {
     const order = await prisma.order.update({
       where: {
@@ -210,6 +244,11 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
       data: {
         status: 'CONFIRMED',
       },
+    });
+
+    await prisma.conversation.update({
+      where: { id: ctx.conversationId },
+      data: { state: TOOL_STATE_TRANSITIONS.confirmOrder! },
     });
 
     return {
@@ -287,6 +326,11 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
       },
     });
 
+    await prisma.conversation.update({
+      where: { id: ctx.conversationId },
+      data: { state: TOOL_STATE_TRANSITIONS.cancelOrder! },
+    });
+
     return {
       success: true,
       data: {
@@ -306,10 +350,17 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
     throw err;
   }
 };
-const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
-  const parsedArgs = RecallPreviousProductsArgsSchema.safeParse(entities);
-  const limit = parsedArgs.success && parsedArgs.data.limit ? parsedArgs.data.limit : 5;
+const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
+  // The customer references a product without naming it ("the black one",
+  // "hadak"). Resolve from conversation context (memory.lastProductResults or
+  // currentProductId) first.
+  const fromContext = await resolveProductRequest(undefined, ctx, ctx.merchantId);
+  if (fromContext.outcome === 'SUCCESS') {
+    return { success: true, data: { products: formatProducts(fromContext.products) } };
+  }
 
+  // Deeper fallback: scan message history for product entities from earlier
+  // searches/details in this conversation.
   const messages = await prisma.message.findMany({
     where: {
       conversationId: ctx.conversationId,
@@ -327,26 +378,26 @@ const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
 
   for (const msg of messages) {
     let ents: Record<string, unknown> | null = null;
-    console.log(`[recallPreviousProducts] parsing entities string: ${msg.entities}`);
     if (typeof msg.entities === 'string') {
       try { ents = JSON.parse(msg.entities); } catch { /* skip */ }
-      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
     } else if (msg.entities && typeof msg.entities === 'object') {
       ents = msg.entities as Record<string, unknown>;
-      console.log(`[recallPreviousProducts] parsing entities string: ${ents}`);
     }
     const name = ents?.product;
-    console.log('[recallPreviousProducts] extracted product name:', name);
     if (typeof name === 'string' && !seen.has(name)) {
       seen.add(name);
       productNames.push(name);
     }
-    if (productNames.length >= limit) break;
-    console.log(`[recallPreviousProducts] collected ${productNames.length} product names so far:`, productNames);
   }
 
   if (productNames.length === 0) {
-    return { success: false, error: 'No previous products found in this conversation' };
+    // Nothing recalled and no product context — we need the customer to name
+    // the product rather than claiming it doesn't exist.
+    return {
+      success: false,
+      outcome: 'AMBIGUOUS',
+      error: 'No previously mentioned product found. Ask the customer which product (name, color, or model) they are asking about.',
+    };
   }
 
   const products = await prisma.product.findMany({
@@ -357,6 +408,11 @@ const recallPreviousProducts: ToolHandler = async (entities, ctx) => {
   const ordered = productNames
     .map((name) => products.find((p: Product) => p.name.toLowerCase() === name.toLowerCase()))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+  await prisma.conversation.update({
+    where: { id: ctx.conversationId },
+    data: { state: TOOL_STATE_TRANSITIONS.recallPreviousProducts! },
+  });
 
   return {
     success: true,
@@ -381,6 +437,7 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
     if (!entry) {
       return {
         success: false,
+        outcome: 'NOT_FOUND',
         error: `No product at index ${parsedArgs.data.productIndex} (last search had ${lastResults.length} results)`,
       };
     }
@@ -400,12 +457,12 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
   }
 
   if (!product) {
-    return { success: false, error: 'Product not found' };
+    return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
   }
 
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
-    data: { currentProductId: product.id },
+    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.chooseProduct! },
   });
 
   return {
@@ -440,12 +497,12 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
   }
 
   if (!product) {
-    return { success: false, error: 'Product not found' };
+    return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
   }
 
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
-    data: { currentProductId: product.id },
+    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.getProductDetails! },
   });
 
   return {
@@ -458,6 +515,78 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
       stockStatus: product.stockStatus,
       category: product.category,
     },
+  };
+};
+
+const suggestProducts: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = SuggestProductsArgsSchema.safeParse(entities);
+  const messagePrefs = parsedArgs.success ? parsedArgs.data : {};
+
+  // Load conversation memory (accumulated preferences + rejected products) so
+  // the customer never has to repeat what they already told us.
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: ctx.conversationId },
+    select: { memory: true, currentProductId: true },
+  });
+  const memory = (conversation?.memory ?? {}) as ConversationMemory;
+
+  const prefs = consolidatePreferences(messagePrefs as PreferenceEntities, memory);
+  const excludeIds = computeExclusionIds(
+    memory,
+    conversation?.currentProductId ?? ctx.currentProductId,
+  );
+
+  const hasPreferences =
+    prefs.terms.length > 0 ||
+    prefs.category !== undefined ||
+    prefs.minPrice !== undefined ||
+    prefs.maxPrice !== undefined;
+
+  let products: Product[];
+  let basedOn: 'preferences' | 'popular';
+
+  if (!hasPreferences) {
+    // Bare "what do you recommend?" with no prior context → recent in-stock items.
+    products = await recentProducts(ctx.merchantId, excludeIds);
+    basedOn = 'popular';
+  } else {
+    const catalog = await buildSuggestionCatalog(ctx.merchantId, prefs, excludeIds);
+    if (catalog.length === 0) {
+      return {
+        success: false,
+        outcome: 'NOT_FOUND',
+        error: 'No products in the store match those preferences.',
+      };
+    }
+
+    // Rank the SQL-filtered candidates with the LLM matcher (same ranking path
+    // as searchProducts); fall back to the SQL order when the matcher yields
+    // nothing.
+    const query = prefs.terms.join(', ') || 'recommended product';
+    const { ids } = await matchProductsWithLLM(catalog, query);
+    const ranked = ids.length ? await fetchProductsByIds(ctx.merchantId, ids) : [];
+    products = ranked.length
+      ? ranked.slice(0, 5)
+      : await fetchProductsByIds(ctx.merchantId, catalog.slice(0, 5).map((c) => c.id));
+    basedOn = 'preferences';
+  }
+
+  if (products.length === 0) {
+    return {
+      success: false,
+      outcome: 'NOT_FOUND',
+      error: 'No products available to recommend right now.',
+    };
+  }
+
+  await prisma.conversation.update({
+    where: { id: ctx.conversationId },
+    data: { state: TOOL_STATE_TRANSITIONS.suggestProducts! },
+  });
+
+  return {
+    success: true,
+    data: { products: formatProducts(products), recommended: true, basedOn },
   };
 };
 
@@ -682,18 +811,74 @@ const modifyOrder: ToolHandler = async (entities, ctx) => {
   };
 };
 
-export const toolRegistry: Record<ToolName, ToolHandler> = {
+const escalateConversation: ToolHandler = async (_entities, ctx) => {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: ctx.conversationId },
+  });
+  if (!conversation) {
+    return { success: false, error: 'Conversation not found' };
+  }
+
+  // Idempotent — one escalation per conversation.
+  if (conversation.takenOverByHuman) {
+    return { success: true, data: { escalated: false } };
+  }
+
+  await prisma.conversation.update({
+    where: { id: ctx.conversationId },
+    data: { takenOverByHuman: true, escalatedAt: new Date() },
+  });
+
+  const customer = await prisma.customer.findUnique({
+    where: { id: ctx.customerId },
+    select: { name: true, phone: true },
+  });
+
+  try {
+    await prisma.notification.create({
+      data: {
+        merchantId: ctx.merchantId,
+        type: 'escalation',
+        title: 'Conversation escaladée',
+        message: `Le client ${customer?.name || customer?.phone || 'inconnu'} a été transféré à un humain.`,
+        link: '/dashboard/escalations',
+      },
+    });
+  } catch (err) {
+    console.error('[tools] Failed to create escalation notification:', err);
+  }
+
+  return { success: true, data: { escalated: true } };
+};
+
+// Read tools have no business side-effects (orders/customer/takeover untouched;
+// conversation navigation state/memory is fine). They are suppressed while a
+// human owns the conversation.
+export const readToolRegistry: Record<ReadToolName, ToolHandler> = {
   searchProducts,
   recallPreviousProducts,
   chooseProduct,
   getProductDetails,
+  suggestProducts,
+  calculateShipping,
+  getOrderStatus,
+};
+
+// Write tools mutate business data (order lifecycle, customer profile, takeover
+// flag). They execute even while a human owns the conversation.
+export const writeToolRegistry: Record<WriteToolName, ToolHandler> = {
   createOrder,
   confirmOrder,
   modifyOrder,
   cancelOrder,
-  calculateShipping,
-  getOrderStatus,
-  createSupportTicket: notImplemented,
+  escalateConversation,
+};
+
+// Combined registry — the union of the two policy groups. `Record<ToolName,
+// ToolHandler>` (plus a test) enforces that every tool lands in exactly one.
+export const toolRegistry: Record<ToolName, ToolHandler> = {
+  ...readToolRegistry,
+  ...writeToolRegistry,
 };
 
 export const executeTool = async (

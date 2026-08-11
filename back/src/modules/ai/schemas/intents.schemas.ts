@@ -8,6 +8,7 @@ export const IntentSchema = z.enum([
   'PRODUCT_SEARCH',
   'PRODUCT_SELECT',
   'PRODUCT_DETAILS',
+  'PRODUCT_SUGGEST',
   // Order lifecycle
   'ORDER_CREATE',
   'ORDER_CONFIRM',
@@ -35,22 +36,75 @@ export const ConversationActSchema = z.enum([
 ]);
 export type ConversationAct = z.infer<typeof ConversationActSchema>;
 
+// ─── Suggested intent field ─────────────────────────────────────────────
+// When the LLM can't map a request to a covered intent, it may propose a new
+// one. It is flagged with `suggested: true` and carries a canonical name +
+// short description. These are persisted (with a count) in SuggestedIntent.
+export const SuggestedIntentFieldSchema = z.object({
+  suggested: z.literal(true),
+  name: z.string().min(1).max(60),
+  description: z.string().min(1).max(200),
+});
+export type SuggestedIntentField = z.infer<typeof SuggestedIntentFieldSchema>;
+
+// A single intent field is either a covered intent (enum) or a suggested one.
+export const IntentFieldSchema = z.union([IntentSchema, SuggestedIntentFieldSchema]);
+export type IntentField = z.infer<typeof IntentFieldSchema>;
+
+export function isSuggestedIntent(
+  intent: IntentField
+): intent is SuggestedIntentField {
+  return typeof intent !== 'string' && intent.suggested === true;
+}
+
+export function intentToString(intent: IntentField): string {
+  return isSuggestedIntent(intent) ? `SUGGESTED:${intent.name}` : intent;
+}
+
 // ─── Tool names ──────────────────────────────────────────────────────────
-// Must match the keys registered in tools/registry.ts exactly.
-export const ToolNameSchema = z.enum([
+// Must match the keys registered in tools/registry.ts exactly. Each tool has
+// an explicit execution policy:
+//
+//   READ  — no business side-effects (orders, customer, takeover are untouched;
+//           conversation navigation state/memory is fine). Suppressed while a
+//           human owns the conversation.
+//   WRITE — mutates business data (order lifecycle, customer profile, takeover
+//           flag). Executed even while a human owns the conversation.
+//
+// ToolNameSchema is the union of both; a tool must appear in exactly one of
+// the two enums (enforced by the registry typing + a test).
+export const ReadToolNameSchema = z.enum([
   'searchProducts',
   'recallPreviousProducts',
   'chooseProduct',
   'getProductDetails',
+  'suggestProducts',
+  'calculateShipping',
+  'getOrderStatus',
+]);
+export type ReadToolName = z.infer<typeof ReadToolNameSchema>;
+
+export const WriteToolNameSchema = z.enum([
   'createOrder',
   'confirmOrder',
   'modifyOrder',
   'cancelOrder',
-  'calculateShipping',
-  'getOrderStatus',
-  'createSupportTicket',
+  'escalateConversation',
 ]);
+export type WriteToolName = z.infer<typeof WriteToolNameSchema>;
+
+export const ToolNameSchema = z.union([ReadToolNameSchema, WriteToolNameSchema]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
+
+/** Type guard: whether a tool is classified as READ (no business side-effects). */
+export function isReadTool(name: ToolName): name is ReadToolName {
+  return ReadToolNameSchema.safeParse(name).success;
+}
+
+/** Type guard: whether a tool is classified as WRITE (mutates business data). */
+export function isWriteTool(name: ToolName): name is WriteToolName {
+  return WriteToolNameSchema.safeParse(name).success;
+}
 
 // ─── Intent → Tool mapping ──────────────────────────────────────────────
 // Deterministic lookup — tool resolution is never guessed by the LLM.
@@ -60,16 +114,20 @@ export type ToolName = z.infer<typeof ToolNameSchema>;
 const INTENT_TOOL_MAP: Partial<Record<Intent, ToolName>> = {
   PRODUCT_SELECT: 'chooseProduct',
   PRODUCT_DETAILS: 'getProductDetails',
+  PRODUCT_SUGGEST: 'suggestProducts',
   ORDER_CREATE: 'createOrder',
   ORDER_CONFIRM: 'confirmOrder',
   ORDER_MODIFY: 'modifyOrder',
   ORDER_CANCEL: 'cancelOrder',
   SHIPPING_CHECK: 'calculateShipping',
   STATUS_CHECK: 'getOrderStatus',
-  ESCALATION: 'createSupportTicket',
+  ESCALATION: 'escalateConversation',
 };
 
-export function resolveTool(intent: Intent, entities: Record<string, unknown>): ToolName | null {
+export function resolveTool(intent: IntentField, entities: Record<string, unknown>): ToolName | null {
+  if (isSuggestedIntent(intent)) {
+    return null;
+  }
   if (intent === 'PRODUCT_SEARCH') {
     return entities.product ? 'searchProducts' : 'recallPreviousProducts';
   }
@@ -95,6 +153,15 @@ export const ChooseProductArgsSchema = z.object({
 
 export const GetProductDetailsArgsSchema = z.object({
   productName: z.string().min(1).optional(),
+});
+
+export const SuggestProductsArgsSchema = z.object({
+  category: z.string().min(1).optional(),
+  color: z.string().min(1).optional(),
+  size: z.string().min(1).optional(),
+  minPrice: z.number().min(0).optional(),
+  maxPrice: z.number().min(0).optional(),
+  preferences: z.string().min(1).optional(),
 });
 
 export const CreateOrderArgsSchema = z.object({

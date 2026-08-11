@@ -232,6 +232,10 @@ model Message {
 
   confidence Float?
 
+  parsedIntents Json?
+
+  toolResults Json?
+  
   createdAt DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -356,4 +360,15 @@ model Commune {
   @@unique([name, wilaya])
   @@index([wilaya])
   @@index([name])
+}
+
+model SuggestedIntent {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  count       Int      @default(1)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([count(sort: Desc)])
 }

@@ -1,5 +1,5 @@
 import prisma from "../../config/db.config";
-import type { Prisma } from "@prisma/client";
+import type { ConversationStatus, Prisma } from "@prisma/client";
 
 export const conversationService = {
   getByPhone: async (merchantId: string, phone: string) => {
@@ -143,7 +143,7 @@ export const conversationService = {
     const { merchantId, status, search, limit = 20, offset = 0 } = params;
 
     const where: Prisma.ConversationWhereInput = { merchantId };
-    if (status) where.status = status;
+    if (status) where.status = status as ConversationStatus;
     if (search) {
       where.customer = {
         OR: [

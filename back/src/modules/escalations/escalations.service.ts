@@ -24,7 +24,7 @@ export const getEscalations = async (
   const where: any = {
     merchantId,
     escalatedAt: { not: null },
-    status: { not: "resolved" },
+    status: { not: "RESOLVED" },
   };
 
   let cursorWhere = {};
@@ -43,15 +43,18 @@ export const getEscalations = async (
     };
   }
 
-  const conversations = await prisma.conversation.findMany({
-    where: { ...where, ...cursorWhere },
-    include: {
-      customer: true,
-      messages: { orderBy: { createdAt: "desc" }, take: 1 },
-    },
-    orderBy: [{ escalatedAt: "desc" }, { id: "desc" }],
-    take: limit + 1,
-  });
+  const [conversations, total] = await Promise.all([
+    prisma.conversation.findMany({
+      where: { ...where, ...cursorWhere },
+      include: {
+        customer: true,
+        messages: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+      orderBy: [{ escalatedAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+    }),
+    prisma.conversation.count({ where }),
+  ]);
 
   const hasNextPage = conversations.length > limit;
   if (hasNextPage) conversations.pop();
@@ -68,10 +71,12 @@ export const getEscalations = async (
   return {
     data: conversations,
     pagination: {
+      total,
       hasNextPage,
       hasPrevPage: !!cursor,
       nextCursor,
       prevCursor,
+
     },
   };
 };
@@ -84,7 +89,7 @@ export const resolveEscalation = async (conversationId: string, merchantId: stri
 
   return prisma.conversation.update({
     where: { id: conversationId },
-    data: { status: "resolved" },
+    data: { status: "RESOLVED" },
   });
 };
 
@@ -93,8 +98,8 @@ export const resolveAllEscalations = async (merchantId: string) => {
     where: {
       merchantId,
       escalatedAt: { not: null },
-      status: { not: "resolved" },
+      status: { not: "RESOLVED" },
     },
-    data: { status: "resolved" },
+    data: { status: "RESOLVED" },
   });
 };

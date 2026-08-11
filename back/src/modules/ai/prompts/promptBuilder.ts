@@ -21,19 +21,37 @@ export interface AgentContext {
   allowedIntents: string[];
   allowedTools: string[];
   memory: ConversationMemory;
+  knownSuggestedIntents?: Array<{ name: string; description: string | null }>;
+  lastAssistantMessage?: string | null;
 }
 
 export function buildIntentPrompt(ctx: AgentContext): string {
   const sections = [
     INTENT_EXTRACTION_RULES,
     '',
-    `Current conversation state: ${ctx.state}`,
+    // Conversation state is context, not a decision. Short follow-ups are
+    // interpreted against the last assistant message (below) and the memory,
+    // never against the raw state alone.
+    `Current conversation state (context only, not a decision): ${ctx.state}`,
     `Allowed intents right now: ${ctx.allowedIntents.join(', ')}`,
     `Allowed tools right now: ${ctx.allowedTools.length ? ctx.allowedTools.join(', ') : 'none'}`,
-    '',
-    'Context (memory):',
-    JSON.stringify(ctx.memory, null, 2),
   ];
+
+  if (ctx.lastAssistantMessage) {
+    sections.push(
+      '',
+      `Last assistant message (what the customer is reacting to): "${ctx.lastAssistantMessage}"`,
+    );
+  }
+
+  if (ctx.knownSuggestedIntents?.length) {
+    const list = ctx.knownSuggestedIntents
+      .map(s => `  ${s.name} (suggested) — ${s.description ?? ''}`)
+      .join('\n');
+    sections.push('', 'Previously suggested intents (reuse these names if they match):', list);
+  }
+
+  sections.push('', 'Context (memory):', JSON.stringify(ctx.memory, null, 2));
 
   if (ctx.memory.lastProductResults?.length) {
     const list = ctx.memory.lastProductResults
@@ -52,8 +70,8 @@ export function buildIntentPrompt(ctx: AgentContext): string {
 export interface IntentContext {
   intent: string;
   entities: Record<string, string | number | boolean | null>;
-  toolResult: ToolResult | null;
-  memory: ConversationMemory;
+  toolResult?: ToolResult | null;
+  memory?: ConversationMemory;
   tone?: string;
   language?: string;
   status: string;
@@ -65,6 +83,8 @@ export interface ReplyContext {
   conversationAct: string;
   toolResults: Array<{ intent: string; result: ToolResult | null }>;
   memory: ConversationMemory;
+  tone?: string;
+  language?: string;
 }
 
 export function buildReplyPrompt(ctx: ReplyContext): string {
@@ -73,6 +93,25 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
   for (const tr of ctx.toolResults) {
     if (!tr.result) {
       toolSections.push(`[${tr.intent}] No tool was needed for this intent.`);
+    } else if (tr.result.outcome === 'NOT_FOUND') {
+      // Definitive absence — the item does not exist. Never ask for more
+      // details, never suggest alternatives, and never imply it might be
+      // available later.
+      toolSections.push(
+        `[${tr.intent}] NOT_FOUND: ${tr.result.error} ` +
+        `This is definitive — the item does not exist in the store. Tell the customer directly that it is not available. ` +
+        `Do NOT ask follow-up questions about it, do NOT suggest alternative or similar products unless the customer explicitly asked for recommendations, ` +
+        `do NOT imply it might be in stock later, and do NOT search again for the same product.`,
+      );
+    } else if (tr.result.outcome === 'AMBIGUOUS') {
+      // Insufficient info — we can't say "not available", we need to know WHAT.
+      // This should only fire when neither the message nor the conversation
+      // memory could resolve the reference.
+      toolSections.push(
+        `[${tr.intent}] AMBIGUOUS: ${tr.result.error} ` +
+        `The reference could not be resolved from the message or from products already discussed in this conversation. ` +
+        `Ask the customer which product (name, color, or model) they mean. Do NOT tell them the product is unavailable.`,
+      );
     } else if (tr.result.success) {
       const sanitized = stripInternalIds(tr.result.data);
       toolSections.push(`[${tr.intent}] Result:\n${JSON.stringify(sanitized, null, 2)}`);
@@ -110,19 +149,7 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     }
   }
 
-  lines.push('');
-  lines.push(`Customer intent: ${ctx.intent}`);
-  lines.push(`Conversation tone: ${ctx.conversationAct}`);
-  lines.push('Extracted entities:');
-  lines.push(JSON.stringify(ctx.entities, null, 2));
-  lines.push('');
-  lines.push(toolSection);
-  lines.push('');
-  lines.push('Context (memory):');
-  lines.push(JSON.stringify(ctx.memory, null, 2));
-
-  return lines.join('\n');
-  // Build intents summary
+  // Intents summary (in execution order)
   const intentLines = ctx.intents.map(item => {
     let line = `  - ${item.intent} (status: ${item.status})`;
     if (item.candidates?.length) {
@@ -135,8 +162,7 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     ? toolSections.join('\n\n')
     : 'No tool was called for this message — do not state facts you do not have.';
 
-  return [
-    REPLY_GENERATION_RULES,
+  lines.push(
     '',
     'Customer intents (in execution order):',
     intentLines.join('\n'),
@@ -148,5 +174,7 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     '',
     'Context (memory):',
     JSON.stringify(ctx.memory, null, 2),
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }

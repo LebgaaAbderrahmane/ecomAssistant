@@ -10,6 +10,7 @@ import { conversationService } from "./conversation.service";
 import { notificationService } from "./notification.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import { enqueueMessageJob } from "../../queues/message.queue";
+import { cancelPendingLayer2Jobs } from "../../queues/layer2.queue";
 import { transcribeAudio } from "../ai/media/transcription.service";
 import { captionImage } from "../ai/media/imageCaption.service";
 
@@ -52,7 +53,7 @@ function mapWaType(type: string): string {
   return map[type] || "text";
 }
 
-const WEBHOOK_EVENTS = ["message.received", "session.status"];
+const WEBHOOK_EVENTS = ["message.received", "message.sent", "session.status"];
 
 function verifyHmac(payload: string, signatureHeader: string): boolean {
   if (!config.openwaWebhookSecret) return false;
@@ -112,10 +113,11 @@ export async function handleWebhook(
           return res.status(200).json({ status: "ignored" });
         }
 
-        let conversation = await conversationService.getByPhone(
-          waSession.merchantId,
-          phone,
-        );
+        let conversation: Awaited<ReturnType<typeof conversationService.findOrCreateByCustomer>> | null =
+          await conversationService.getByPhone(
+            waSession.merchantId,
+            phone,
+          );
         if (!conversation) {
           const customer = await prisma.customer.findFirst({
             where: {
@@ -265,9 +267,6 @@ export async function handleWebhook(
           try {
             const remote = await openwaService.getSession(sessionId);
             if (remote.phone && waSession?.phoneNumber !== remote.phone) {
-              await prisma.whatsAppSession.update({
-            const session = await openwaService.getSession(sessionId);
-            if (waSession?.phoneNumber !== session.name) {
               await prisma.whatsAppSession.updateMany({
                 where: { sessionId },
                 data: { phoneNumber: remote.phone },
@@ -304,6 +303,36 @@ export async function handleWebhook(
         }
 
         return res.status(200).json({ status: "ok" });
+      }
+
+      case "message.sent": {
+        const phone = extractPhone(data.to as string);
+        console.log(`[WhatsApp] Message sent by merchant to=${phone}`);
+
+        const waSession = await prisma.whatsAppSession.findUnique({
+          where: { sessionId },
+        });
+        if (!waSession) {
+          console.log(`[WhatsApp] No WhatsAppSession for sessionId=${sessionId}, ignoring`);
+          return res.status(200).json({ status: "ignored" });
+        }
+
+        const conversation = await conversationService.getByPhone(
+          waSession.merchantId,
+          phone,
+        );
+        if (!conversation) {
+          console.log(`[WhatsApp] message.sent: no conversation for phone=${phone}, ignoring`);
+          return res.status(200).json({ status: "ignored" });
+        }
+
+        // The merchant replied manually — whatever the AI had queued to say is
+        // now stale. Drop the deferred layer-2 job so the AI stays silent.
+        const cancelled = await cancelPendingLayer2Jobs(conversation.id);
+        if (cancelled > 0) {
+          console.log(`[WhatsApp] message.sent cancelled ${cancelled} pending layer-2 job(s) for conversation ${conversation.id}`);
+        }
+        return res.status(200).json({ status: "ok", cancelled });
       }
 
       default:
