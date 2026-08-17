@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>AGENTS.md</title>
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+    
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+html,footer,header{
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Custom MD PDF CSS
+ */
+html,footer,header{
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+
+ }
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+<link rel="stylesheet" href="file:///home/moumen/Desktop/ecomAssistant/R%3A%5C2.Travail%5C1.Enseignement%5CCours%5C_1.Outils%5C2.Developpement%5C1.SCSS%5Cmain.css" type="text/css"><link rel="stylesheet" href="file:///home/moumen/Desktop/ecomAssistant/D%3A%5Crdaros%5CCours%5C_1.Outils%5C2.Developpement%5C1.SCSS%5Cmain.css" type="text/css">
+</head>
+
+<body>
+    <p>You are a senior backend engineer and software architect working on the EcomAssistant codebase.</p>
+<p>I want to refactor the current agent business logic and architecture to the architecture defined in:</p>
+<p><strong><code>Conversation_Orchestration_Flow_v11.md</code></strong></p>
+<p>This file is the <strong>source of truth and the approved target architecture</strong>. I already reviewed and approved it. Do not redesign it, replace it with another architecture, or continuously propose alternatives. Your job is to determine how to implement it correctly in the existing codebase.</p>
+<h2 id="your-first-task-plan-only">Your first task: PLAN ONLY</h2>
+<p>Do NOT modify code yet.</p>
+<p>First inspect the entire relevant codebase and produce a detailed, realistic implementation plan for migrating the current system to the architecture defined in <code>Conversation_Orchestration_Flow_v11.md</code>.</p>
+<p>The plan must be designed around this constraint:</p>
+<p><strong>7 days × approximately 12 hours/day = 84 hours total.</strong></p>
+<p>I need the first version finished within one week.</p>
+<hr>
+<h2 id="main-objectives">Main objectives</h2>
+<p>The resulting V1 must be:</p>
+<ul>
+<li>Production-ready from a code-quality and reliability perspective.</li>
+<li>Correct under concurrency.</li>
+<li>Safe under retries and duplicate processing.</li>
+<li>Properly handling failures.</li>
+<li>Properly tested.</li>
+<li>Observable and debuggable.</li>
+<li>Maintainable by a single developer.</li>
+<li>Simple enough to realistically finish in one week.</li>
+<li>A strong foundation for V2.</li>
+<li>Senior-level code rather than quick MVP-quality code.</li>
+</ul>
+<p>V1 does NOT need every advanced V2 feature.</p>
+<p>Prioritize <strong>correctness, reliability, simplicity, and a clean foundation</strong> over feature quantity.</p>
+<hr>
+<h1 id="1-inspect-before-planning">1. Inspect before planning</h1>
+<p>Before creating the plan, inspect the existing implementation thoroughly.</p>
+<p>Understand at minimum:</p>
+<ul>
+<li>Project structure</li>
+<li>Agent/business logic</li>
+<li>Message ingestion</li>
+<li>Message persistence</li>
+<li>Message processing</li>
+<li>Layer 1</li>
+<li>Layer 2</li>
+<li>Conversation state</li>
+<li>Conversation memory</li>
+<li>Flow logic</li>
+<li>Flow resolver</li>
+<li>Tool execution</li>
+<li>Human takeover</li>
+<li>BullMQ queues</li>
+<li>Redis usage</li>
+<li>Workers</li>
+<li>Database/Prisma schema</li>
+<li>External integrations</li>
+<li>LLM integration</li>
+<li>Error handling</li>
+<li>Retry handling</li>
+<li>Existing tests</li>
+<li>Logging</li>
+<li>Configuration</li>
+<li>Existing concurrency mechanisms</li>
+</ul>
+<p>Do not assume the current implementation matches the documentation.</p>
+<p>Identify what actually exists in code.</p>
+<hr>
+<h1 id="2-current-%E2%86%92-target-migration-analysis">2. Current → target migration analysis</h1>
+<p>Using <code>Conversation_Orchestration_Flow_v11.md</code> as the target, determine:</p>
+<ul>
+<li>What can be reused.</li>
+<li>What must be refactored.</li>
+<li>What must be rewritten.</li>
+<li>What must be deleted.</li>
+<li>What should be moved.</li>
+<li>What should be split into smaller modules.</li>
+<li>What existing code violates the target architecture.</li>
+<li>What existing code is already compatible.</li>
+</ul>
+<p>For every major change, explain:</p>
+<p><strong>Current implementation → required implementation → reason</strong></p>
+<p>Avoid unnecessary refactoring unrelated to the target architecture.</p>
+<hr>
+<h1 id="3-define-implementation-boundaries">3. Define implementation boundaries</h1>
+<p>For every major component, identify its responsibility and boundaries.</p>
+<p>Pay particular attention to avoiding:</p>
+<ul>
+<li>God services</li>
+<li>Giant orchestration functions</li>
+<li>Business logic inside queue workers</li>
+<li>Business logic inside controllers</li>
+<li>Database logic scattered everywhere</li>
+<li>Hidden state mutations</li>
+<li>Duplicate business rules</li>
+<li>Infrastructure concerns leaking into domain logic</li>
+<li>LLM logic controlling state transitions directly</li>
+<li>Tools performing orchestration responsibilities</li>
+</ul>
+<p>The final architecture should have clear, testable boundaries.</p>
+<hr>
+<h1 id="4-database-and-persistence-review">4. Database and persistence review</h1>
+<p>Inspect the existing Prisma schema and determine exactly what changes are required.</p>
+<p>For every proposed database change explain:</p>
+<ul>
+<li>Why it is required.</li>
+<li>Who writes it.</li>
+<li>Who reads it.</li>
+<li>Its lifecycle.</li>
+<li>Its invariant.</li>
+<li>Whether it requires an index or constraint.</li>
+<li>Whether it can be avoided.</li>
+</ul>
+<p>Do not add persistence just because information &quot;might be useful later.&quot;</p>
+<p>Every persisted field should have a concrete V1 purpose.</p>
+<p>Also identify:</p>
+<ul>
+<li>Required migrations.</li>
+<li>Existing fields that should be removed.</li>
+<li>Existing fields that should be renamed.</li>
+<li>Existing fields whose semantics need to change.</li>
+<li>Potential migration/data compatibility issues.</li>
+</ul>
+<hr>
+<h1 id="5-concurrency-correctness">5. Concurrency correctness</h1>
+<p>Treat concurrency as a first-class requirement.</p>
+<p>Analyze all possible races involving:</p>
+<ul>
+<li>Customer messages.</li>
+<li>Merchant messages.</li>
+<li>Layer 1.</li>
+<li>Layer 2.</li>
+<li>Delayed jobs.</li>
+<li>Multiple workers.</li>
+<li>Retries.</li>
+<li>Human takeover.</li>
+<li>Stale recovery.</li>
+<li>Queue cancellation.</li>
+<li>Conversation state updates.</li>
+<li>Memory updates.</li>
+<li>Tool execution.</li>
+</ul>
+<p>For every concurrency mechanism in the target architecture, explain how it should map to the existing implementation.</p>
+<p>Identify possible TOCTOU problems.</p>
+<p>Explicitly identify:</p>
+<ul>
+<li>What must be atomic.</li>
+<li>What must happen inside transactions.</li>
+<li>What must happen under the conversation lock.</li>
+<li>What can happen outside the lock.</li>
+<li>What must be idempotent.</li>
+<li>What requires generation/version checking.</li>
+</ul>
+<p>Do not claim the system is concurrency-safe merely because it uses a lock.</p>
+<hr>
+<h1 id="6-error-handling">6. Error handling</h1>
+<p>Design a complete V1 error-handling strategy.</p>
+<p>Inspect every major external and internal failure point:</p>
+<ul>
+<li>PostgreSQL</li>
+<li>Prisma</li>
+<li>Redis</li>
+<li>BullMQ</li>
+<li>LLM API</li>
+<li>LLM malformed output</li>
+<li>Tool failures</li>
+<li>Shopify API</li>
+<li>WhatsApp/OpenWA</li>
+<li>Network failures</li>
+<li>Timeouts</li>
+<li>Lock acquisition failures</li>
+<li>Lock lease expiration</li>
+<li>Worker crashes</li>
+<li>Process crashes</li>
+<li>Transaction failures</li>
+<li>Message-send failures</li>
+</ul>
+<p>For each important failure determine:</p>
+<ul>
+<li>Should it retry?</li>
+<li>How many times?</li>
+<li>What backoff?</li>
+<li>Is retry safe?</li>
+<li>Does it require idempotency?</li>
+<li>What database state should remain?</li>
+<li>What happens if the process crashes at that exact point?</li>
+<li>How is the failure recovered?</li>
+<li>What should be logged?</li>
+<li>What should the customer experience?</li>
+</ul>
+<p>Do not use retries as a substitute for idempotency.</p>
+<hr>
+<h1 id="7-idempotency-and-recovery">7. Idempotency and recovery</h1>
+<p>Inspect every operation that can be executed more than once.</p>
+<p>Identify where idempotency is required for:</p>
+<ul>
+<li>Incoming messages</li>
+<li>Queue jobs</li>
+<li>Layer 2</li>
+<li>Tool calls</li>
+<li>Order creation</li>
+<li>Merchant engagement</li>
+<li>Delayed jobs</li>
+<li>Retry attempts</li>
+<li>Response sending</li>
+<li>Recovery jobs</li>
+</ul>
+<p>For each one explain the exact protection mechanism.</p>
+<p>Be especially careful with non-idempotent operations.</p>
+<hr>
+<h1 id="8-queue-and-worker-review">8. Queue and worker review</h1>
+<p>Inspect the existing BullMQ architecture.</p>
+<p>Determine:</p>
+<ul>
+<li>Which queues exist.</li>
+<li>Which jobs exist.</li>
+<li>Which jobs need to change.</li>
+<li>Which jobs should be removed.</li>
+<li>Job payloads.</li>
+<li>Job IDs.</li>
+<li>Retry configuration.</li>
+<li>Backoff.</li>
+<li>Delays.</li>
+<li>Cancellation.</li>
+<li>Deduplication.</li>
+<li>Worker responsibilities.</li>
+<li>Failure behavior.</li>
+</ul>
+<p>Do not put business correctness solely in BullMQ.</p>
+<p>Queue behavior must work together with database state, idempotency, locks, and generation/version checks defined by the target architecture.</p>
+<hr>
+<h1 id="9-llm-boundaries">9. LLM boundaries</h1>
+<p>Inspect the current Layer 1 and Layer 2 implementation.</p>
+<p>Determine whether responsibilities are correctly separated.</p>
+<p>Identify:</p>
+<ul>
+<li>Prompt responsibilities.</li>
+<li>Input construction.</li>
+<li>Output parsing.</li>
+<li>Validation.</li>
+<li>Error handling.</li>
+<li>Tool selection.</li>
+<li>Business-state mutations.</li>
+<li>LLM-generated state.</li>
+<li>Deterministic business rules.</li>
+</ul>
+<p>LLMs should not be trusted to enforce business invariants that can be enforced deterministically in code.</p>
+<p>Identify where validation and guards are required.</p>
+<hr>
+<h1 id="10-flowbusiness-logic-review">10. Flow/business logic review</h1>
+<p>Inspect the existing business flows and determine how they need to change.</p>
+<p>For every flow identify:</p>
+<ul>
+<li>Input.</li>
+<li>Output.</li>
+<li>State requirements.</li>
+<li>Required memory.</li>
+<li>Tools used.</li>
+<li>Side effects.</li>
+<li>Failure behavior.</li>
+<li>Retry behavior.</li>
+<li>Idempotency requirements.</li>
+<li>Tests.</li>
+</ul>
+<p>Keep business rules explicit and deterministic wherever possible.</p>
+<hr>
+<h1 id="11-testing-strategy">11. Testing strategy</h1>
+<p>Testing must happen <strong>after every small meaningful change</strong>, not only at the end.</p>
+<p>The implementation plan must follow this pattern:</p>
+<pre class="hljs"><code><div>Small change
+    ↓
+Implement
+    ↓
+Unit tests
+    ↓
+Integration tests when required
+    ↓
+Concurrency test when relevant
+    ↓
+Run existing suite
+    ↓
+Typecheck
+    ↓
+Lint
+    ↓
+Build
+    ↓
+Continue
+</div></code></pre>
+<p>The final V1 must have strong coverage of business-critical behavior.</p>
+<p>Prioritize tests for:</p>
+<h3 id="business-logic">Business logic</h3>
+<ul>
+<li>State transitions</li>
+<li>Flow resolution</li>
+<li>Guards</li>
+<li>Intent handling</li>
+<li>Memory behavior</li>
+<li>Tool execution</li>
+</ul>
+<h3 id="message-processing">Message processing</h3>
+<ul>
+<li>Duplicate messages</li>
+<li>Concurrent delivery</li>
+<li>Failed processing</li>
+<li>Retry</li>
+<li>Already processed messages</li>
+</ul>
+<h3 id="layer-2">Layer 2</h3>
+<ul>
+<li>Normal execution</li>
+<li>Deferred execution</li>
+<li>Stale execution</li>
+<li>Generation changes</li>
+<li>Duplicate jobs</li>
+<li>Worker retries</li>
+</ul>
+<h3 id="merchant-interaction">Merchant interaction</h3>
+<ul>
+<li>Merchant reply while Layer 2 is waiting</li>
+<li>Merchant reply while Layer 2 is running</li>
+<li>Multiple merchant replies</li>
+<li>Customer/merchant race</li>
+<li>Delayed job cancellation</li>
+<li>Generation invalidation</li>
+</ul>
+<h3 id="locks">Locks</h3>
+<ul>
+<li>Contention</li>
+<li>Lease expiration</li>
+<li>Worker crash</li>
+<li>Lock release after failure</li>
+<li>Concurrent workers</li>
+</ul>
+<h3 id="recovery">Recovery</h3>
+<ul>
+<li>Stale jobs</li>
+<li>Failed jobs</li>
+<li>Worker crashes</li>
+<li>Recovery/sweep behavior</li>
+</ul>
+<h3 id="external-services">External services</h3>
+<ul>
+<li>Timeout</li>
+<li>Failure</li>
+<li>Retry</li>
+<li>Malformed response</li>
+</ul>
+<p>Do not chase arbitrary 100% coverage.</p>
+<p>Focus on <strong>high-value behavioral coverage and invariants</strong>.</p>
+<hr>
+<h1 id="12-observability">12. Observability</h1>
+<p>Make V1 debuggable in production.</p>
+<p>Inspect the existing logging and determine what needs to be added.</p>
+<p>Plan structured logs for important events such as:</p>
+<ul>
+<li>Message received</li>
+<li>Message claimed</li>
+<li>Layer 1 started/completed</li>
+<li>Layer 2 scheduled</li>
+<li>Layer 2 started</li>
+<li>Layer 2 aborted because generation is stale</li>
+<li>Lock acquired/released</li>
+<li>Lock contention</li>
+<li>Merchant engagement</li>
+<li>Job cancelled</li>
+<li>Retry</li>
+<li>Tool execution</li>
+<li>External API failure</li>
+<li>Response sent</li>
+<li>Response failed</li>
+<li>Recovery sweep</li>
+<li>Unexpected state</li>
+</ul>
+<p>Logs should contain useful identifiers such as:</p>
+<ul>
+<li>conversationId</li>
+<li>messageId</li>
+<li>jobId</li>
+<li>generation</li>
+<li>flowId</li>
+<li>tool name</li>
+</ul>
+<p>Avoid logging sensitive customer data unnecessarily.</p>
+<hr>
+<h1 id="13-code-quality">13. Code quality</h1>
+<p>The resulting implementation should be senior-level.</p>
+<p>Prioritize:</p>
+<ul>
+<li>Strong TypeScript typing.</li>
+<li>Explicit domain concepts.</li>
+<li>Small focused functions.</li>
+<li>Clear naming.</li>
+<li>Clear transaction boundaries.</li>
+<li>Clear lock boundaries.</li>
+<li>Clear side-effect boundaries.</li>
+<li>Deterministic business logic.</li>
+<li>Testable functions.</li>
+<li>Meaningful error types.</li>
+<li>Consistent logging.</li>
+<li>Minimal duplication.</li>
+<li>Simple abstractions.</li>
+</ul>
+<p>Avoid:</p>
+<ul>
+<li>Overengineering.</li>
+<li>Premature abstraction.</li>
+<li>Generic frameworks created for one use case.</li>
+<li>Huge classes.</li>
+<li>Huge functions.</li>
+<li>Deep nesting.</li>
+<li>Clever code.</li>
+<li>Unnecessary design patterns.</li>
+<li>V2 functionality disguised as V1 requirements.</li>
+</ul>
+<hr>
+<h1 id="14-seven-day-implementation-plan">14. Seven-day implementation plan</h1>
+<p>Create a realistic 7-day plan.</p>
+<p>For every day provide:</p>
+<ul>
+<li>Objective</li>
+<li>Exact tasks</li>
+<li>Expected code changes</li>
+<li>Expected schema changes</li>
+<li>Tests to implement</li>
+<li>Tests to run</li>
+<li>Validation steps</li>
+<li>Estimated hours</li>
+<li>Dependencies</li>
+<li>Definition of done for that day</li>
+</ul>
+<p>Do not spend all 12 hours/day implementing.</p>
+<p>Reserve time for:</p>
+<ul>
+<li>Testing</li>
+<li>Debugging</li>
+<li>Refactoring</li>
+<li>Integration testing</li>
+<li>Concurrency testing</li>
+<li>Stabilization</li>
+</ul>
+<p>The schedule must be realistic for one developer.</p>
+<hr>
+<h1 id="15-incremental-implementation-order">15. Incremental implementation order</h1>
+<p>Determine the safest implementation order based on the actual repository.</p>
+<p>Prefer small vertical steps rather than one giant refactor.</p>
+<p>Each step should leave the codebase in a buildable/testable state.</p>
+<p>For example:</p>
+<pre class="hljs"><code><div>Change
+→ tests
+→ validate
+→ commit/checkpoint
+→ next change
+</div></code></pre>
+<p>If a change is too large, break it into smaller migrations.</p>
+<p>Identify dependencies between changes.</p>
+<hr>
+<h1 id="16-risk-management">16. Risk management</h1>
+<p>Identify the highest-risk parts of the migration.</p>
+<p>For each risk provide:</p>
+<ul>
+<li>Why it is risky.</li>
+<li>Probability.</li>
+<li>Impact.</li>
+<li>How to test it.</li>
+<li>How to reduce the risk.</li>
+<li>What fallback exists.</li>
+</ul>
+<p>Pay particular attention to:</p>
+<ul>
+<li>Concurrency.</li>
+<li>Existing production behavior.</li>
+<li>Data migration.</li>
+<li>Queue migration.</li>
+<li>Message duplication.</li>
+<li>Tool side effects.</li>
+<li>External API failures.</li>
+<li>Lock behavior.</li>
+<li>Generation invalidation.</li>
+</ul>
+<hr>
+<h1 id="17-what-should-explicitly-not-be-done-in-v1">17. What should explicitly NOT be done in V1</h1>
+<p>Create a list of things that should be intentionally deferred to V2.</p>
+<p>Do not let the refactor expand indefinitely.</p>
+<p>If something is useful but not required for V1 correctness, reliability, or maintainability, classify it as a V2 candidate.</p>
+<hr>
+<h1 id="18-final-definition-of-done">18. Final definition of done</h1>
+<p>Define concrete acceptance criteria for V1.</p>
+<p>The criteria should cover:</p>
+<ul>
+<li>Architecture implemented according to <code>Conversation_Orchestration_Flow_v11.md</code></li>
+<li>Existing behavior preserved where appropriate</li>
+<li>Correct concurrency behavior</li>
+<li>Correct failure/retry behavior</li>
+<li>Idempotency</li>
+<li>Database consistency</li>
+<li>Queue correctness</li>
+<li>Error handling</li>
+<li>Tests</li>
+<li>Build/typecheck/lint</li>
+<li>Logging/observability</li>
+<li>No known P0/P1 bugs</li>
+<li>Documentation required for operating/debugging the system</li>
+</ul>
+<hr>
+<h1 id="final-instruction">Final instruction</h1>
+<p>Do not start coding yet.</p>
+<p>First inspect the repository and produce the complete plan.</p>
+<p>The plan should be <strong>specific to the actual codebase</strong>, not a generic software-engineering plan.</p>
+<p>Use the approved <code>Conversation_Orchestration_Flow_v11.md</code> as the target architecture.</p>
+<p>Your job is to answer:</p>
+<blockquote>
+<p><strong>&quot;How do we safely transform the current implementation into this architecture, in 7 days, while producing senior-level, production-ready V1 code that can serve as the foundation for V2?&quot;</strong></p>
+</blockquote>
+<p>Do not redesign the architecture.</p>
+<p>Do not add unnecessary features.</p>
+<p>Do not optimize prematurely.</p>
+<p>Do not sacrifice correctness for speed.</p>
+<p>But also do not overengineer V1.</p>
+<p><strong>Plan first. Wait for approval. Then implement incrementally, testing after every meaningful change.</strong></p>
+
+</body>
+
+</html>
