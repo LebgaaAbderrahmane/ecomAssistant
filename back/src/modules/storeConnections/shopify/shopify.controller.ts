@@ -7,6 +7,9 @@ import { sendOrderNotification } from "../../whatsapp/whatsapp.controller";
 import * as ordersService from "../../orders/orders.service";
 import * as productsService from "../../products/products.service";
 import prisma from "../../../config/db.config";
+import { moduleLogger } from "../../../lib/logger";
+
+const log = moduleLogger('shopify');
 const { APP_URL } = process.env;
 
 export async function authenticateShopify(
@@ -27,10 +30,10 @@ export async function authenticateShopify(
     );
 
     const installUrl = await connection.connect(shop);
-    console.log("Install URL:", installUrl);
+    log.info({ installUrl }, 'install URL');
     res.redirect(installUrl);
   } catch (err) {
-    console.error("Installation initiation error:", err);
+    log.error({ err }, 'installation initiation error');
     res.status(500).json({ error: "Failed to initiate installation" });
   }
 }
@@ -41,7 +44,7 @@ export async function handleOrderWebhook(
 ): Promise<void> {
   const hmac = req.headers["x-shopify-hmac-sha256"] as string;
   const shop = req.headers["x-shopify-shop-domain"] as string;
-  console.log("the order webhooks was called");
+  log.info('order webhook called');
 
   try {
     const rawBody: Buffer = (req as any).rawBody;
@@ -62,18 +65,18 @@ export async function handleOrderWebhook(
 
     const order = JSON.parse(rawBody.toString());
     const savedOrders = await connection.upsertOrders([order]);
-    console.log("New order saved:", order.id);
+    log.info({ orderId: order.id }, 'new order saved');
 
     for (const saved of savedOrders) {
       sendOrderNotification(saved).catch((err) => {
-        console.error("[Shopify] Order notification failed:", err);
+        log.error({ err }, 'order notification failed');
       });
       ordersService.emitOrderCreated({ merchantId: saved.merchantId, orderId: saved.id });
     }
 
     res.status(200).send("OK");
   } catch (err) {
-    console.error("Webhook processing error:", err);
+    log.error({ err }, 'webhook processing error');
     res.status(500).send("Error");
   }
 }
@@ -104,7 +107,7 @@ export async function handleProductWebhook(
 
     const product = JSON.parse(rawBody.toString());
     await productsService.upsertSingleProduct(storeConn.merchantId, product);
-    console.log("[Shopify] Product webhook processed:", product.id);
+    log.info({ productId: product.id }, 'product webhook processed');
 
     productsService.emitProductsSynced({
       merchantId: storeConn.merchantId,
@@ -113,7 +116,7 @@ export async function handleProductWebhook(
 
     res.status(200).send("OK");
   } catch (err) {
-    console.error("Product webhook processing error:", err);
+    log.error({ err }, 'product webhook processing error');
     res.status(500).send("Error");
   }
 }
@@ -128,7 +131,7 @@ export async function getShopInfo(
     const shopInfo = await connection.getShopInfo();
     res.json(shopInfo);
   } catch (err) {
-    console.error("Error fetching shop info:", err);
+    log.error({ err }, 'error fetching shop info');
     res.status(500).json({ error: "Failed to fetch shop info" });
   }
 }
@@ -143,7 +146,7 @@ export async function listWebhooks(
     const webhooks = await connection.listWebhooks();
     res.json(webhooks);
   } catch (err) {
-    console.error("Error listing webhooks:", err);
+    log.error({ err }, 'error listing webhooks');
     res.status(500).json({ error: "Failed to list webhooks" });
   }
 }
@@ -158,7 +161,7 @@ export async function reRegisterWebhooks(
     await connection.registerWebhooks();
     res.json({ success: true, message: "Webhooks re-registered" });
   } catch (err) {
-    console.error("Error re-registering webhooks:", err);
+    log.error({ err }, 'error re-registering webhooks');
     res.status(500).json({ error: "Failed to re-register webhooks" });
   }
 }
@@ -179,7 +182,7 @@ export async function getStoreSettings(
     }
     res.json(storeConn.shopifyConnection);
   } catch (err) {
-    console.error("Error fetching store settings:", err);
+    log.error({ err }, 'error fetching store settings');
     res.status(500).json({ error: "Failed to fetch store settings" });
   }
 }
@@ -202,7 +205,7 @@ export async function updateStoreSettings(
     await connection.updateSettings({ currency, defaultOrderStatus });
     res.json({ success: true });
   } catch (err) {
-    console.error("Error updating store settings:", err);
+    log.error({ err }, 'error updating store settings');
     res.status(500).json({ error: "Failed to update store settings" });
   }
 }
@@ -217,7 +220,7 @@ export async function disconnect(
     await shopifyService.disconnectStore(merchantId);
     res.status(200).json({ success: true });
   } catch (err) {
-    console.error("Disconnect error:", err);
+    log.error({ err }, 'disconnect error');
     res.status(500).json({ error: "Failed to disconnect store." });
   }
 }
@@ -260,23 +263,23 @@ export async function callBack(req: Request, res: Response): Promise<void> {
     await connection
       .registerWebhooks()
       .catch((err) =>
-        console.error("[Shopify] Webhook registration failed:", err),
+        log.error({ err }, 'webhook registration failed'),
       );
 
     // Run syncs in the background
     connection
       .syncProducts()
       .catch((err) =>
-        console.error("[Shopify] Background product sync failed:", err),
+        log.error({ err }, 'background product sync failed'),
       );
 
     connection
       .syncOrders()
       .then((result) => {
-        console.log("[Shopify] Background order sync completed");
+        log.info('background order sync completed');
       })
       .catch((err) =>
-        console.error("[Shopify] Background order sync failed:", err),
+        log.error({ err }, 'background order sync failed'),
       );
 
     res.status(200).json({
@@ -286,7 +289,7 @@ export async function callBack(req: Request, res: Response): Promise<void> {
       shop,
     });
   } catch (err) {
-    console.error("Shopify OAuth error:", err);
+    log.error({ err }, 'OAuth error');
 
     res.status(500).json({
       success: false,
@@ -326,7 +329,7 @@ export async function syncStore(req: AuthenticatedRequest, res: Response): Promi
 
     res.status(statusCode).json(response);
   } catch (err) {
-    console.error("Sync error:", err);
+    log.error({ err }, 'sync error');
     res.status(500).json({ error: "Failed to sync store." });
   }
 }
@@ -341,7 +344,7 @@ export const syncOrders = async (
     const result = await shopifyService.syncShopifyOrders(merchantId);
     res.status(200).json(result);
   } catch (err) {
-    console.error("Manual order sync error:", err);
+    log.error({ err }, 'manual order sync error');
     res.status(500).json({ error: (err as Error).message });
   }
 };

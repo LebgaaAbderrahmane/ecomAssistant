@@ -2,6 +2,9 @@ import { Worker, Job } from "bullmq";
 import { redisConnection } from "../config";
 import { VerificationEmailJob } from "../queues/email.queue";
 import sgMail from "@sendgrid/mail";
+import { moduleLogger } from "../lib/logger";
+
+const log = moduleLogger('worker.email');
 
 if (!process.env.EMAIL_PROVIDER_API_KEY) {
   throw new Error("Email provider API key cannot be undefined!");
@@ -30,15 +33,9 @@ async function sendVerificationEmail(
       html: buildVerificationEmailHtml({ shopName, code }),
     });
 
-    console.log(
-      `[EmailWorker] Verification email sent to ${to}`,
-      result[0].statusCode
-    );
+    log.info({ to, statusCode: result[0].statusCode }, 'verification email sent');
   } catch (error: any) {
-    console.error(
-      `[EmailWorker] Failed sending email to ${to}`,
-      error.response?.body ?? error.message
-    );
+    log.error({ to, err: error.response?.body ?? error.message }, 'failed sending email');
     throw error;
   }
 }
@@ -57,15 +54,9 @@ async function sendResetPassword(job: Job<VerificationEmailJob>) {
       html: buildResetPasswordEmailHtml({ shopName, code }),
     });
 
-    console.log(
-      `[EmailWorker] Reset password email sent to ${to}`,
-      result[0].statusCode
-    );
+    log.info({ to, statusCode: result[0].statusCode }, 'reset password email sent');
   } catch (error: any) {
-    console.error(
-      `[EmailWorker] Failed sending reset password email to ${to}`,
-      error.response?.body ?? error.message
-    );
+    log.error({ to, err: error.response?.body ?? error.message }, 'failed sending reset password email');
     throw error;
   }
 }
@@ -242,15 +233,10 @@ export const emailWorker = new Worker<VerificationEmailJob>(
 
 
 emailWorker.on("completed", (job) => {
-  console.log(
-    `[EmailWorker] Job ${job.id} completed`
-  );
+  log.info({ jobId: job.id }, 'job completed');
 });
 
 
 emailWorker.on("failed", (job, err) => {
-  console.error(
-    `[EmailWorker] Job ${job?.id} failed:`,
-    err.message
-  );
+  log.error({ jobId: job?.id, err: err.message }, 'job failed');
 });

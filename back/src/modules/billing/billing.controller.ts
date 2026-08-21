@@ -2,9 +2,10 @@ import { Response, Request } from "express";
 import { billingService } from "./billing.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import type { BillingInput } from "../../validators/billing.validator";
+import { moduleLogger } from "../../lib/logger";
 
 export const connect = async (req: Request, res: Response) => {
-  console.log("[Payments] Webhook received:", req.body);
+  moduleLogger('billing').info('payment webhook received');
   res.sendStatus(200);
 };
 

@@ -2,6 +2,9 @@ import axios from 'axios'
 import { getWilayaCode } from '@ecomassistant/shared'
 import { AbstractDeliveryProvider } from './AbstractDeliveryProvider.js'
 import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery } from './types.js'
+import { moduleLogger } from '../../../lib/logger'
+
+const log = moduleLogger('delivery.noest')
 
 const BASE_URL = 'https://app.noest-dz.com'
 
@@ -72,7 +75,7 @@ export class NoestProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[NOEST] connect failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'connect failed')
       return false
     }
   }
@@ -129,7 +132,7 @@ export class NoestProvider extends AbstractDeliveryProvider {
       if (err?.message?.startsWith('NOEST:')) {
         throw err
       }
-      console.error(`[NOEST] createParcel failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'createParcel failed')
       throw new Error(data?.message || err?.message || 'NOEST API error')
     }
   }
@@ -163,7 +166,7 @@ export class NoestProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[NOEST] getTracking failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'getTracking failed')
       throw new Error(data?.message || err?.message || 'NOEST API error')
     }
   }
@@ -176,7 +179,7 @@ export class NoestProvider extends AbstractDeliveryProvider {
       const row = Array.isArray(data) ? data.find((f) => Number(f.wilaya_id) === wilayaId) : undefined
       return typeof row?.fees === 'number' ? (row.fees as number) : 0
     } catch (err: any) {
-      console.error(`[NOEST] getFee failed:`, err?.message || err)
+      log.error({ err: err?.message || err }, 'getFee failed')
       return 0
     }
   }

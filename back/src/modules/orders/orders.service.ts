@@ -3,6 +3,7 @@ import prisma  from '../../config/db.config';
 import { PaginatedResult } from '../../types/pagination.types';
 import { Order } from '@prisma/client';
 import { enqueueOrderJob } from '../../queues/order.queue';
+import { moduleLogger } from '../../lib/logger';
 import { FakeOrderInput } from '../../validators/order.validator';
 import eventBus from '../../events/eventBus';
 
@@ -146,7 +147,7 @@ export const ingestOrder = async (input: FakeOrderInput) => {
     where: { merchantId: input.merchantId, wilaya: { equals: input.wilaya, mode: 'insensitive' } },
   });
   if (!deliveryCost) {
-    console.warn(`[orders] no delivery cost configured for wilaya "${input.wilaya}" — defaulting to 0`);
+    moduleLogger('orders').warn({ wilaya: input.wilaya }, 'no delivery cost configured, defaulting to 0');
   }
   const deliveryCostValue = deliveryCost?.cost ?? 0;
   const totalAmount = product.price * input.quantity + deliveryCostValue;
@@ -172,7 +173,7 @@ export const ingestOrder = async (input: FakeOrderInput) => {
     });
   } catch (err: any) {
     if (err?.code === 'P2002') {
-      console.warn(`[orders] Order with platformOrderId "${platformOrderId}" already exists for merchant ${input.merchantId} — skipping duplicate`);
+      moduleLogger('orders').warn({ platformOrderId, merchantId: input.merchantId }, 'order already exists, skipping duplicate');
       const duplicateError: any = new Error(`Order with platformOrderId "${platformOrderId}" already exists`);
       duplicateError.status = 409;
       throw duplicateError;

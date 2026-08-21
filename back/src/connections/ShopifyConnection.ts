@@ -4,6 +4,7 @@ import prisma from "../config/db.config";
 import { OrderStatus } from "@prisma/client";
 import { redis } from "../config";
 import { decryptToken, encryptToken } from "../lib/crypto";
+import { moduleLogger } from "../lib/logger";
 import {
   AbstractStoreConnection,
   OrderDetails,
@@ -141,7 +142,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
 
     while (url) {
       const { data, headers: resHeaders } = await axios.get(url, { headers });
-      console.log("the products are: ", JSON.stringify(data.products, null, 2));
+      moduleLogger('shopify.conn').debug('products fetched');
       await this.upsertProducts(data.products);
       url = this.extractNextPageUrl(resHeaders["link"]);
     }
@@ -159,11 +160,11 @@ export class ShopifyConnection extends AbstractStoreConnection {
       const { data, headers: resHeaders } = await axios.get(url, { headers });
       const orders = data.orders || [];
       totalCount += orders.length;
-      console.log(`[Shopify] Fetched ${orders.length} orders from Shopify`);
+      moduleLogger('shopify.conn').info({ count: orders.length }, 'fetched orders from Shopify');
       await this.upsertOrders(orders);
       url = this.extractNextPageUrl(resHeaders["link"]);
     }
-    console.log(`[Shopify] syncOrders completed — total fetched: ${totalCount}`);
+    moduleLogger('shopify.conn').info({ total: totalCount }, 'syncOrders completed');
   }
 
   // ─────────────────────────────────────────────
@@ -190,7 +191,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
         (w) => w.topic === topic && w.address === address,
       );
       if (already) {
-        console.log(`[Shopify] Webhook ${topic} already registered, skipping.`);
+        moduleLogger('shopify.conn').info({ topic }, 'webhook already registered, skipping');
         continue;
       }
       await axios.post(
@@ -198,7 +199,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
         { webhook: { topic, address, format: "json" } },
         { headers },
       );
-      console.log(`[Shopify] Registered webhook: ${topic}`);
+      moduleLogger('shopify.conn').info({ topic }, 'webhook registered');
     }
   }
 
@@ -363,7 +364,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
 
       const firstItem = o.line_items[0];
       if (!firstItem) {
-        console.log(`[Shopify] Skipping order ${o.id} — no line items`);
+        moduleLogger('shopify.conn').info({ orderId: o.id }, 'skipping order — no line items');
         continue;
       }
 
@@ -380,7 +381,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
       }
 
       if (!product) {
-        console.log(`[Shopify] Skipping order ${o.id} — no matching product for "${firstItem.title}" (product_id: ${firstItem.product_id})`);
+        moduleLogger('shopify.conn').info({ orderId: o.id, productTitle: firstItem.title, productId: firstItem.product_id }, 'skipping order — no matching product');
         continue;
       }
 
@@ -418,7 +419,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
         });
       } catch (err: any) {
         if (err?.code === 'P2002') {
-          console.warn(`[Shopify] Order #${o.id} already exists for merchant ${this.merchantId} — skipping duplicate`);
+          moduleLogger('shopify.conn').warn({ orderId: o.id, merchantId: this.merchantId }, 'order already exists, skipping duplicate');
           continue;
         }
         throw err;

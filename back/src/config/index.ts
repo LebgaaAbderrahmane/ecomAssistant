@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { ConnectionOptions } from "bullmq";
 import { createClient } from "redis";
+import { moduleLogger } from '../lib/logger';
 
 function env(key: string, fallback?: string): string {
   const value = process.env[key] ?? fallback;
@@ -43,9 +44,9 @@ export const redis = createClient({
 });
 
 redis.on("error", (err) => {
-  console.error("Redis error:", err);
+  moduleLogger('redis').error({ err }, 'redis error');
 });
 
 redis.connect()
-  .then(() => console.log("Redis connected"))
-  .catch((err) => console.error("Redis connection failed:", err));
+  .then(() => moduleLogger('redis').info('redis connected'))
+  .catch((err) => moduleLogger('redis').error({ err }, 'redis connection failed'));

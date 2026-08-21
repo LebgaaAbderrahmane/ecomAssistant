@@ -3,6 +3,7 @@ import { getOrders, bulkUpdateStatus, bulkHoldAgent, bulkUpdateTracking, listOrd
 import { GetOrdersQuery } from '../../validators/order.validator';
 import { AuthenticatedRequest } from '../../middlwares/auth.middlware';
 import { ingestOrder } from './orders.service';
+import { moduleLogger } from '../../lib/logger';
 
 
 export const listOrders = async (req: AuthenticatedRequest, res: Response) => {
@@ -79,7 +80,7 @@ export const getOrderIds = async (req: AuthenticatedRequest, res: Response) => {
     const result = await ingestOrder(order);
     return res.status(202).json(result);
   } catch (err: any) {
-    console.error('[orders] Failed to ingest order:', err.message || err);
+    moduleLogger('orders').error({ err: err.message || err }, 'failed to ingest order');
     return res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
   }
 };

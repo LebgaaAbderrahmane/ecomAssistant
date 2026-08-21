@@ -1,6 +1,9 @@
 import axios from 'axios'
 import { AbstractDeliveryProvider } from './AbstractDeliveryProvider.js'
 import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery } from './types.js'
+import { moduleLogger } from '../../../lib/logger'
+
+const log = moduleLogger('delivery.yalidine')
 
 const BASE_URL = 'https://api.yalidine.app/v1'
 
@@ -39,7 +42,7 @@ export class YalidineProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Yalidine] connect failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'connect failed')
       return false
     }
   }
@@ -80,7 +83,7 @@ export class YalidineProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Yalidine] createParcel failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'createParcel failed')
       throw new Error(data?.message || err?.message || 'Yalidine API error')
     }
   }
@@ -104,7 +107,7 @@ export class YalidineProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Yalidine] getTracking failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'getTracking failed')
       throw new Error(data?.message || err?.message || 'Yalidine API error')
     }
   }

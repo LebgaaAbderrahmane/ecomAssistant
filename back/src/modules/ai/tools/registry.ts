@@ -24,6 +24,7 @@ import {
   type PreferenceEntities,
 } from './suggestionHelpers';
 import type { ConversationMemory } from '../memory.types';
+import { moduleLogger, convLogger } from '../../../lib/logger';
 
 interface CommuneValidation {
   valid: boolean;
@@ -370,7 +371,7 @@ const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
     take: 30, // scan a window, not the whole history
   });
 
-  console.log(`[recallPreviousProducts] found ${messages.length} messages in conversation ${ctx.conversationId}`);
+  convLogger({ conversationId: ctx.conversationId }).info({ count: messages.length }, 'recallPreviousProducts: found messages');
 
   // Extract product names from entities (e.g. {"product":"iphone 15"}), most-recent-first, deduped
   const seen = new Set<string>();
@@ -652,7 +653,7 @@ const createOrder: ToolHandler = async (entities, ctx) => {
     where: { merchantId: ctx.merchantId, wilaya: { equals: wilaya, mode: 'insensitive' } },
   });
   if (!deliveryCostRow) {
-    console.warn(`[createOrder] no delivery cost configured for wilaya "${wilaya}" — defaulting to 0`);
+    convLogger({ conversationId: ctx.conversationId }).warn({ wilaya }, 'createOrder: no delivery cost configured, defaulting to 0');
   }
   const deliveryCostValue = deliveryCostRow?.cost ?? 0;
   const totalAmount = product.price * quantity + deliveryCostValue;
@@ -845,7 +846,7 @@ const escalateConversation: ToolHandler = async (_entities, ctx) => {
       },
     });
   } catch (err) {
-    console.error('[tools] Failed to create escalation notification:', err);
+    convLogger({ conversationId: ctx.conversationId }).error({ err }, 'failed to create escalation notification');
   }
 
   return { success: true, data: { escalated: true } };
@@ -889,7 +890,7 @@ export const executeTool = async (
   try {
     return await toolRegistry[toolName](entities, ctx);
   } catch (err) {
-    console.error(`[tools] "${toolName}" threw an unexpected error`, err);
+    convLogger({ conversationId: ctx.conversationId }).error({ tool: toolName, err }, 'tool threw unexpected error');
     return { success: false, error: 'Tool execution failed unexpectedly' };
   }
 };

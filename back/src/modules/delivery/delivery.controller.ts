@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { DELIVERY_PROVIDERS, DeliveryProviderKey } from '@ecomassistant/shared'
 import { AuthenticatedRequest } from '../../middlwares/auth.middlware.js'
 import { deliveryService } from './delivery.service.js'
+import { moduleLogger } from '../../lib/logger'
 
 export const getStatus = async (req: AuthenticatedRequest, res: Response) => {
   const merchantId = req.merchant!.merchantId
@@ -108,7 +109,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
     const result = await deliveryService.handleWebhook(provider, rawBody ?? Buffer.from(''), req.body)
     res.status(200).json(result)
   } catch (err: any) {
-    console.error(`[Delivery] webhook for ${provider} failed:`, err?.message || err)
+    moduleLogger('delivery').error({ provider, err: err?.message || err }, 'webhook failed');
     res.status(200).json({ received: true })
   }
 }

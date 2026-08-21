@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../../../config/db.config';
 import { callLLM } from '../clients/llm.client';
 import type { ProductResult } from '../memory.types';
+import { moduleLogger } from '../../../lib/logger';
 
 const CATALOG_LIMIT = 200;
 
@@ -96,7 +97,7 @@ export async function matchProductsWithLLM(
     const json = JSON.parse(raw);
     parsed = ProductMatchSchema.parse(json);
   } catch {
-    console.warn('[searchHelpers] LLM product match response was invalid, treating as no matches');
+    moduleLogger('tools.search').warn('LLM product match response was invalid, treating as no matches');
     return { ids: [], isReference: false };
   }
 

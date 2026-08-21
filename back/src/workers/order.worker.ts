@@ -2,6 +2,9 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection } from '../config';
 import { OrderJobData } from '../queues/order.queue';
 import { sendOrderConfirmation } from '../modules/orders/orderConfirmation.service';
+import { moduleLogger } from '../lib/logger';
+
+const log = moduleLogger('worker.order');
 
 export const orderWorker = new Worker<OrderJobData>(
   'order-confirmation',
@@ -12,9 +15,9 @@ export const orderWorker = new Worker<OrderJobData>(
 );
 
 orderWorker.on('completed', (job) => {
-  console.log(`[order-worker] order ${job.data.orderId} confirmation sent`);
+  log.info({ orderId: job.data.orderId }, 'order confirmation sent');
 });
 
 orderWorker.on('failed', (job, err) => {
-  console.error(`[order-worker] order ${job?.data.orderId} failed:`, err);
+  log.error({ orderId: job?.data.orderId, err }, 'order failed');
 });

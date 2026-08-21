@@ -7,7 +7,9 @@ import apiRouter from './routes/index.js'
 import { csrfProtection } from './middlwares/csrf.js'
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
+import { moduleLogger } from './lib/logger';
 
+const log = moduleLogger('app');
 const app: Express = express()
 
 app.use(cors())
@@ -35,7 +37,7 @@ app.use('/uploads', express.static(path.resolve('/app/uploads')));
 app.use('/', apiRouter)
 
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[Error]', err.message || err);
+  log.error({ err: err.message || err }, 'unhandled error');
   res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
 });
 

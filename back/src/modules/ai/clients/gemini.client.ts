@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import type { CallLLMParams, ContentPart } from './llm.client';
+import { moduleLogger } from '../../../lib/logger';
 
 const apiKeys = [
   process.env.GEMINI_API_KEY_1,
@@ -100,13 +101,13 @@ export async function callLLM({
       const latencyMs = Date.now() - startedAt;
       const usage = response.usageMetadata;
 
-      console.log('[llm.call]', {
+      moduleLogger('llm').info({
         model: MODEL_NAME,
         latencyMs,
         promptTokens: usage?.promptTokenCount,
         completionTokens: usage?.candidatesTokenCount,
         attempt: attempt + 1,
-      });
+      }, 'llm call completed');
 
       return response.text ?? '';
     } catch (error) {
@@ -116,9 +117,7 @@ export async function callLLM({
         throw error;
       }
 
-      console.warn(
-        `[llm.call] Gemini quota exceeded. Rotating API key (${attempt + 1}/${clients.length})`,
-      );
+      moduleLogger('llm').warn({ attempt: attempt + 1, totalClients: clients.length }, 'Gemini quota exceeded, rotating API key');
     }
   }
 

@@ -2,9 +2,12 @@ import axios from 'axios'
 import { getWilayaCode } from '@ecomassistant/shared'
 import { AbstractDeliveryProvider } from './AbstractDeliveryProvider.js'
 import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery, WebhookEvent } from './types.js'
+import { moduleLogger } from '../../../lib/logger'
 
 const BASE_URL = 'https://backend.maystro-delivery.com/api/'
 const MAYSTRO_SOURCE_ID = 4
+
+const log = moduleLogger('delivery.maystro')
 
 interface MaystroCommune {
   id: number
@@ -48,7 +51,7 @@ export class MaystroProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Maystro] connect failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'connect failed')
       return false
     }
   }
@@ -111,7 +114,7 @@ export class MaystroProvider extends AbstractDeliveryProvider {
       if (err?.message?.startsWith('Maystro:')) {
         throw err
       }
-      console.error(`[Maystro] createParcel failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'createParcel failed')
       throw new Error(data?.message || err?.message || 'Maystro API error')
     }
   }
@@ -138,7 +141,7 @@ export class MaystroProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Maystro] getTracking failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'getTracking failed')
       throw new Error(data?.message || err?.message || 'Maystro API error')
     }
   }

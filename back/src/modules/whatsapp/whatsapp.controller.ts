@@ -13,6 +13,7 @@ import { enqueueMessageJob } from "../../queues/message.queue";
 import { cancelPendingLayer2Jobs } from "../../queues/layer2.queue";
 import { transcribeAudio } from "../ai/media/transcription.service";
 import { captionImage } from "../ai/media/imageCaption.service";
+import { moduleLogger, convLogger } from "../../lib/logger";
 
 const MEDIA_DIR = path.resolve("/app/uploads/media");
 
@@ -77,6 +78,8 @@ export async function handleWebhook(
   next: NextFunction,
 ) {
   try {
+    const log = moduleLogger('whatsapp.webhook', { event: (req.body as any).event, sessionId: (req.body as any).sessionId });
+
     if (!config.isDev) {
       const signature = req.headers["x-hub-signature-256"] as string;
       if (!signature || !verifyHmac(JSON.stringify(req.body), signature)) {
@@ -90,7 +93,7 @@ export async function handleWebhook(
       data: Record<string, unknown>;
     };
 
-    console.log(`[WhatsApp] Webhook received: event=${event} sessionId=${sessionId}`);
+    log.info('webhook received');
 
     switch (event) {
       case "message.received": {
@@ -103,13 +106,13 @@ export async function handleWebhook(
           ? new Date(timestamp * 1000)
           : new Date();
 
-        console.log(`[WhatsApp] Message from=${phone} type=${msgType} body="${body.substring(0, 80)}"`);
+        log.info({ phone, type: msgType }, 'message received');
 
         const waSession = await prisma.whatsAppSession.findUnique({
           where: { sessionId },
         });
         if (!waSession) {
-          console.log(`[WhatsApp] No WhatsAppSession for sessionId=${sessionId}, ignoring`);
+          log.info('no WhatsAppSession found, ignoring');
           return res.status(200).json({ status: "ignored" });
         }
 
@@ -126,7 +129,7 @@ export async function handleWebhook(
             },
           });
           if (!customer) {
-            console.log(`[WhatsApp] No customer found for phone=${phone}, ignoring`);
+            log.info({ phone }, 'no customer found, ignoring');
             return res.status(200).json({ status: "ignored" });
           }
           conversation = await conversationService.findOrCreateByCustomer(
@@ -134,8 +137,11 @@ export async function handleWebhook(
             customer.id,
             customer.phone,
           );
-          console.log(`[WhatsApp] Auto-created conversation ${conversation.id} for customer ${customer.name}`);
+          const convLog = convLogger({ conversationId: conversation.id });
+          convLog.info({ customerId: customer.id }, 'auto-created conversation');
         }
+
+        const convLog = convLogger({ conversationId: conversation.id });
 
         let mediaUrl: string | undefined;
         let mimeType: string | undefined;
@@ -148,7 +154,7 @@ export async function handleWebhook(
           | undefined;
 
         if (media) {
-          console.log(`[WhatsApp] Media: mimetype=${media.mimetype} omitted=${media.omitted} hasData=${!!media.data}`);
+          log.info({ mimetype: media.mimetype, omitted: media.omitted, hasData: !!media.data }, 'media attached');
         }
 
         if (media?.data && media.mimetype && !media.omitted) {
@@ -188,7 +194,7 @@ export async function handleWebhook(
           createdAt,
         });
 
-        console.log(`[WhatsApp] Message saved to conversation ${conversation.id} (type=${messageType})`);
+        convLog.info({ messageId: savedMessage.id, type: messageType }, 'message saved');
 
         // ─── Voice: transcribe via Gemini, update content ──────────────
         if (messageType === "voice" && filePath) {
@@ -200,9 +206,9 @@ export async function handleWebhook(
               data: { content: transcript, text: transcript },
             });
             content = transcript;
-            console.log(`[WhatsApp] Voice transcribed: "${transcript.substring(0, 80)}"`);
+            convLog.info({ messageId: savedMessage.id }, 'voice transcribed');
           } catch (err) {
-            console.error("[WhatsApp] Voice transcription failed:", err);
+            convLog.error({ messageId: savedMessage.id, err }, 'voice transcription failed');
             const fallback = "[voice message - transcription failed]";
             await prisma.message.update({
               where: { id: savedMessage.id },
@@ -229,9 +235,9 @@ export async function handleWebhook(
               },
             });
             content = result.description;
-            console.log(`[WhatsApp] Image captioned: category=${result.category}, product=${result.productName ?? "none"}`);
+            convLog.info({ messageId: savedMessage.id, category: result.category, product: result.productName ?? 'none' }, 'image captioned');
           } catch (err) {
-            console.error("[WhatsApp] Image captioning failed:", err);
+            convLog.error({ messageId: savedMessage.id, err }, 'image captioning failed');
             const fallback = "[image - could not process]";
             await prisma.message.update({
               where: { id: savedMessage.id },
@@ -242,7 +248,7 @@ export async function handleWebhook(
         }
 
         enqueueMessageJob(savedMessage.id).catch((err) => {
-          console.error(`[WhatsApp] Failed to enqueue message ${savedMessage.id} for agent:`, err);
+          convLog.error({ messageId: savedMessage.id, err }, 'failed to enqueue message for agent');
         });
 
         return res.status(200).json({ status: "received" });
@@ -307,13 +313,13 @@ export async function handleWebhook(
 
       case "message.sent": {
         const phone = extractPhone(data.to as string);
-        console.log(`[WhatsApp] Message sent by merchant to=${phone}`);
+        log.info({ to: phone }, 'merchant sent message');
 
         const waSession = await prisma.whatsAppSession.findUnique({
           where: { sessionId },
         });
         if (!waSession) {
-          console.log(`[WhatsApp] No WhatsAppSession for sessionId=${sessionId}, ignoring`);
+          log.info('no WhatsAppSession found, ignoring');
           return res.status(200).json({ status: "ignored" });
         }
 
@@ -322,7 +328,7 @@ export async function handleWebhook(
           phone,
         );
         if (!conversation) {
-          console.log(`[WhatsApp] message.sent: no conversation for phone=${phone}, ignoring`);
+          log.info({ phone }, 'no conversation for phone, ignoring');
           return res.status(200).json({ status: "ignored" });
         }
 
@@ -330,7 +336,7 @@ export async function handleWebhook(
         // now stale. Drop the deferred layer-2 job so the AI stays silent.
         const cancelled = await cancelPendingLayer2Jobs(conversation.id);
         if (cancelled > 0) {
-          console.log(`[WhatsApp] message.sent cancelled ${cancelled} pending layer-2 job(s) for conversation ${conversation.id}`);
+          convLogger({ conversationId: conversation.id }).info({ cancelled }, 'cancelled pending layer-2 jobs');
         }
         return res.status(200).json({ status: "ok", cancelled });
       }
@@ -699,10 +705,10 @@ export async function sendOrderNotification(order: {
     id: orderId,
   } = order;
 
+  const log = moduleLogger('whatsapp.order-confirm', { orderId: platformOrderId });
+
   if (!customerPhone) {
-    console.log(
-      `[WhatsApp] Skipping notification — no phone for order ${platformOrderId}`,
-    );
+    log.info('skipping notification — no phone');
     return;
   }
 
@@ -713,9 +719,7 @@ export async function sendOrderNotification(order: {
     !waSession ||
     (waSession.status !== "connected" && waSession.status !== "ready")
   ) {
-    console.log(
-      `[WhatsApp] Skipping notification — WhatsApp not connected for merchant ${merchantId}`,
-    );
+    log.info({ merchantId }, 'skipping notification — WhatsApp not connected');
     return;
   }
 
@@ -759,14 +763,9 @@ export async function sendOrderNotification(order: {
   try {
     await openwaService.sendText(waSession.sessionId, customerPhone, text);
     await conversationService.addMessage(conversation.id, "agent", text);
-    console.log(
-      `[WhatsApp] Order confirmation sent for order ${platformOrderId}`,
-    );
+    log.info('order confirmation sent');
   } catch (err) {
-    console.error(
-      `[WhatsApp] Failed to send order confirmation for ${platformOrderId}:`,
-      err,
-    );
+    log.error({ err }, 'failed to send order confirmation');
   }
 }
 
@@ -799,10 +798,10 @@ export async function sendDeliveryStatusNotification(order: {
     provider,
   } = order;
 
+  const log = moduleLogger('whatsapp.delivery-status', { orderId: platformOrderId, status });
+
   if (!customerPhone) {
-    console.log(
-      `[WhatsApp] Skipping delivery status — no phone for order ${platformOrderId}`,
-    );
+    log.info('skipping delivery status — no phone');
     return;
   }
 
@@ -813,9 +812,7 @@ export async function sendDeliveryStatusNotification(order: {
     !waSession ||
     (waSession.status !== "connected" && waSession.status !== "ready")
   ) {
-    console.log(
-      `[WhatsApp] Skipping delivery status — WhatsApp not connected for merchant ${merchantId}`,
-    );
+    log.info({ merchantId }, 'skipping delivery status — WhatsApp not connected');
     return;
   }
 
@@ -866,13 +863,8 @@ export async function sendDeliveryStatusNotification(order: {
   try {
     await openwaService.sendText(waSession.sessionId, customerPhone, text);
     await conversationService.addMessage(conversation.id, "agent", text);
-    console.log(
-      `[WhatsApp] Delivery status "${status}" sent for order ${platformOrderId}`,
-    );
+    log.info('delivery status sent');
   } catch (err) {
-    console.error(
-      `[WhatsApp] Failed to send delivery status for ${platformOrderId}:`,
-      err,
-    );
+    log.error({ err }, 'failed to send delivery status');
   }
 }

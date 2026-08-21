@@ -1,4 +1,5 @@
 import { config } from "../../config";
+import { moduleLogger } from '../../lib/logger';
 
 const BASE = config.openwaUrl.replace(/\/+$/, "") + "/api";
 const API_KEY = config.openwaApiKey;
@@ -153,7 +154,7 @@ export const openwaService = {
         try {
           await openwaService.sendChatState(sessionId, to, 'typing');
         } catch (err) {
-          console.warn('[whatsapp] sendChatState failed — proceeding without typing indicator', err);
+          moduleLogger('whatsapp').warn({ err }, 'sendChatState failed, proceeding without typing indicator');
           typingFailed = true;
         }
       }

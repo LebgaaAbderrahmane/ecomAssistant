@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { getCustomers, listCustomerIds, bulkBlockCustomers } from "./customers.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
+import { moduleLogger } from "../../lib/logger";
 
 export const listCustomers = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -15,7 +16,7 @@ export const listCustomers = async (req: AuthenticatedRequest, res: Response) =>
     const result = await getCustomers({ merchantId, cursor, limit, search, orderFilter });
     return res.status(200).json(result);
   } catch (err: any) {
-    console.error("[Customers] listCustomers error:", err.message || err);
+    moduleLogger('customers').error({ err: err.message || err }, 'listCustomers error');
     return res.status(500).json({ message: err.message || "Internal server error" });
   }
 };
@@ -28,7 +29,7 @@ export const getCustomerIds = async (req: AuthenticatedRequest, res: Response) =
     const ids = await listCustomerIds(merchantId, search, orderFilter);
     res.json({ ids });
   } catch (err: any) {
-    console.error("[Customers] getCustomerIds error:", err.message || err);
+    moduleLogger('customers').error({ err: err.message || err }, 'getCustomerIds error');
     return res.status(500).json({ message: err.message || "Internal server error" });
   }
 };
@@ -46,7 +47,7 @@ export const patchBulkBlock = async (req: AuthenticatedRequest, res: Response) =
     const count = await bulkBlockCustomers(merchantId, customerIds, blocked);
     res.json({ count });
   } catch (err: any) {
-    console.error("[Customers] patchBulkBlock error:", err.message || err);
+    moduleLogger('customers').error({ err: err.message || err }, 'patchBulkBlock error');
     return res.status(500).json({ message: err.message || "Internal server error" });
   }
 };

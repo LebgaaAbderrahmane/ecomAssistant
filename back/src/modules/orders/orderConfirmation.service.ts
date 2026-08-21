@@ -1,6 +1,9 @@
 import prisma from '../../config/db.config';
 import { buildOrderConfirmationText } from './orderConfirmation.templates';
 import { openwaService } from '../whatsapp/whatsapp.service';
+import { moduleLogger } from '../../lib/logger';
+
+const log = moduleLogger('orders.confirm');
 
 export const sendOrderConfirmation = async (orderId: string) => {
   const order = await prisma.order.findUniqueOrThrow({
@@ -53,14 +56,14 @@ export const sendOrderConfirmation = async (orderId: string) => {
           order.customer.phone,
           messages,
         );
-        console.log(`[orders] Confirmation sent via WhatsApp for order ${orderId} (${messages.length} messages)`);
+        log.info({ orderId, count: messages.length }, 'confirmation sent via WhatsApp');
       } else {
-        console.log(`[orders] No phone for customer ${order.customerId}, skipping WhatsApp send`);
+        log.info({ customerId: order.customerId }, 'no phone for customer, skipping WhatsApp send');
       }
     } else {
-      console.log(`[orders] WhatsApp not connected for merchant ${order.merchantId}, skipping send`);
+      log.info({ merchantId: order.merchantId }, 'WhatsApp not connected, skipping send');
     }
   } catch (err) {
-    console.error(`[orders] Failed to send confirmation via WhatsApp for order ${orderId}:`, err);
+    log.error({ orderId, err }, 'failed to send confirmation via WhatsApp');
   }
 };

@@ -2,6 +2,9 @@ import axios from 'axios'
 import { getWilayaCode } from '@ecomassistant/shared'
 import { AbstractDeliveryProvider } from './AbstractDeliveryProvider.js'
 import type { ParcelInput, ParcelResult, TrackingStatus, FeeQuery } from './types.js'
+import { moduleLogger } from '../../../lib/logger'
+
+const log = moduleLogger('delivery.procolis')
 
 const BASE_URL = 'https://procolis.com/api_v1'
 
@@ -36,7 +39,7 @@ export class ProcolisProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Procolis] connect failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'connect failed')
       return false
     }
   }
@@ -87,7 +90,7 @@ export class ProcolisProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Procolis] createParcel failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'createParcel failed')
       throw new Error(data?.message || err?.message || 'Procolis API error')
     }
   }
@@ -119,7 +122,7 @@ export class ProcolisProvider extends AbstractDeliveryProvider {
     } catch (err: any) {
       const status = err?.response?.status
       const data = err?.response?.data
-      console.error(`[Procolis] getTracking failed (status=${status}):`, JSON.stringify(data) || err?.message || err)
+      log.error({ status, data: JSON.stringify(data) || err?.message || err }, 'getTracking failed')
       throw new Error(data?.message || err?.message || 'Procolis API error')
     }
   }
@@ -131,7 +134,7 @@ export class ProcolisProvider extends AbstractDeliveryProvider {
       const price = row?.Normal ?? row?.Domicile
       return typeof price === 'number' ? price : 0
     } catch (err: any) {
-      console.error(`[Procolis] getFee failed:`, err?.message || err)
+      log.error({ err: err?.message || err }, 'getFee failed')
       return 0
     }
   }

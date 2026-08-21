@@ -13,6 +13,7 @@ import { openwaService } from '../whatsapp/whatsapp.service';
 import { enqueueLayer2Job } from '../../queues/layer2.queue';
 import { decideLayer2JobKind } from './layer2JobKind';
 import type { ImageCategory } from './media/imageCaption.service';
+import { msgLogger } from '../../lib/logger';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
 const ALL_TOOLS = [...ReadToolNameSchema.options, ...WriteToolNameSchema.options];
@@ -201,6 +202,8 @@ async function executeTools(
   const { conversation } = message;
   const memory = (conversation.memory as ConversationMemory | null) ?? {};
 
+  const log = msgLogger({ conversationId: conversation.id, messageId });
+
   const customer = await prisma.customer.findUniqueOrThrow({
     where: { id: conversation.customerId },
   });
@@ -279,7 +282,7 @@ async function executeTools(
       const resolvedId = await resolveProductId(conversation.merchantId, entities.product as string);
       if (resolvedId) {
         entities.productId = resolvedId;
-        console.log(`[agent] ${messageId} -> resolved productId "${resolvedId}" for product "${entities.product}"`);
+        log.info({ productId: resolvedId, productName: entities.product }, 'resolved productId from name');
       }
     }
 
@@ -303,9 +306,9 @@ async function executeTools(
     let result: ToolResult;
     try {
       result = await executeTool(toolName, entities, executionContext);
-      console.log(`[agent] tool "${toolName}" (intent=${intentToString(item.intent)}) ->`, result);
+      log.info({ tool: toolName, intent: intentToString(item.intent), outcome: result.outcome ?? (result.success ? 'SUCCESS' : 'FAIL') }, 'tool executed');
     } catch (err) {
-      console.error(`[agent] tool "${toolName}" failed for intent ${intentToString(item.intent)}`, err);
+      log.error({ tool: toolName, intent: intentToString(item.intent), err }, 'tool failed');
       result = { success: false, error: 'Tool execution failed' };
     }
     toolResultCache.set(toolKey, result);
@@ -346,7 +349,7 @@ async function executeTools(
       executionContext.lastProductResults = productsList;
       searchSucceededThisMessage = true;
       resultsStoredThisMessage = true;
-      console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
+      log.info({ count: productsList.length }, 'stored products in message entities');
     }
   }
 
@@ -366,9 +369,9 @@ async function executeTools(
     } else {
       try {
         result = await executeTool('suggestProducts', entities, executionContext);
-        console.log(`[agent] tool "suggestProducts" (intent=${intentToString(item.intent)}) ->`, result);
+        log.info({ tool: 'suggestProducts', intent: intentToString(item.intent), outcome: result.outcome ?? (result.success ? 'SUCCESS' : 'FAIL') }, 'tool executed');
       } catch (err) {
-        console.error(`[agent] tool "suggestProducts" failed for intent ${intentToString(item.intent)}`, err);
+        log.error({ tool: 'suggestProducts', intent: intentToString(item.intent), err }, 'tool failed');
         result = { success: false, error: 'Tool execution failed' };
       }
       toolResultCache.set(toolKey, result);
@@ -394,7 +397,7 @@ async function executeTools(
       lastProductResults = productsList;
       executionContext.lastProductResults = productsList;
       resultsStoredThisMessage = true;
-      console.log(`[agent] ${messageId} -> stored ${productsList.length} suggested products in message entities + memory`);
+      log.info({ count: productsList.length }, 'stored suggested products in message entities');
     }
   }
 
@@ -407,7 +410,7 @@ async function executeTools(
   if (productSearchMissed && !resultsStoredThisMessage) {
     finalLastProductResults = [];
     replyMemory = { ...memory, lastProductResults: [] };
-    console.log(`[agent] ${messageId} -> product search missed, cleared stale lastProductResults`);
+    log.info('product search missed, cleared stale lastProductResults');
   }
 
   return { toolResults, replyMemory, finalLastProductResults };
@@ -438,6 +441,7 @@ async function generateResponse(
     include: { conversation: true },
   });
   const { conversation } = message;
+  const log = msgLogger({ conversationId: conversation.id, messageId });
   const effectiveText = buildEffectiveText(message);
   const customer = await prisma.customer.findUniqueOrThrow({
     where: { id: conversation.customerId },
@@ -469,7 +473,7 @@ async function generateResponse(
     replyParsed = parseReplyResponse(rawReply);
   } catch (err) {
     if (err instanceof LLMParseError) {
-      console.error('[agent] failed to parse reply response', { messageId, raw: err.raw });
+      log.error({ raw: err.raw }, 'failed to parse reply response');
     }
     throw err;
   }
@@ -500,22 +504,24 @@ async function generateResponse(
           customer.phone,
           replyParsed.messages,
         );
-        console.log(`[agent] Reply sent via WhatsApp to ${customer.phone} (${replyParsed.messages.length} messages)`);
+        log.info({ to: customer.phone, count: replyParsed.messages.length }, 'reply sent via WhatsApp');
       } else {
-        console.log(`[agent] No phone found for customer ${conversation.customerId}, reply not sent`);
+        log.warn({ customerId: conversation.customerId }, 'no phone found for customer, reply not sent');
       }
     } else {
-      console.log(`[agent] WhatsApp not connected for merchant ${conversation.merchantId}, reply not sent`);
+      log.warn({ merchantId: conversation.merchantId }, 'WhatsApp not connected, reply not sent');
     }
   } catch (err) {
-    console.error(`[agent] Failed to send reply via WhatsApp:`, err);
+    log.error({ err }, 'failed to send reply via WhatsApp');
   }
 
   // ─── Update conversation memory ─────────────────────────────────────
   await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, conversationAct, finalLastProductResults, rejectedToRecord);
 
-  console.log(`[agent] ${messageId} -> intents=${sortedIntents.map(i => intentToString(i.intent)).join(',')}, reply (${replyParsed.messages.length} msgs):`,
-    replyParsed.messages.map((m, i) => `[${i}] "${m.substring(0, 60)}${m.length > 60 ? '...' : ''}"`));
+  log.info(
+    { intents: sortedIntents.map(i => intentToString(i.intent)), replyCount: replyParsed.messages.length },
+    'pipeline completed',
+  );
 }
 
 export const processMessage = async (messageId: string) => {
@@ -525,6 +531,8 @@ export const processMessage = async (messageId: string) => {
   });
   const { conversation } = message;
   const memory = (conversation.memory as ConversationMemory | null) ?? {};
+
+  const log = msgLogger({ conversationId: conversation.id, messageId });
 
   // Was the human already in control when this message arrived? Read before any
   // processing: the deferred path applies only to pre-existing takeover, not to
@@ -568,7 +576,7 @@ export const processMessage = async (messageId: string) => {
   // ORDER_CONFIRM. If a human owns the conversation, stay silent entirely.
   if (!effectiveText || !effectiveText.trim()) {
     if (conversation.takenOverByHuman) {
-      console.log(`[agent] ${messageId} -> empty message in human-owned conversation, ignored`);
+      log.info('empty message in human-owned conversation, ignored');
       return;
     }
 
@@ -591,7 +599,7 @@ export const processMessage = async (messageId: string) => {
       try {
         await openwaService.sendText(waSession.sessionId, customer.phone, fallbackReply);
       } catch (err) {
-        console.error(`[agent] Failed to send fallback reply for ${messageId}:`, err);
+        log.error({ err }, 'failed to send fallback reply');
       }
     }
 
@@ -606,7 +614,7 @@ export const processMessage = async (messageId: string) => {
       where: { id: conversation.id },
       data: { memory: updatedMemory as Prisma.InputJsonValue, lastMessageAt: new Date() },
     });
-    console.log(`[agent] ${messageId} -> empty message, replied with clarifying fallback`);
+    log.info('empty message, replied with clarifying fallback');
     return;
   }
 
@@ -630,11 +638,10 @@ export const processMessage = async (messageId: string) => {
   let parsed;
   try {
     parsed = parseResponse(rawIntent);
-    console.log(`[agent] ${messageId} -> extracted ${parsed.intents.length} intent(s):`,
-      parsed.intents.map(i => `${intentToString(i.intent)}(${i.confidence.toFixed(2)})`));
+    log.info({ intentCount: parsed.intents.length, intents: parsed.intents.map(i => `${intentToString(i.intent)}(${i.confidence.toFixed(2)})`) }, 'extracted intents');
   } catch (err) {
     if (err instanceof LLMParseError) {
-      console.error('[agent] failed to parse intent response', { messageId, raw: err.raw });
+      log.error({ raw: err.raw }, 'failed to parse intent response');
     }
     throw err;
   }
@@ -647,7 +654,7 @@ export const processMessage = async (messageId: string) => {
     const item = sortedIntents[i];
     const expectedPriority = intentPriority(item.intent);
     if (item.order !== i + 1) {
-      console.log(`[agent] ${messageId} -> order override: ${intentToString(item.intent)} was order=${item.order}, now position=${i + 1} (priority=${expectedPriority})`);
+      log.info({ intent: intentToString(item.intent), originalOrder: item.order, newPosition: i + 1, priority: expectedPriority }, 'safety-net order override');
     }
   }
 
@@ -699,15 +706,15 @@ export const processMessage = async (messageId: string) => {
       seen.add(suggested.name);
       try {
         await recordSuggestion(suggested.name, suggested.description);
-        console.log(`[agent] ${messageId} -> recorded suggested intent "${suggested.name}"`);
+        log.info({ name: suggested.name }, 'recorded suggested intent');
       } catch (err) {
-        console.error(`[agent] failed to record suggested intent "${suggested.name}":`, err);
+        log.error({ name: suggested.name, err }, 'failed to record suggested intent');
       }
     }
 
     if (!takenOver) {
       const result = await executeTool('escalateConversation', {}, executionContext);
-      console.log(`[agent] ${messageId} -> escalated conversation (suggested intent), tool ->`, result);
+      log.info({ outcome: result.outcome ?? (result.success ? 'SUCCESS' : 'FAIL') }, 'escalated conversation (suggested intent)');
       takenOver = true;
     }
 
@@ -729,7 +736,7 @@ export const processMessage = async (messageId: string) => {
         .length;
 
       if (consecutiveNegative >= escalationThreshold) {
-        console.log(`[agent] Escalation threshold reached (${consecutiveNegative}/${escalationThreshold}) — escalating conversation ${conversation.id}`);
+        log.info({ consecutiveNegative, threshold: escalationThreshold }, 'escalation threshold reached, escalating');
         await prisma.conversation.update({
           where: { id: conversation.id },
           data: {
@@ -754,7 +761,7 @@ export const processMessage = async (messageId: string) => {
             },
           });
         } catch (err) {
-          console.error('[agent] Failed to create escalation notification:', err);
+          log.error({ err }, 'failed to create escalation notification');
         }
       }
     }
@@ -777,7 +784,7 @@ export const processMessage = async (messageId: string) => {
 
     const kind = decideLayer2JobKind(sortedIntents);
     await enqueueLayer2Job(message.id, conversation.id, kind);
-    console.log(`[agent] ${messageId} -> deferred layer-2 (${kind})`);
+    log.info({ kind }, 'deferred layer-2');
     return;
   }
 
@@ -816,6 +823,8 @@ export const processDeferredLayer2 = async (messageId: string) => {
   });
   const { conversation } = message;
 
+  const log = msgLogger({ conversationId: conversation.id, messageId });
+
   // Hand the conversation back to the AI: read tools are no longer suppressed
   // and generateResponse will produce a reply instead of staying silent.
   await prisma.conversation.update({
@@ -825,7 +834,7 @@ export const processDeferredLayer2 = async (messageId: string) => {
 
   const parsedIntents = (message.parsedIntents as unknown as IntentItem[] | null) ?? [];
   if (parsedIntents.length === 0) {
-    console.log(`[agent] ${messageId} -> no parsedIntents to process, nothing deferred`);
+    log.info('no parsedIntents to process, nothing deferred');
     return;
   }
 

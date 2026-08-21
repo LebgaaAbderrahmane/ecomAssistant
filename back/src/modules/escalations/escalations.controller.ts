@@ -1,6 +1,9 @@
 import { Response } from "express";
 import { getEscalations, resolveEscalation, resolveAllEscalations } from "./escalations.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
+import { moduleLogger } from "../../lib/logger";
+
+const log = moduleLogger('escalations');
 
 export const listEscalations = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -10,7 +13,7 @@ export const listEscalations = async (req: AuthenticatedRequest, res: Response) 
     const result = await getEscalations({ merchantId, cursor, limit });
     return res.status(200).json(result);
   } catch (err: any) {
-    console.error("[Escalations] listEscalations error:", err.message || err);
+    log.error({ err: err.message || err }, 'listEscalations error');
     return res.status(500).json({ message: err.message || "Internal server error" });
   }
 };
@@ -25,7 +28,7 @@ export const resolve = async (req: AuthenticatedRequest, res: Response) => {
 
     return res.status(200).json({ message: "Escalation resolved" });
   } catch (err: any) {
-    console.error("[Escalations] resolve error:", err.message || err);
+    log.error({ err: err.message || err }, 'resolve error');
     return res.status(500).json({ message: err.message || "Internal server error" });
   }
 };
@@ -37,7 +40,7 @@ export const resolveAll = async (req: AuthenticatedRequest, res: Response) => {
     const result = await resolveAllEscalations(merchantId);
     return res.status(200).json({ message: "All escalations resolved", count: result.count });
   } catch (err: any) {
-    console.error("[Escalations] resolveAll error:", err.message || err);
+    log.error({ err: err.message || err }, 'resolveAll error');
     return res.status(500).json({ message: err.message || "Internal server error" });
   }
 };

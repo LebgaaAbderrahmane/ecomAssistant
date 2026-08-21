@@ -3,6 +3,7 @@ import { redis } from "../../config";
 import { generateToken } from "../../lib/jwt";
 import { hashPassword, comparePassword } from "../../lib/crypto";
 import { generateOTP, hashOTP, compareOTP } from "../../lib/otp";
+import { moduleLogger } from "../../lib/logger";
 import { emailQueue } from "../../queues/email.queue";
 import crypto from "crypto";
 
@@ -57,7 +58,7 @@ export const registerMerchant = async (
   }
 
   const otp = generateOTP();
-  console.log(`\n🔑 [DEV] OTP for ${email}: ${otp}\n`);
+  moduleLogger('auth').info({ email }, '[DEV] OTP generated');
   const hashedOTP = await hashOTP(otp);
 
   await redis.set(`otp:${email}`, hashedOTP, { EX: 600 });
@@ -221,7 +222,7 @@ export const forgetPassword = async (email: string) => {
   }
 
   const otp = generateOTP();
-  console.log(`\n🔑 [DEV] Reset OTP for ${email}: ${otp}\n`);
+  moduleLogger('auth').info({ email }, '[DEV] Reset OTP generated');
   const hashedOTP = await hashOTP(otp);
 
   await redis.set(`reset-otp:${email}`, hashedOTP, { EX: 600 });

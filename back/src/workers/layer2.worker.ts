@@ -2,6 +2,9 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection } from '../config';
 import { Layer2JobData } from '../queues/layer2.queue';
 import { processDeferredLayer2 } from '../modules/ai/agent.service';
+import { moduleLogger } from '../lib/logger';
+
+const log = moduleLogger('worker.layer2');
 
 export const layer2Worker = new Worker<Layer2JobData>(
   "agent-layer2",
@@ -12,9 +15,9 @@ export const layer2Worker = new Worker<Layer2JobData>(
 );
 
 layer2Worker.on('completed', (job) => {
-  console.log(`[worker] layer2 ${job.data.messageId} processed`);
+  log.info({ messageId: job.data.messageId }, 'layer2 processed');
 });
 
 layer2Worker.on('failed', (job, err) => {
-  console.error(`[worker] layer2 ${job?.data.messageId} failed:`, err);
+  log.error({ messageId: job?.data.messageId, err }, 'layer2 failed');
 });
