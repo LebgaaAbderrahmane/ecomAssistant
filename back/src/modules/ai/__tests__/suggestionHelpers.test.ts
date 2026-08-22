@@ -4,25 +4,32 @@ import {
   computeExclusionIds,
   buildProductWhere,
 } from '../tools/suggestionHelpers';
-import type { ConversationMemory } from '../memory.types';
+import type { ConversationMemory, Flow, FlowFilter } from '../memory.types';
 
 const baseMemory: ConversationMemory = {
-  entities: { category: 'shoes', color: 'black', maxPrice: 8000 },
-  lastProductResults: [{ id: 'p1', name: 'Nike A' }],
-  rejectedProducts: [{ id: 'p2', name: 'Adidas B' }],
+  version: 1,
+  globalInformation: { wilaya: 'Alger' },
+  flows: [],
+};
+
+const baseFilter: FlowFilter = {
+  category: 'shoes',
+  color: 'black',
+  size: '42',
+  maxPrice: 8000,
 };
 
 describe('consolidatePreferences', () => {
-  it('merges current-message entities with memory entities', () => {
-    const prefs = consolidatePreferences({ size: '42' }, baseMemory);
+  it('merges message entities with flow filter', () => {
+    const prefs = consolidatePreferences({ size: '44' }, baseFilter);
     expect(prefs.category).toBe('shoes');
     expect(prefs.color).toBe('black');
-    expect(prefs.size).toBe('42');
+    expect(prefs.size).toBe('44');
     expect(prefs.maxPrice).toBe(8000);
   });
 
-  it('message values win over memory values', () => {
-    const prefs = consolidatePreferences({ color: 'blue', maxPrice: 5000 }, baseMemory);
+  it('message entities win over flow filter', () => {
+    const prefs = consolidatePreferences({ color: 'blue', maxPrice: 5000 }, baseFilter);
     expect(prefs.color).toBe('blue');
     expect(prefs.maxPrice).toBe(5000);
   });
@@ -30,37 +37,76 @@ describe('consolidatePreferences', () => {
   it('collects preference terms for ranking', () => {
     const prefs = consolidatePreferences(
       { product: 'sneakers', preferences: 'running' },
-      { entities: { category: 'shoes', color: 'black', size: '42' } },
+      { category: 'shoes', color: 'black', size: '42' },
     );
     expect(prefs.terms).toEqual(['shoes', 'black', '42', 'sneakers', 'running']);
   });
 
+  it('includes freeText from flow filter in terms', () => {
+    const prefs = consolidatePreferences({}, { freeText: 'basketball shoes' });
+    expect(prefs.terms).toContain('basketball shoes');
+  });
+
   it('parses string numbers for price bounds', () => {
-    const prefs = consolidatePreferences({ maxPrice: '8000' }, {});
+    const prefs = consolidatePreferences({ maxPrice: '8000' });
     expect(prefs.maxPrice).toBe(8000);
   });
 
   it('returns empty preferences with no signals', () => {
-    const prefs = consolidatePreferences({}, {});
+    const prefs = consolidatePreferences({});
     expect(prefs.terms).toEqual([]);
     expect(prefs.category).toBeUndefined();
+  });
+
+  it('works with no flow filter', () => {
+    const prefs = consolidatePreferences({ category: 'hats' });
+    expect(prefs.category).toBe('hats');
+    expect(prefs.terms).toEqual(['hats']);
   });
 });
 
 describe('computeExclusionIds', () => {
-  it('dedupes lastProductResults + rejectedProducts + currentProductId', () => {
-    const ids = computeExclusionIds(
-      {
-        lastProductResults: [{ id: 'p1', name: 'A' }, { id: 'p3', name: 'C' }],
-        rejectedProducts: [{ id: 'p2', name: 'B' }],
+  it('dedupes toolResults + rejectedProductIds + currentProductId', () => {
+    const flow: Flow = {
+      flowId: 'f1',
+      state: 'PRODUCT_DISCOVERY',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+      productDiscovery: {
+        input: { productName: 'shoes', filters: {} },
+        toolResults: [
+          { productId: 'p1', productName: 'A', price: 1000, variants: [] },
+          { productId: 'p3', productName: 'C', price: 1000, variants: [] },
+        ],
+        rejectedProductIds: ['p2'],
       },
-      'p1',
-    );
+    };
+    const ids = computeExclusionIds(flow, 'p1');
     expect(new Set(ids)).toEqual(new Set(['p1', 'p2', 'p3']));
   });
 
-  it('handles empty memory', () => {
-    expect(computeExclusionIds({})).toEqual([]);
+  it('handles IDLE flow', () => {
+    const flow: Flow = {
+      flowId: 'idle',
+      state: 'IDLE',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    };
+    expect(computeExclusionIds(flow)).toEqual([]);
+  });
+
+  it('handles flow with no toolResults or rejectedProductIds', () => {
+    const flow: Flow = {
+      flowId: 'f1',
+      state: 'PRODUCT_DISCOVERY',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+      productDiscovery: {
+        input: { productName: 'shoes', filters: {} },
+        toolResults: [],
+      },
+    };
+    expect(computeExclusionIds(flow)).toEqual([]);
   });
 });
 

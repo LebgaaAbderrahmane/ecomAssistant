@@ -1,7 +1,10 @@
 import type { Prisma, Product } from '@prisma/client';
 import prisma from '../../../config/db.config';
-import type { ConversationMemory } from '../memory.types';
+import type { Flow, FlowFilter, ConversationMemory } from '../memory.types';
 import type { CatalogEntry } from './searchHelpers';
+import { moduleLogger } from '../../../lib/logger';
+
+const log = moduleLogger('suggestionHelpers');
 
 // ─── suggestProducts context ─────────────────────────────────────────────
 // Pure helpers that turn conversation memory + the current message into a
@@ -22,24 +25,27 @@ export type PreferenceEntities = Record<string, string | number | boolean | null
 
 /**
  * Merge preference entities from the current message with previously discussed
- * entities accumulated in memory.entities. Message values win over memory.
- * `terms` collects every free-text signal (category/color/size/product/preferences)
- * so it can be turned into a keyword query for ranking.
+ * preferences stored in the active flow's filters.  Message values win over
+ * flow filters.  `terms` collects every free-text signal (category/color/size/
+ * product/preferences) so it can be turned into a keyword query for ranking.
  */
 export function consolidatePreferences(
   entities: PreferenceEntities,
-  memory: ConversationMemory,
+  flowFilter?: FlowFilter,
+  globalInfo?: ConversationMemory['globalInformation'],
 ): SuggestionPreferences {
-  const memoryEntities = (memory.entities ?? {}) as PreferenceEntities;
+  const filter = flowFilter ?? {};
 
   const stringVal = (key: string): string | undefined => {
-    const value = entities[key] ?? memoryEntities[key];
+    const value = entities[key] ?? (filter as Record<string, unknown>)[key]
+      ?? (globalInfo as Record<string, unknown> | undefined)?.[key];
     if (typeof value === 'string' && value.trim()) return value.trim();
     return undefined;
   };
 
   const numberVal = (key: string): number | undefined => {
-    const value = entities[key] ?? memoryEntities[key];
+    const value = entities[key] ?? (filter as Record<string, unknown>)[key]
+      ?? (globalInfo as Record<string, unknown> | undefined)?.[key];
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
     if (typeof value === 'string') {
       const parsed = Number(value);
@@ -57,6 +63,7 @@ export function consolidatePreferences(
   if (product) terms.push(product);
   const preferences = stringVal('preferences');
   if (preferences) terms.push(preferences);
+  if (filter.freeText?.trim()) terms.push(filter.freeText.trim());
 
   return {
     category: stringVal('category'),
@@ -70,21 +77,33 @@ export function consolidatePreferences(
 
 /**
  * Product ids that must never be suggested again: products already presented
- * in this exchange (lastProductResults), products the customer rejected
- * (rejectedProducts), and the currently selected product.
+ * in this exchange (flow.productDiscovery.toolResults), products the customer
+ * rejected (flow.productDiscovery.rejectedProductIds), and the currently
+ * selected product.
  */
 export function computeExclusionIds(
-  memory: ConversationMemory,
+  flow: Flow,
   currentProductId?: string | null,
 ): string[] {
   const ids = new Set<string>();
-  for (const list of [memory.lastProductResults ?? [], memory.rejectedProducts ?? []]) {
-    for (const entry of list) {
-      if (entry?.id) ids.add(entry.id);
+
+  if (flow.state !== 'IDLE') {
+    for (const product of flow.productDiscovery.toolResults) {
+      if (product.productId) ids.add(product.productId);
+    }
+    for (const id of flow.productDiscovery.rejectedProductIds ?? []) {
+      if (id) ids.add(id);
     }
   }
+
   if (currentProductId) ids.add(currentProductId);
-  return [...ids];
+
+  const excluded = [...ids];
+  if (excluded.length) {
+    log.debug({ flowId: flow.flowId, excludedCount: excluded.length, excluded }, 'computeExclusionIds');
+  }
+
+  return excluded;
 }
 
 export interface CandidatePoolFilter extends SuggestionPreferences {

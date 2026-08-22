@@ -1,6 +1,7 @@
 import { isSuggestedIntent } from './schemas/intents.schemas';
 import type { IntentField } from './schemas/intents.schemas';
 import type { Flow, FlowState } from './memory.types';
+import { moduleLogger } from '../../lib/logger';
 import {
   type IntentCategory,
   type FlowResolverInput,
@@ -10,6 +11,8 @@ import {
   QUERY_INTENTS,
   SIGNAL_WEIGHTS,
 } from './flowResolver.types';
+
+const log = moduleLogger('flowResolver');
 
 // ---------------------------------------------------------------------------
 // Intent classification
@@ -187,12 +190,21 @@ function pickAmongCandidates(
   const [top, second] = sorted;
 
   if (!second || top.score > second.score) {
-    return top.flowId === activeFlowId
+    const action = top.flowId === activeFlowId ? 'CONTINUE' : 'SWITCH';
+    log.debug(
+      { flowId: top.flowId, score: top.score, action },
+      'resolveFlow: picked winner',
+    );
+    return action === 'CONTINUE'
       ? { action: 'CONTINUE', flowId: top.flowId }
       : { action: 'SWITCH', flowId: top.flowId };
   }
 
   const tied = sorted.filter((c) => c.score === top.score);
+  log.debug(
+    { tied: tied.map((c) => c.flowId), score: top.score },
+    'resolveFlow: CLARIFY (tied candidates)',
+  );
   return { action: 'CLARIFY', candidates: tied };
 }
 
@@ -210,14 +222,17 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
 
   // 2. NO_FLOW_LOOKUP: intent doesn't need flow resolution
   if (category === 'NO_FLOW_LOOKUP') {
+    log.debug({ intent: String(intent), category }, 'resolveFlow: NO_FLOW_LOOKUP');
     return { action: 'NO_FLOW_LOOKUP' };
   }
 
   // 3. No flows exist — create a new one
   if (flows.length === 0) {
+    const productName = extractProductRef(entities) ?? 'unknown';
+    log.debug({ intent: String(intent), productName }, 'resolveFlow: CREATE (no flows)');
     return {
       action: 'CREATE',
-      productName: extractProductRef(entities) ?? 'unknown',
+      productName,
       filters: buildFilterFromEntities(entities),
     };
   }
@@ -259,6 +274,10 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
     // flow is now correctly rejected instead of silently falling through
     // to CONTINUE.
     if (!isIntentCompatibleWithState(intentStr, activeFlow.state)) {
+      log.info(
+        { intent: intentStr, state: activeFlow.state, flowId: activeFlow.flowId },
+        'resolveFlow: INVALID_ACTION',
+      );
       return {
         action: 'INVALID_ACTION',
         reason: `Cannot ${intentStr.toLowerCase()} in state ${activeFlow.state}`,

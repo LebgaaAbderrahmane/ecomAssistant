@@ -24,6 +24,7 @@ import {
   type PreferenceEntities,
 } from './suggestionHelpers';
 import type { ConversationMemory } from '../memory.types';
+import { migrateMemory, getActiveFlow } from '../flowHelper';
 import { moduleLogger, convLogger } from '../../../lib/logger';
 
 interface CommuneValidation {
@@ -529,13 +530,21 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
     where: { id: ctx.conversationId },
     select: { memory: true, currentProductId: true },
   });
-  const memory = (conversation?.memory ?? {}) as ConversationMemory;
+  const memory = (conversation?.memory ?? {}) as unknown as ConversationMemory;
+  const migrated = migrateMemory(memory);
+  const activeFlow = getActiveFlow(migrated) ?? {
+    flowId: 'temp',
+    state: 'IDLE' as const,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
 
-  const prefs = consolidatePreferences(messagePrefs as PreferenceEntities, memory);
-  const excludeIds = computeExclusionIds(
-    memory,
-    conversation?.currentProductId ?? ctx.currentProductId,
+  const prefs = consolidatePreferences(
+    messagePrefs as PreferenceEntities,
+    activeFlow.state !== 'IDLE' ? activeFlow.productDiscovery.input.filters : undefined,
+    migrated.globalInformation,
   );
+  const excludeIds = computeExclusionIds(activeFlow, conversation?.currentProductId ?? ctx.currentProductId);
 
   const hasPreferences =
     prefs.terms.length > 0 ||

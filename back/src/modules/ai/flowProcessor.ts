@@ -8,12 +8,15 @@ import {
   type OrderData,
   type ConversationMemory,
 } from './memory.types';
+import { moduleLogger } from '../../lib/logger';
 import {
   toProductSelected,
   toOrderPending,
   toOrderConfirmed,
   toOrderCancelled,
 } from './flowHelper';
+
+const log = moduleLogger('flowProcessor');
 
 // ---------------------------------------------------------------------------
 // Tool → FlowState mapping
@@ -163,6 +166,10 @@ export function applyToolResult(
     return applyDataRecording(flow, toolName, result);
   }
 
+  log.debug(
+    { flowId: flow.flowId, tool: toolName, from: flow.state, to: newState },
+    'applyToolResult: state transition',
+  );
   const transitioned = applyStateTransition(flow, toolName, newState, result);
   return applyDataRecording(transitioned, toolName, result);
 }
@@ -255,12 +262,22 @@ export async function persistFlowMemory(
     ? FLOW_TO_CONVERSATION_STATE[activeFlow.state]
     : 'IDLE';
 
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: {
-      memory: memory as unknown as Prisma.InputJsonValue,
-      state: conversationState as never,
-      lastMessageAt: new Date(),
-    },
-  });
+  log.debug(
+    { conversationId, flowState: activeFlow?.state, conversationState, flowCount: memory.flows.length },
+    'persistFlowMemory: writing',
+  );
+
+  try {
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        memory: memory as unknown as Prisma.InputJsonValue,
+        state: conversationState as never,
+        lastMessageAt: new Date(),
+      },
+    });
+  } catch (err) {
+    log.error({ conversationId, err }, 'persistFlowMemory: failed to write');
+    throw err;
+  }
 }

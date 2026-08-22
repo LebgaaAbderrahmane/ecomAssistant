@@ -48,6 +48,10 @@ export interface ProductDiscoveryData {
     filters: FlowFilter;
   };
   toolResults: FlowProduct[];
+  /** Product ids the customer explicitly rejected (via NEGATE). Kept here so
+   *  computeExclusionIds can read from Flow alone without needing the old
+   *  flat-memory rejectedProducts field. */
+  rejectedProductIds?: string[];
 }
 
 export interface OrderData {
