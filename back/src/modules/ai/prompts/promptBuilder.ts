@@ -53,9 +53,22 @@ export function buildIntentPrompt(ctx: AgentContext): string {
 
   sections.push('', 'Context (memory):', JSON.stringify(ctx.memory, null, 2));
 
-  if (ctx.memory.lastProductResults?.length) {
-    const list = ctx.memory.lastProductResults
-      .map((p, i) => `  ${i}: ${p.name}`)
+  // Prefer product results from the active flow; fall back to legacy flat memory.
+  const activeFlow = ctx.memory.activeFlow
+    ? ctx.memory.flows.find((f) => f.flowId === ctx.memory.activeFlow)
+    : undefined;
+
+  let names: string[] | undefined;
+  if (activeFlow && activeFlow.state !== 'IDLE') {
+    names = activeFlow.productDiscovery.toolResults.map((p) => p.productName);
+  } else {
+    const legacy = (ctx.memory as unknown as { lastProductResults?: Array<{ name: string }> });
+    names = legacy.lastProductResults?.map((p) => p.name);
+  }
+
+  if (names?.length) {
+    const list = names
+      .map((name, i) => `  ${i}: ${name}`)
       .join('\n');
     sections.push(
       '',

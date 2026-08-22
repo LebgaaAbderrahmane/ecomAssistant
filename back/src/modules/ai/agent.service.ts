@@ -7,6 +7,7 @@ import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isS
 import { executeTool, ToolResult } from './tools/registry';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
+import { migrateMemory } from './flowHelper';
 import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 import { openwaService } from '../whatsapp/whatsapp.service';
@@ -621,6 +622,7 @@ export const processMessage = async (messageId: string) => {
   // ─── LLM #1: multi-intent extraction (always runs, even if taken over) ─
   // LLM #1 keeps working so we keep collecting intent data + suggested intents.
   const knownSuggestedIntents = await topSuggested(10);
+  const migrated = migrateMemory(memory);
   const intentContext: AgentContext = {
     state: conversation.state,
     allowedIntents: ALL_INTENTS,
