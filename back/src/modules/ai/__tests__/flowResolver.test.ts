@@ -161,6 +161,7 @@ describe('scoreFlow', () => {
 
   it('always includes recency signal', () => {
     const flow = discoveryFlow('f1', 'shoes');
+    flow.updatedAt = new Date().toISOString();
     const scored = scoreFlow(flow, {}, 'PRODUCT_SEARCH');
     expect(scored.matchedSignals).toContain('recency');
   });
