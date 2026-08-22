@@ -15,7 +15,6 @@ import {
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
 import { resolveProductRequest, fetchProductsByIds, matchProductsWithLLM } from './searchHelpers';
-import { TOOL_STATE_TRANSITIONS } from '../conversationState';
 import {
   consolidatePreferences,
   computeExclusionIds,
@@ -128,10 +127,6 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
   const resolved = await resolveProductRequest(query, productCtx, ctx.merchantId);
 
   if (resolved.outcome === 'SUCCESS') {
-    await prisma.conversation.update({
-      where: { id: ctx.conversationId },
-      data: { state: TOOL_STATE_TRANSITIONS.searchProducts! },
-    });
     return { success: true, data: { products: formatProducts(resolved.products) } };
   }
 
@@ -253,11 +248,6 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
       },
     });
 
-    await prisma.conversation.update({
-      where: { id: ctx.conversationId },
-      data: { state: TOOL_STATE_TRANSITIONS.confirmOrder! },
-    });
-
     return {
       success: true,
       data: {
@@ -331,11 +321,6 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
       data: {
         status: 'CANCELLED',
       },
-    });
-
-    await prisma.conversation.update({
-      where: { id: ctx.conversationId },
-      data: { state: TOOL_STATE_TRANSITIONS.cancelOrder! },
     });
 
     return {
@@ -419,11 +404,6 @@ const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
     .map((name) => products.find((p: Product) => p.name.toLowerCase() === name.toLowerCase()))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
-  await prisma.conversation.update({
-    where: { id: ctx.conversationId },
-    data: { state: TOOL_STATE_TRANSITIONS.recallPreviousProducts! },
-  });
-
   return {
     success: true,
     data: {
@@ -472,7 +452,7 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
 
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
-    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.chooseProduct! },
+    data: { currentProductId: product.id },
   });
 
   return {
@@ -513,7 +493,7 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
 
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
-    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.getProductDetails! },
+    data: { currentProductId: product.id },
   });
 
   return {
@@ -597,11 +577,6 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
       error: 'No products available to recommend right now.',
     };
   }
-
-  await prisma.conversation.update({
-    where: { id: ctx.conversationId },
-    data: { state: TOOL_STATE_TRANSITIONS.suggestProducts! },
-  });
 
   return {
     success: true,

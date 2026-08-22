@@ -13,14 +13,20 @@ export type ConversationState =
   | 'FINISHED'
   | 'CANCELLED';
 
-// Tool -> conversation state applied on a successful run.
-//
-// Tools that start a fresh product workflow (search / recall) move the
-// conversation back into discovery — this is what invalidates a stale
-// WAITING_CONFIRMATION when the customer pivots to a new product before
-// confirming their order. Tools that keep the conversation where it is
-// (status checks, shipping quotes, escalation) intentionally map to no state
-// change.
+/**
+ * @deprecated Replaced by `TOOL_FLOW_STATE_MAP` in `flowProcessor.ts` (Flow
+ * architecture). This mapping is kept for backward-compatibility reference only.
+ * All runtime usage has migrated to `applyToolResult` → `FLOW_TO_CONVERSATION_STATE`.
+ *
+ * Tool -> conversation state applied on a successful run.
+ *
+ * Tools that start a fresh product workflow (search / recall) move the
+ * conversation back into discovery — this is what invalidates a stale
+ * WAITING_CONFIRMATION when the customer pivots to a new product before
+ * confirming their order. Tools that keep the conversation where it is
+ * (status checks, shipping quotes, escalation) intentionally map to no state
+ * change.
+ */
 export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>> = {
   searchProducts: 'PRODUCT_DISCOVERY',
   recallPreviousProducts: 'PRODUCT_DISCOVERY',
@@ -33,6 +39,10 @@ export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>
 };
 
 /**
+ * @deprecated Replaced by `applyToolResult` in `flowProcessor.ts` (Flow
+ * architecture). This function is kept for backward-compatibility reference only.
+ * All runtime usage has migrated to `applyToolResult` → `FLOW_TO_CONVERSATION_STATE`.
+ *
  * Pure state-transition helper. Returns the conversation state a tool success
  * should land on. Failures never advance the conversation.
  */
