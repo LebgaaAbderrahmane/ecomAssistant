@@ -1,5 +1,4 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 import {
   TOOL_STATE_TRANSITIONS,
   nextConversationState,
@@ -8,95 +7,84 @@ import type { ToolName } from '../schemas/intents.schemas';
 
 describe('TOOL_STATE_TRANSITIONS', () => {
   it('maps every flow-moving tool to the right state', () => {
-    assert.equal(TOOL_STATE_TRANSITIONS.searchProducts, 'PRODUCT_DISCOVERY');
-    assert.equal(TOOL_STATE_TRANSITIONS.recallPreviousProducts, 'PRODUCT_DISCOVERY');
-    assert.equal(TOOL_STATE_TRANSITIONS.suggestProducts, 'PRODUCT_DISCOVERY');
-    assert.equal(TOOL_STATE_TRANSITIONS.chooseProduct, 'PRODUCT_SELECTED');
-    assert.equal(TOOL_STATE_TRANSITIONS.getProductDetails, 'PRODUCT_SELECTED');
-    assert.equal(TOOL_STATE_TRANSITIONS.createOrder, 'WAITING_CONFIRMATION');
-    assert.equal(TOOL_STATE_TRANSITIONS.confirmOrder, 'CONFIRMED');
-    assert.equal(TOOL_STATE_TRANSITIONS.cancelOrder, 'CANCELLED');
+    expect(TOOL_STATE_TRANSITIONS.searchProducts).toBe('PRODUCT_DISCOVERY');
+    expect(TOOL_STATE_TRANSITIONS.recallPreviousProducts).toBe('PRODUCT_DISCOVERY');
+    expect(TOOL_STATE_TRANSITIONS.suggestProducts).toBe('PRODUCT_DISCOVERY');
+    expect(TOOL_STATE_TRANSITIONS.chooseProduct).toBe('PRODUCT_SELECTED');
+    expect(TOOL_STATE_TRANSITIONS.getProductDetails).toBe('PRODUCT_SELECTED');
+    expect(TOOL_STATE_TRANSITIONS.createOrder).toBe('WAITING_CONFIRMATION');
+    expect(TOOL_STATE_TRANSITIONS.confirmOrder).toBe('CONFIRMED');
+    expect(TOOL_STATE_TRANSITIONS.cancelOrder).toBe('CANCELLED');
   });
 
   it('leaves state-neutral tools out of the transition map', () => {
-    assert.equal(TOOL_STATE_TRANSITIONS.getOrderStatus, undefined);
-    assert.equal(TOOL_STATE_TRANSITIONS.calculateShipping, undefined);
-    assert.equal(TOOL_STATE_TRANSITIONS.escalateConversation, undefined);
+    expect(TOOL_STATE_TRANSITIONS.getOrderStatus).toBeUndefined();
+    expect(TOOL_STATE_TRANSITIONS.calculateShipping).toBeUndefined();
+    expect(TOOL_STATE_TRANSITIONS.escalateConversation).toBeUndefined();
   });
 });
 
 describe('nextConversationState', () => {
   it('(1) a new product search while WAITING_CONFIRMATION moves the conversation to PRODUCT_DISCOVERY', () => {
     const next = nextConversationState('WAITING_CONFIRMATION', 'searchProducts', true);
-    assert.equal(next, 'PRODUCT_DISCOVERY');
-    // The follow-up acknowledgment "okay" therefore sees PRODUCT_DISCOVERY,
-    // not a stale WAITING_CONFIRMATION.
-    assert.notEqual(next, 'WAITING_CONFIRMATION');
+    expect(next).toBe('PRODUCT_DISCOVERY');
+    expect(next).not.toBe('WAITING_CONFIRMATION');
   });
 
   it('(2) a genuine order confirmation while actually waiting keeps CONFIRMED', () => {
-    assert.equal(
+    expect(
       nextConversationState('WAITING_CONFIRMATION', 'confirmOrder', true),
-      'CONFIRMED',
-    );
+    ).toBe('CONFIRMED');
   });
 
   it('(3) selecting a product after a search moves to PRODUCT_SELECTED', () => {
-    assert.equal(
+    expect(
       nextConversationState('PRODUCT_DISCOVERY', 'chooseProduct', true),
-      'PRODUCT_SELECTED',
-    );
+    ).toBe('PRODUCT_SELECTED');
   });
 
   it('(4) switching from an order flow to a completely new product search invalidates the pending confirmation', () => {
     const afterSearch = nextConversationState('WAITING_CONFIRMATION', 'searchProducts', true);
-    assert.equal(afterSearch, 'PRODUCT_DISCOVERY');
+    expect(afterSearch).toBe('PRODUCT_DISCOVERY');
 
     const afterRecall = nextConversationState('WAITING_CONFIRMATION', 'recallPreviousProducts', true);
-    assert.equal(afterRecall, 'PRODUCT_DISCOVERY');
+    expect(afterRecall).toBe('PRODUCT_DISCOVERY');
   });
 
   it('recall / details / cancel transitions too', () => {
-    assert.equal(
+    expect(
       nextConversationState('WAITING_CONFIRMATION', 'recallPreviousProducts', true),
-      'PRODUCT_DISCOVERY',
-    );
-    assert.equal(
+    ).toBe('PRODUCT_DISCOVERY');
+    expect(
       nextConversationState('PRODUCT_DISCOVERY', 'getProductDetails', true),
-      'PRODUCT_SELECTED',
-    );
-    assert.equal(
+    ).toBe('PRODUCT_SELECTED');
+    expect(
       nextConversationState('WAITING_CONFIRMATION', 'cancelOrder', true),
-      'CANCELLED',
-    );
-    assert.equal(
+    ).toBe('CANCELLED');
+    expect(
       nextConversationState('IDLE', 'createOrder', true),
-      'WAITING_CONFIRMATION',
-    );
+    ).toBe('WAITING_CONFIRMATION');
   });
 
   it('a recommendation while WAITING_CONFIRMATION moves to PRODUCT_DISCOVERY', () => {
-    assert.equal(
+    expect(
       nextConversationState('WAITING_CONFIRMATION', 'suggestProducts', true),
-      'PRODUCT_DISCOVERY',
-    );
+    ).toBe('PRODUCT_DISCOVERY');
   });
 
   it('failed tools never advance the state', () => {
-    assert.equal(
+    expect(
       nextConversationState('WAITING_CONFIRMATION', 'searchProducts', false),
-      'WAITING_CONFIRMATION',
-    );
-    assert.equal(
+    ).toBe('WAITING_CONFIRMATION');
+    expect(
       nextConversationState('WAITING_CONFIRMATION', 'confirmOrder', false),
-      'WAITING_CONFIRMATION',
-    );
+    ).toBe('WAITING_CONFIRMATION');
   });
 
   it('status, shipping and escalation tools keep the state unchanged', () => {
     const neutral: ToolName[] = ['getOrderStatus', 'calculateShipping', 'escalateConversation'];
     for (const tool of neutral) {
-      assert.equal(nextConversationState('PRODUCT_SELECTED', tool, true), 'PRODUCT_SELECTED');
+      expect(nextConversationState('PRODUCT_SELECTED', tool, true)).toBe('PRODUCT_SELECTED');
     }
   });
 });

@@ -1,5 +1,4 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 import {
   IntentSchema,
   ToolNameSchema,
@@ -13,20 +12,20 @@ import {
 
 describe('suggestProducts intent routing', () => {
   it('exposes PRODUCT_SUGGEST as a covered intent and suggestProducts as a tool', () => {
-    assert.ok(IntentSchema.options.includes('PRODUCT_SUGGEST'));
-    assert.ok(ReadToolNameSchema.options.includes('suggestProducts'));
+    expect(IntentSchema.options).toContain('PRODUCT_SUGGEST');
+    expect(ReadToolNameSchema.options).toContain('suggestProducts');
   });
 
   it('maps PRODUCT_SUGGEST deterministically to suggestProducts', () => {
-    assert.equal(resolveTool('PRODUCT_SUGGEST', {}), 'suggestProducts');
-    assert.equal(resolveTool('PRODUCT_SUGGEST', { category: 'shoes' }), 'suggestProducts');
+    expect(resolveTool('PRODUCT_SUGGEST', {})).toBe('suggestProducts');
+    expect(resolveTool('PRODUCT_SUGGEST', { category: 'shoes' })).toBe('suggestProducts');
   });
 
   it('does not route other intents to suggestProducts', () => {
-    assert.equal(resolveTool('PRODUCT_SEARCH', { product: 'iphone 15' }), 'searchProducts');
-    assert.equal(resolveTool('PRODUCT_SELECT', { productIndex: 1 }), 'chooseProduct');
-    assert.equal(resolveTool('PRODUCT_DETAILS', { productName: 'x' }), 'getProductDetails');
-    assert.equal(resolveTool('ORDER_CREATE', {}), 'createOrder');
+    expect(resolveTool('PRODUCT_SEARCH', { product: 'iphone 15' })).toBe('searchProducts');
+    expect(resolveTool('PRODUCT_SELECT', { productIndex: 1 })).toBe('chooseProduct');
+    expect(resolveTool('PRODUCT_DETAILS', { productName: 'x' })).toBe('getProductDetails');
+    expect(resolveTool('ORDER_CREATE', {})).toBe('createOrder');
   });
 });
 
@@ -40,28 +39,27 @@ describe('tool execution policies (read / write)', () => {
     const writeSet = new Set<string>(WRITE_TOOLS);
 
     for (const tool of ALL_TOOLS) {
-      assert.equal(isReadTool(tool), readSet.has(tool), `${tool} isReadTool mismatch`);
-      assert.equal(isWriteTool(tool), writeSet.has(tool), `${tool} isWriteTool mismatch`);
-      assert.notEqual(isReadTool(tool), isWriteTool(tool), `${tool} must be read XOR write`);
+      expect(isReadTool(tool)).toBe(readSet.has(tool));
+      expect(isWriteTool(tool)).toBe(writeSet.has(tool));
+      expect(isReadTool(tool)).not.toBe(isWriteTool(tool));
     }
 
-    // Union must be exhaustive and non-overlapping.
-    assert.equal(ALL_TOOLS.length, new Set(ALL_TOOLS).size, 'tools must not be duplicated');
+    expect(ALL_TOOLS.length).toBe(new Set(ALL_TOOLS).size);
     const overlaps = READ_TOOLS.filter((t) => writeSet.has(t));
-    assert.equal(overlaps.length, 0, `overlapping tools: ${overlaps.join(', ')}`);
+    expect(overlaps.length).toBe(0);
   });
 
   it('classifies the navigation tools as READ', () => {
     for (const tool of ['searchProducts', 'recallPreviousProducts', 'chooseProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
-      assert.equal(isReadTool(tool), true, `${tool} should be READ`);
-      assert.equal(isWriteTool(tool), false, `${tool} should not be WRITE`);
+      expect(isReadTool(tool)).toBe(true);
+      expect(isWriteTool(tool)).toBe(false);
     }
   });
 
   it('classifies the business-mutating tools as WRITE', () => {
     for (const tool of ['createOrder', 'confirmOrder', 'modifyOrder', 'cancelOrder', 'escalateConversation'] as const) {
-      assert.equal(isWriteTool(tool), true, `${tool} should be WRITE`);
-      assert.equal(isReadTool(tool), false, `${tool} should not be READ`);
+      expect(isWriteTool(tool)).toBe(true);
+      expect(isReadTool(tool)).toBe(false);
     }
   });
 });
@@ -76,18 +74,18 @@ describe('SuggestProductsArgsSchema', () => {
       maxPrice: 8000,
       preferences: 'running, light',
     });
-    assert.equal(parsed.success, true);
+    expect(parsed.success).toBe(true);
     if (parsed.success) {
-      assert.equal(parsed.data.category, 'sneakers');
-      assert.equal(parsed.data.maxPrice, 8000);
+      expect(parsed.data.category).toBe('sneakers');
+      expect(parsed.data.maxPrice).toBe(8000);
     }
   });
 
   it('accepts an empty object (recommend with no prior context)', () => {
-    assert.equal(SuggestProductsArgsSchema.safeParse({}).success, true);
+    expect(SuggestProductsArgsSchema.safeParse({}).success).toBe(true);
   });
 
   it('rejects negative prices', () => {
-    assert.equal(SuggestProductsArgsSchema.safeParse({ maxPrice: -5 }).success, false);
+    expect(SuggestProductsArgsSchema.safeParse({ maxPrice: -5 }).success).toBe(false);
   });
 });
