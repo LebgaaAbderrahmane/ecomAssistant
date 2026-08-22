@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyIntent, scoreFlow, resolveFlow } from '../flowResolver';
+import { classifyIntent, scoreFlow, resolveFlow, toFlowResolverEntities } from '../flowResolver';
 import type { Flow, FlowProduct } from '../memory.types';
 import type { FlowResolverInput, FlowResolverEntities } from '../flowResolver.types';
 import type { IntentField } from '../schemas/intents.schemas';
@@ -352,5 +352,67 @@ describe('resolveFlow', () => {
       const result = resolveFlow(makeInput('PRODUCT_SEARCH', { productName: 'shoes' }, [flow], 'nonexistent'));
       expect(result.action).toBe('CREATE');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toFlowResolverEntities
+// ---------------------------------------------------------------------------
+
+describe('toFlowResolverEntities', () => {
+  it('maps product to productName and productRef', () => {
+    const result = toFlowResolverEntities({ product: 'nike shoes' });
+    expect(result.productName).toBe('nike shoes');
+    expect(result.productRef).toBe('nike shoes');
+  });
+
+  it('prefers explicit productName/productRef over product', () => {
+    const result = toFlowResolverEntities({
+      product: 'generic',
+      productName: 'specific name',
+      productRef: 'ref name',
+    });
+    expect(result.productName).toBe('specific name');
+    expect(result.productRef).toBe('ref name');
+  });
+
+  it('maps wilaya, commune, quantity, orderId, orderRef, reason', () => {
+    const result = toFlowResolverEntities({
+      product: 'shoes',
+      wilaya: 'Casablanca',
+      commune: 'Hay Mohammadi',
+      quantity: 3,
+      orderId: 'ord-123',
+      orderRef: 'ref-456',
+      reason: 'too expensive',
+    });
+    expect(result.wilaya).toBe('Casablanca');
+    expect(result.commune).toBe('Hay Mohammadi');
+    expect(result.quantity).toBe(3);
+    expect(result.orderId).toBe('ord-123');
+    expect(result.orderRef).toBe('ref-456');
+    expect(result.reason).toBe('too expensive');
+  });
+
+  it('returns undefined for missing fields', () => {
+    const result = toFlowResolverEntities({});
+    expect(result.productName).toBeUndefined();
+    expect(result.productRef).toBeUndefined();
+    expect(result.wilaya).toBeUndefined();
+    expect(result.commune).toBeUndefined();
+    expect(result.quantity).toBeUndefined();
+    expect(result.orderId).toBeUndefined();
+    expect(result.orderRef).toBeUndefined();
+    expect(result.reason).toBeUndefined();
+  });
+
+  it('handles non-number quantity gracefully', () => {
+    const result = toFlowResolverEntities({ quantity: 'abc' as unknown as number });
+    expect(result.quantity).toBeUndefined();
+  });
+
+  it('passes through numeric quantity', () => {
+    const result = toFlowResolverEntities({ quantity: 5 });
+    expect(result.quantity).toBe(5);
   });
 });

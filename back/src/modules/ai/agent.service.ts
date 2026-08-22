@@ -6,9 +6,10 @@ import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from 
 import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
-import type { ConversationMemory, IntentSummary, Flow } from './memory.types';
-import { migrateMemory, getActiveFlow } from './flowHelper';
-import { getFlowProductResults } from './flowExtractors';
+import type { ConversationMemory, Flow } from './memory.types';
+import { migrateMemory, getActiveFlow, createFlow } from './flowHelper';
+import { persistFlowMemory, applyToolResult } from './flowProcessor';
+import { resolveFlow, toFlowResolverEntities } from './flowResolver';
 import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 import { openwaService } from '../whatsapp/whatsapp.service';
@@ -89,53 +90,54 @@ function sortIntents(intents: IntentItem[]): IntentItem[] {
   });
 }
 
-async function persistMemory(
-  conversationId: string,
-  memory: ConversationMemory,
-  sortedIntents: IntentItem[],
-  primaryIntent: IntentItem,
-  conversationAct: string,
-  lastProductResults?: ConversationMemory['lastProductResults'],
-  rejectedToRecord?: ConversationMemory['rejectedProducts'],
-) {
-  const intentSummaries: IntentSummary[] = sortedIntents.map(item => ({
-    intent: intentToString(item.intent),
-    entities: item.entities,
+// ---------------------------------------------------------------------------
+// Flow update helper
+//
+// After every tool execution, applies the result to the active flow via
+// FlowProcessor.applyToolResult. Handles the data-shape normalization between
+// what tools return ({ id, name, price }) and what FlowProduct expects
+// ({ productId, productName, price, variants }).
+// ---------------------------------------------------------------------------
+
+function normalizeProductsForFlow(
+  rawProducts: Array<{ id: string; name: string; price?: number }>,
+): Array<{ productId: string; productName: string; price: number; variants: never[] }> {
+  return rawProducts.map((p) => ({
+    productId: p.id,
+    productName: p.name,
+    price: p.price ?? 0,
+    variants: [] as never[],
   }));
+}
 
-  const updatedMemory: ConversationMemory = {
-    ...memory,
-    lastIntent: intentToString(primaryIntent.intent),
-    lastIntents: intentSummaries,
-    lastConversationAct: conversationAct,
-    entities: { ...(memory.entities ?? {}), ...primaryIntent.entities },
-    lastProductResults: lastProductResults ?? memory.lastProductResults,
-    updatedAt: new Date().toISOString(),
-  };
+/**
+ * Applies a tool result to the active flow. If no active flow or tool result
+ * is null, this is a no-op. Returns the (possibly new) flow reference so
+ * callers can update memory/executionContext.
+ */
+function applyToolToFlow(
+  flow: Flow | null,
+  toolName: string,
+  result: ToolResult | null,
+): Flow | null {
+  if (!flow || !result) return flow;
 
-  // A NEGATE message appends the products it is rejecting to the persistent
-  // rejected list, so suggestProducts never offers them again. Only the
-  // previously presented products are recorded — never a freshly suggested set.
-  if (rejectedToRecord?.length) {
-    const seen = new Set((updatedMemory.rejectedProducts ?? []).map((p) => p.id));
-    for (const entry of rejectedToRecord) {
-      if (entry?.id && !seen.has(entry.id)) {
-        seen.add(entry.id);
-        updatedMemory.rejectedProducts = [
-          ...(updatedMemory.rejectedProducts ?? []),
-          { id: entry.id, name: entry.name ?? '' },
-        ];
-      }
+  // Build the data object that applyToolResult expects, normalizing shapes
+  // where tool output differs from FlowProduct / OrderData schemas.
+  let flowData: Record<string, unknown> | undefined;
+  if (result.data) {
+    flowData = { ...result.data };
+
+    // Normalize product arrays: tools return { id, name, price }, FlowProduct
+    // expects { productId, productName, price, variants }.
+    if (flowData.products && Array.isArray(flowData.products)) {
+      flowData.products = normalizeProductsForFlow(
+        flowData.products as Array<{ id: string; name: string; price?: number }>,
+      );
     }
   }
 
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: {
-      memory: updatedMemory as Prisma.InputJsonValue,
-      lastMessageAt: new Date(),
-    },
-  });
+  return applyToolResult(flow, toolName as import('./schemas/intents.schemas').ToolName, result.success, flowData);
 }
 
 // ─── Image category routing ─────────────────────────────────────────────
@@ -172,19 +174,16 @@ type ToolResultEntry = { intent: string; result: ToolResult | null };
 
 type ToolExecutionOutcome = {
   toolResults: ToolResultEntry[];
-  replyMemory: ConversationMemory;
-  finalLastProductResults: ConversationMemory['lastProductResults'];
+  memory: ConversationMemory;
 };
 
 type Layer2ReplyState = {
   sortedIntents: IntentItem[];
   primaryIntent: IntentItem;
   conversationAct: string;
-  rejectedToRecord?: ConversationMemory['rejectedProducts'];
   tone: string;
   language: string;
-  replyMemory: ConversationMemory;
-  finalLastProductResults: ConversationMemory['lastProductResults'];
+  memory: ConversationMemory;
 };
 
 // ─── Layer 2, step 1: tool execution ────────────────────────────────────
@@ -202,7 +201,7 @@ async function executeTools(
     include: { conversation: true },
   });
   const { conversation } = message;
-  const memory = (conversation.memory as ConversationMemory | null) ?? {};
+  const memory = migrateMemory(conversation.memory);
 
   const log = msgLogger({ conversationId: conversation.id, messageId });
 
@@ -210,8 +209,7 @@ async function executeTools(
     where: { id: conversation.customerId },
   });
 
-  const migrated = migrateMemory(memory);
-  const activeFlow = getActiveFlow(migrated) ?? null;
+  const activeFlow = getActiveFlow(memory) ?? null;
   const executionContext = {
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
@@ -232,15 +230,6 @@ async function executeTools(
   // ─── Entity enrichment + tool execution loop ─────────────────────────
   const toolResults: ToolResultEntry[] = [];
   const toolResultCache = new Map<string, ToolResult | null>();
-  let lastProductResults = (getFlowProductResults(activeFlow) ?? []) as ConversationMemory['lastProductResults'];
-  // A product search that definitively found nothing (or was too vague to run)
-  // invalidates any previously stored results — the reply and any PRODUCT_SELECT
-  // must not reference stale products from an unrelated earlier search.
-  let productSearchMissed = false;
-  // Fresh search/suggestion results stored this message protect against the
-  // miss-clear above: a suggestion that ran after a failed search must keep
-  // its own results in memory for follow-up selection.
-  let resultsStoredThisMessage = false;
   // Whether an exact product request (search/recall) succeeded this message.
   // When true, paired suggestions are skipped — a search that matched what the
   // customer asked needs no recommendation on top.
@@ -315,18 +304,19 @@ async function executeTools(
     }
     toolResultCache.set(toolKey, result);
 
-    // A product search that came back empty or too vague must not leave stale
-    // results behind — and must not trigger any further search for the same item.
-    if (
-      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
-      (result.outcome === 'NOT_FOUND' || result.outcome === 'AMBIGUOUS')
-    ) {
-      productSearchMissed = true;
-    }
-
     toolResults.push({ intent: intentToString(item.intent), result });
 
-    // Post-processing: store search results in memory for index-based selection
+    // Apply tool result to active flow (state transitions + data recording).
+    if (executionContext.activeFlow && result) {
+      const updated = applyToolToFlow(executionContext.activeFlow, toolName, result);
+      if (updated && updated !== executionContext.activeFlow) {
+        executionContext.activeFlow = updated;
+        const idx = memory.flows.findIndex((f) => f.flowId === updated.flowId);
+        if (idx >= 0) memory.flows[idx] = updated;
+      }
+    }
+
+    // Store search results on message entities for backward compatibility.
     if (
       (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
       result.success &&
@@ -336,7 +326,6 @@ async function executeTools(
       const productsArray = result.data.products as Array<{ id: string; name: string; price?: number }>;
       const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
 
-      // Store on the customer message entities
       await prisma.message.update({
         where: { id: messageId },
         data: {
@@ -347,22 +336,7 @@ async function executeTools(
         },
       });
 
-      lastProductResults = productsList;
-      // Update the active flow so subsequent tools in this message see the fresh results.
-      if (executionContext.activeFlow && executionContext.activeFlow.state !== 'IDLE') {
-        const f = executionContext.activeFlow as Extract<Flow, { productDiscovery: unknown }>;
-        f.productDiscovery = {
-          ...f.productDiscovery,
-          toolResults: productsArray.map(p => ({
-            productId: p.id,
-            productName: p.name,
-            price: p.price ?? 0,
-            variants: [],
-          })),
-        };
-      }
       searchSucceededThisMessage = true;
-      resultsStoredThisMessage = true;
       log.info({ count: productsList.length }, 'stored products in message entities');
     }
   }
@@ -393,11 +367,21 @@ async function executeTools(
 
     toolResults.push({ intent: intentToString(item.intent), result });
 
+    // Apply tool result to active flow.
+    if (executionContext.activeFlow && result) {
+      const updated = applyToolToFlow(executionContext.activeFlow, 'suggestProducts', result);
+      if (updated && updated !== executionContext.activeFlow) {
+        executionContext.activeFlow = updated;
+        const idx = memory.flows.findIndex((f) => f.flowId === updated.flowId);
+        if (idx >= 0) memory.flows[idx] = updated;
+      }
+    }
+
+    // Store suggested products on message entities for backward compatibility.
     if (result.success && result.data?.products && Array.isArray(result.data.products)) {
       const productsArray = result.data.products as Array<{ id: string; name: string; price?: number }>;
       const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
 
-      // Store on the customer message entities
       await prisma.message.update({
         where: { id: messageId },
         data: {
@@ -408,38 +392,11 @@ async function executeTools(
         },
       });
 
-      lastProductResults = productsList;
-      // Update the active flow so subsequent tools in this message see the fresh results.
-      if (executionContext.activeFlow && executionContext.activeFlow.state !== 'IDLE') {
-        const f = executionContext.activeFlow as Extract<Flow, { productDiscovery: unknown }>;
-        f.productDiscovery = {
-          ...f.productDiscovery,
-          toolResults: productsArray.map(p => ({
-            productId: p.id,
-            productName: p.name,
-            price: p.price ?? 0,
-            variants: [],
-          })),
-        };
-      }
-      resultsStoredThisMessage = true;
       log.info({ count: productsList.length }, 'stored suggested products in message entities');
     }
   }
 
-  // A product search that ended with NOT_FOUND/AMBIGUOUS invalidates stale
-  // results: the reply must not reference them, and a follow-up PRODUCT_SELECT
-  // must not resolve against products that were never offered in this exchange.
-  // Fresh suggestion results from this same message are kept.
-  let replyMemory = memory;
-  let finalLastProductResults = lastProductResults;
-  if (productSearchMissed && !resultsStoredThisMessage) {
-    finalLastProductResults = [];
-    replyMemory = { ...memory, lastProductResults: [] };
-    log.info('product search missed, cleared stale lastProductResults');
-  }
-
-  return { toolResults, replyMemory, finalLastProductResults };
+  return { toolResults, memory };
 }
 
 // ─── Layer 2, step 2: reply generation ───────────────────────────────────
@@ -455,11 +412,9 @@ async function generateResponse(
     sortedIntents,
     primaryIntent,
     conversationAct,
-    rejectedToRecord,
     tone,
     language,
-    replyMemory,
-    finalLastProductResults,
+    memory,
   } = state;
 
   const message = await prisma.message.findUniqueOrThrow({
@@ -483,7 +438,7 @@ async function generateResponse(
     })),
     conversationAct,
     toolResults,
-    memory: replyMemory,
+    memory,
     tone,
     language,
   };
@@ -542,7 +497,7 @@ async function generateResponse(
   }
 
   // ─── Update conversation memory ─────────────────────────────────────
-  await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, conversationAct, finalLastProductResults, rejectedToRecord);
+  await persistFlowMemory(conversation.id, memory);
 
   log.info(
     { intents: sortedIntents.map(i => intentToString(i.intent)), replyCount: replyParsed.messages.length },
@@ -556,7 +511,7 @@ export const processMessage = async (messageId: string) => {
     include: { conversation: true },
   });
   const { conversation } = message;
-  const memory = (conversation.memory as ConversationMemory | null) ?? {};
+  const memory = migrateMemory(conversation.memory);
 
   const log = msgLogger({ conversationId: conversation.id, messageId });
 
@@ -629,17 +584,7 @@ export const processMessage = async (messageId: string) => {
       }
     }
 
-    const updatedMemory: ConversationMemory = {
-      ...memory,
-      lastIntent: 'OUT_OF_SCOPE',
-      lastIntents: [{ intent: 'OUT_OF_SCOPE', entities: {} }],
-      lastConversationAct: 'DIDNT_UNDERSTAND',
-      updatedAt: new Date().toISOString(),
-    };
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { memory: updatedMemory as Prisma.InputJsonValue, lastMessageAt: new Date() },
-    });
+    await persistFlowMemory(conversation.id, memory);
     log.info('empty message, replied with clarifying fallback');
     return;
   }
@@ -647,7 +592,6 @@ export const processMessage = async (messageId: string) => {
   // ─── LLM #1: multi-intent extraction (always runs, even if taken over) ─
   // LLM #1 keeps working so we keep collecting intent data + suggested intents.
   const knownSuggestedIntents = await topSuggested(10);
-  const migrated = migrateMemory(memory);
   const intentContext: AgentContext = {
     state: conversation.state,
     allowedIntents: ALL_INTENTS,
@@ -688,15 +632,6 @@ export const processMessage = async (messageId: string) => {
   // Save primary intent to message record (backward compat)
   const primaryIntent = sortedIntents[0];
 
-  // A NEGATE message reacting to a presented product list records that list as
-  // rejected, so future suggestProducts calls skip it. Computed from the
-  // ORIGINAL memory — the customer rejects what was shown before this turn,
-  // never a freshly suggested set.
-  const rejectedToRecord: ConversationMemory['rejectedProducts'] =
-    parsed.conversationAct === 'NEGATE' && memory.lastProductResults?.length
-      ? memory.lastProductResults
-      : undefined;
-
   await prisma.message.update({
     where: { id: messageId },
     data: {
@@ -707,11 +642,67 @@ export const processMessage = async (messageId: string) => {
     },
   });
 
+  // ─── Flow resolution (primary intent) ──────────────────────────────────
+  // Determines which flow this message continues, creates, or switches to.
+  // Runs after intent extraction but before tool execution so the execution
+  // context always has the correct activeFlow.
+  const resolverResult = resolveFlow({
+    extraction: {
+      intent: primaryIntent.intent,
+      entities: toFlowResolverEntities(primaryIntent.entities),
+      confidence: primaryIntent.confidence,
+    },
+    conversation: {
+      activeFlowId: memory.activeFlow ?? null,
+      flows: memory.flows,
+    },
+  });
+
+  log.debug(
+    { action: resolverResult.action, intent: intentToString(primaryIntent.intent) },
+    'flow resolution',
+  );
+
+  switch (resolverResult.action) {
+    case 'CREATE': {
+      const newFlow = createFlow({
+        productName: resolverResult.productName,
+        filters: resolverResult.filters,
+      });
+      memory.flows.push(newFlow);
+      memory.activeFlow = newFlow.flowId;
+      log.debug({ flowId: newFlow.flowId, productName: resolverResult.productName }, 'created new flow');
+      break;
+    }
+    case 'CONTINUE':
+    case 'SWITCH':
+      memory.activeFlow = resolverResult.flowId;
+      break;
+    case 'INVALID_ACTION':
+      log.info(
+        { intent: intentToString(primaryIntent.intent), reason: resolverResult.reason },
+        'flow resolution: invalid action, intent may not execute',
+      );
+      break;
+    case 'CLARIFY':
+      log.info(
+        { candidates: resolverResult.candidates.map(c => c.flowId) },
+        'flow resolution: ambiguous, multiple flows match equally',
+      );
+      break;
+    case 'NO_FLOW_LOOKUP':
+      break;
+  }
+
+  // Persist flow resolution changes (new flows, updated activeFlow) before tool
+  // execution so the deferred path (which re-reads from DB) sees the correct state.
+  await persistFlowMemory(conversation.id, memory);
+
   const executionContext = {
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
     conversationId: conversation.id,
-    activeFlow: getActiveFlow(migrateMemory(memory)) ?? null,
+    activeFlow: getActiveFlow(memory) ?? null,
     customerWilaya: customer.wilaya,
     customerCommune: customer.commune,
   };
@@ -827,11 +818,9 @@ export const processMessage = async (messageId: string) => {
     sortedIntents,
     primaryIntent,
     conversationAct: parsed.conversationAct,
-    rejectedToRecord,
     tone,
     language: defaultLanguage,
-    replyMemory: outcome.replyMemory,
-    finalLastProductResults: outcome.finalLastProductResults,
+    memory: outcome.memory,
   });
 };
 
@@ -847,15 +836,9 @@ export const processDeferredLayer2 = async (messageId: string) => {
     include: { conversation: true },
   });
   const { conversation } = message;
+  const memory = migrateMemory(conversation.memory);
 
   const log = msgLogger({ conversationId: conversation.id, messageId });
-
-  // Hand the conversation back to the AI: read tools are no longer suppressed
-  // and generateResponse will produce a reply instead of staying silent.
-  await prisma.conversation.update({
-    where: { id: conversation.id },
-    data: { takenOverByHuman: false, escalatedAt: null },
-  });
 
   const parsedIntents = (message.parsedIntents as unknown as IntentItem[] | null) ?? [];
   if (parsedIntents.length === 0) {
@@ -863,7 +846,73 @@ export const processDeferredLayer2 = async (messageId: string) => {
     return;
   }
 
-  const memory = (conversation.memory as ConversationMemory | null) ?? {};
+  const sortedIntents = sortIntents(parsedIntents);
+  const primaryIntent = sortedIntents[0];
+
+  // ─── Flow resolution (primary intent) ──────────────────────────────────
+  // Re-resolve so the active flow is correct before read tools execute.
+  // This mirrors the resolution step in processMessage — the deferred path
+  // runs after the original flow resolution was already persisted (by the
+  // main pipeline), but memory may have changed since (merchant messages,
+  // other deferred jobs), so re-resolve is safer.
+  const resolverResult = resolveFlow({
+    extraction: {
+      intent: primaryIntent.intent,
+      entities: toFlowResolverEntities(primaryIntent.entities),
+      confidence: primaryIntent.confidence,
+    },
+    conversation: {
+      activeFlowId: memory.activeFlow ?? null,
+      flows: memory.flows,
+    },
+  });
+
+  log.debug(
+    { action: resolverResult.action, intent: intentToString(primaryIntent.intent) },
+    'flow resolution (deferred)',
+  );
+
+  switch (resolverResult.action) {
+    case 'CREATE': {
+      const newFlow = createFlow({
+        productName: resolverResult.productName,
+        filters: resolverResult.filters,
+      });
+      memory.flows.push(newFlow);
+      memory.activeFlow = newFlow.flowId;
+      log.debug({ flowId: newFlow.flowId, productName: resolverResult.productName }, 'created new flow (deferred)');
+      break;
+    }
+    case 'CONTINUE':
+    case 'SWITCH':
+      memory.activeFlow = resolverResult.flowId;
+      break;
+    case 'INVALID_ACTION':
+      log.info(
+        { intent: intentToString(primaryIntent.intent), reason: resolverResult.reason },
+        'flow resolution: invalid action (deferred)',
+      );
+      break;
+    case 'CLARIFY':
+      log.info(
+        { candidates: resolverResult.candidates.map(c => c.flowId) },
+        'flow resolution: ambiguous (deferred)',
+      );
+      break;
+    case 'NO_FLOW_LOOKUP':
+      break;
+  }
+
+  // Persist flow resolution before tool execution so executeTools (which
+  // re-reads from DB) sees the correct activeFlow.
+  await persistFlowMemory(conversation.id, memory);
+
+  // ─── Conversation hand-back ─────────────────────────────────────────────
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: { takenOverByHuman: false, escalatedAt: null },
+  });
+
   const agentConfig = await prisma.agentConfig.findUnique({
     where: { merchantId: conversation.merchantId },
   });
@@ -872,7 +921,7 @@ export const processDeferredLayer2 = async (messageId: string) => {
 
   // Deferred read tools — write tools already ran while the human owned the
   // conversation and their results are persisted on the message.
-  const outcome = await executeTools(messageId, parsedIntents, { only: 'read' });
+  const outcome = await executeTools(messageId, sortedIntents, { only: 'read' });
 
   // Merge the write-tool results stored at execution time with the reads just
   // executed. Read tools were excluded from the write-only pass, so no intent
@@ -880,22 +929,12 @@ export const processDeferredLayer2 = async (messageId: string) => {
   const storedToolResults = (message.toolResults as unknown as ToolResultEntry[] | null) ?? [];
   const toolResults = [...storedToolResults, ...outcome.toolResults];
 
-  const sortedIntents = sortIntents(parsedIntents);
-  const primaryIntent = sortedIntents[0];
-  const conversationAct = memory.lastConversationAct ?? 'ANSWER';
-  const rejectedToRecord: ConversationMemory['rejectedProducts'] =
-    conversationAct === 'NEGATE' && memory.lastProductResults?.length
-      ? memory.lastProductResults
-      : undefined;
-
   await generateResponse(messageId, toolResults, {
     sortedIntents,
     primaryIntent,
-    conversationAct,
-    rejectedToRecord,
+    conversationAct: 'ANSWER',
     tone,
     language,
-    replyMemory: outcome.replyMemory,
-    finalLastProductResults: outcome.finalLastProductResults,
+    memory: outcome.memory,
   });
 };

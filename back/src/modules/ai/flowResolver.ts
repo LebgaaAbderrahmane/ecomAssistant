@@ -4,6 +4,7 @@ import type { Flow, FlowState } from './memory.types';
 import { moduleLogger } from '../../lib/logger';
 import {
   type IntentCategory,
+  type FlowResolverEntities,
   type FlowResolverInput,
   type FlowResolverOutput,
   type FlowCandidate,
@@ -24,6 +25,29 @@ const log = moduleLogger('flowResolver');
 // into one registry at some point; left alone here since it touches a file
 // this pass doesn't have visibility into.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Intent classification for flow routing
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps LLM-extracted entity fields (generic Record) to the FlowResolverEntities
+ * shape that resolveFlow expects.
+ */
+export function toFlowResolverEntities(
+  entities: Record<string, string | number | boolean | null>,
+): FlowResolverEntities {
+  return {
+    productName: (entities.productName ?? entities.product) as string | undefined,
+    productRef: (entities.productRef ?? entities.product) as string | undefined,
+    orderId: entities.orderId as string | undefined,
+    orderRef: entities.orderRef as string | undefined,
+    wilaya: entities.wilaya as string | undefined,
+    commune: entities.commune as string | undefined,
+    quantity: typeof entities.quantity === 'number' ? entities.quantity : undefined,
+    reason: entities.reason as string | undefined,
+  };
+}
 
 export function classifyIntent(intent: IntentField): IntentCategory {
   if (isSuggestedIntent(intent)) return 'NO_FLOW_LOOKUP';

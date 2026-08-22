@@ -540,9 +540,8 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
     where: { id: ctx.conversationId },
     select: { memory: true },
   });
-  const memory = (conversation?.memory ?? {}) as unknown as ConversationMemory;
-  const migrated = migrateMemory(memory);
-  const activeFlow = getActiveFlow(migrated) ?? {
+  const memory = migrateMemory(conversation?.memory);
+  const activeFlow = getActiveFlow(memory) ?? {
     flowId: 'temp',
     state: 'IDLE' as const,
     createdAt: new Date().toISOString(),
@@ -552,7 +551,7 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
   const prefs = consolidatePreferences(
     messagePrefs as PreferenceEntities,
     activeFlow.state !== 'IDLE' ? activeFlow.productDiscovery.input.filters : undefined,
-    migrated.globalInformation,
+    memory.globalInformation,
   );
   const excludeIds = computeExclusionIds(activeFlow, getFlowSelectedProductId(ctx.activeFlow));
 
