@@ -75,6 +75,18 @@ describe('toProductSelected', () => {
     expect(selected.productDiscovery).toBe(discovery.productDiscovery);
   });
 
+  it('stores selectedProductId when provided', () => {
+    const discovery = discoveryFlow();
+    const selected = toProductSelected(discovery, 'p1');
+    expect(selected.selectedProductId).toBe('p1');
+  });
+
+  it('leaves selectedProductId undefined when not provided', () => {
+    const discovery = discoveryFlow();
+    const selected = toProductSelected(discovery);
+    expect(selected.selectedProductId).toBeUndefined();
+  });
+
   it('bumps updatedAt', () => {
     const discovery = discoveryFlow();
     vi.useFakeTimers();

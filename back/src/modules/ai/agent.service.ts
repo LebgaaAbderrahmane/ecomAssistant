@@ -6,8 +6,9 @@ import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from 
 import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
-import type { ConversationMemory, IntentSummary } from './memory.types';
-import { migrateMemory } from './flowHelper';
+import type { ConversationMemory, IntentSummary, Flow } from './memory.types';
+import { migrateMemory, getActiveFlow } from './flowHelper';
+import { getFlowProductResults } from './flowExtractors';
 import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
 import { openwaService } from '../whatsapp/whatsapp.service';
@@ -209,13 +210,13 @@ async function executeTools(
     where: { id: conversation.customerId },
   });
 
+  const migrated = migrateMemory(memory);
+  const activeFlow = getActiveFlow(migrated) ?? null;
   const executionContext = {
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
     conversationId: conversation.id,
-    currentOrderId: conversation.currentOrderId,
-    currentProductId: conversation.currentProductId ?? null,
-    lastProductResults: memory.lastProductResults,
+    activeFlow,
     customerWilaya: customer.wilaya,
     customerCommune: customer.commune,
   };
@@ -231,7 +232,7 @@ async function executeTools(
   // ─── Entity enrichment + tool execution loop ─────────────────────────
   const toolResults: ToolResultEntry[] = [];
   const toolResultCache = new Map<string, ToolResult | null>();
-  let lastProductResults = memory.lastProductResults;
+  let lastProductResults = (getFlowProductResults(activeFlow) ?? []) as ConversationMemory['lastProductResults'];
   // A product search that definitively found nothing (or was too vague to run)
   // invalidates any previously stored results — the reply and any PRODUCT_SELECT
   // must not reference stale products from an unrelated earlier search.
@@ -332,7 +333,7 @@ async function executeTools(
       result.data?.products &&
       Array.isArray(result.data.products)
     ) {
-      const productsArray = result.data.products as Array<{ id: string; name: string }>;
+      const productsArray = result.data.products as Array<{ id: string; name: string; price?: number }>;
       const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
 
       // Store on the customer message entities
@@ -347,7 +348,19 @@ async function executeTools(
       });
 
       lastProductResults = productsList;
-      executionContext.lastProductResults = productsList;
+      // Update the active flow so subsequent tools in this message see the fresh results.
+      if (executionContext.activeFlow && executionContext.activeFlow.state !== 'IDLE') {
+        const f = executionContext.activeFlow as Extract<Flow, { productDiscovery: unknown }>;
+        f.productDiscovery = {
+          ...f.productDiscovery,
+          toolResults: productsArray.map(p => ({
+            productId: p.id,
+            productName: p.name,
+            price: p.price ?? 0,
+            variants: [],
+          })),
+        };
+      }
       searchSucceededThisMessage = true;
       resultsStoredThisMessage = true;
       log.info({ count: productsList.length }, 'stored products in message entities');
@@ -381,7 +394,7 @@ async function executeTools(
     toolResults.push({ intent: intentToString(item.intent), result });
 
     if (result.success && result.data?.products && Array.isArray(result.data.products)) {
-      const productsArray = result.data.products as Array<{ id: string; name: string }>;
+      const productsArray = result.data.products as Array<{ id: string; name: string; price?: number }>;
       const productsList = productsArray.map((p) => ({ id: p.id, name: p.name }));
 
       // Store on the customer message entities
@@ -396,7 +409,19 @@ async function executeTools(
       });
 
       lastProductResults = productsList;
-      executionContext.lastProductResults = productsList;
+      // Update the active flow so subsequent tools in this message see the fresh results.
+      if (executionContext.activeFlow && executionContext.activeFlow.state !== 'IDLE') {
+        const f = executionContext.activeFlow as Extract<Flow, { productDiscovery: unknown }>;
+        f.productDiscovery = {
+          ...f.productDiscovery,
+          toolResults: productsArray.map(p => ({
+            productId: p.id,
+            productName: p.name,
+            price: p.price ?? 0,
+            variants: [],
+          })),
+        };
+      }
       resultsStoredThisMessage = true;
       log.info({ count: productsList.length }, 'stored suggested products in message entities');
     }
@@ -686,9 +711,7 @@ export const processMessage = async (messageId: string) => {
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
     conversationId: conversation.id,
-    currentOrderId: conversation.currentOrderId,
-    currentProductId: conversation.currentProductId ?? null,
-    lastProductResults: memory.lastProductResults,
+    activeFlow: getActiveFlow(migrateMemory(memory)) ?? null,
     customerWilaya: customer.wilaya,
     customerCommune: customer.commune,
   };

@@ -87,6 +87,7 @@ export type Flow =
   | (FlowBase & {
       state: 'PRODUCT_SELECTED';
       productDiscovery: ProductDiscoveryData;
+      selectedProductId?: string;
     })
   | (FlowBase & {
       state: 'ORDER_PENDING';

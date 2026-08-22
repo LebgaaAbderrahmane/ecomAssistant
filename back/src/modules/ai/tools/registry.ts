@@ -23,9 +23,12 @@ import {
   recentProducts,
   type PreferenceEntities,
 } from './suggestionHelpers';
-import type { ConversationMemory } from '../memory.types';
+import type { ConversationMemory, Flow } from '../memory.types';
 import { migrateMemory, getActiveFlow } from '../flowHelper';
+import { getFlowOrderId, getFlowSelectedProductId, getFlowProductResults } from '../flowExtractors';
 import { moduleLogger, convLogger } from '../../../lib/logger';
+
+export { getFlowOrderId, getFlowSelectedProductId, getFlowProductResults };
 
 interface CommuneValidation {
   valid: boolean;
@@ -75,9 +78,7 @@ export interface ToolExecutionContext {
   merchantId: string;
   customerId: string;
   conversationId: string;
-  currentOrderId: string | null;
-  currentProductId: string | null;
-  lastProductResults?: Array<{ id: string; name: string }>;
+  activeFlow: Flow | null;
   customerWilaya?: string | null;
   customerCommune?: string | null;
 }
@@ -120,7 +121,11 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
   // distinguishes a resolved product (from memory or catalog) from a concrete
   // query that is authoritatively absent (NOT_FOUND) and a bare reference that
   // no context can resolve (AMBIGUOUS — ask the customer, don't guess).
-  const resolved = await resolveProductRequest(query, ctx, ctx.merchantId);
+  const productCtx = {
+    lastProductResults: getFlowProductResults(ctx.activeFlow),
+    currentProductId: getFlowSelectedProductId(ctx.activeFlow),
+  };
+  const resolved = await resolveProductRequest(query, productCtx, ctx.merchantId);
 
   if (resolved.outcome === 'SUCCESS') {
     await prisma.conversation.update({
@@ -149,7 +154,7 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
 
 const getOrderStatus: ToolHandler = async (entities, ctx) => {
   const parsedArgs = GetOrderStatusArgsSchema.safeParse(entities);
-  const orderId = ctx.currentOrderId ?? (parsedArgs.success ? parsedArgs.data.orderId : undefined);
+  const orderId = getFlowOrderId(ctx.activeFlow) ?? (parsedArgs.success ? parsedArgs.data.orderId : undefined);
 
   if (!orderId) {
     return { success: false, error: 'No order in context to check status for' };
@@ -198,7 +203,7 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
   const explicitlyReferenced =
     (parsedArgs.success && (parsedArgs.data.orderId || parsedArgs.data.productName)) ?? false;
 
-  let orderId = ctx.currentOrderId;
+  let orderId = getFlowOrderId(ctx.activeFlow);
   if (!orderId && parsedArgs.success && parsedArgs.data.orderId) {
     orderId = parsedArgs.data.orderId;
   }
@@ -222,7 +227,7 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
     };
   }
 
-  if (!explicitlyReferenced && orderId === ctx.currentOrderId) {
+  if (!explicitlyReferenced && orderId === getFlowOrderId(ctx.activeFlow)) {
     const conversation = await prisma.conversation.findUnique({
       where: { id: ctx.conversationId },
       select: { state: true },
@@ -276,7 +281,7 @@ const confirmOrder: ToolHandler = async (entities, ctx) => {
 const cancelOrder: ToolHandler = async (entities, ctx) => {
   const parsedArgs = CancelOrderArgsSchema.safeParse(entities);
 
-  let orderId = ctx.currentOrderId;
+  let orderId = getFlowOrderId(ctx.activeFlow);
   if (!orderId && parsedArgs.success && parsedArgs.data.orderId) {
     orderId = parsedArgs.data.orderId;
   }
@@ -354,9 +359,12 @@ const cancelOrder: ToolHandler = async (entities, ctx) => {
 };
 const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
   // The customer references a product without naming it ("the black one",
-  // "hadak"). Resolve from conversation context (memory.lastProductResults or
-  // currentProductId) first.
-  const fromContext = await resolveProductRequest(undefined, ctx, ctx.merchantId);
+  // "hadak"). Resolve from conversation context (flow data) first.
+  const productCtx = {
+    lastProductResults: getFlowProductResults(ctx.activeFlow),
+    currentProductId: getFlowSelectedProductId(ctx.activeFlow),
+  };
+  const fromContext = await resolveProductRequest(undefined, productCtx, ctx.merchantId);
   if (fromContext.outcome === 'SUCCESS') {
     return { success: true, data: { products: formatProducts(fromContext.products) } };
   }
@@ -434,7 +442,7 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
 
   // Resolve by index from lastProductResults if productIndex is provided
   if (parsedArgs.data.productIndex !== undefined) {
-    const lastResults = ctx.lastProductResults ?? [];
+    const lastResults = getFlowProductResults(ctx.activeFlow) ?? [];
     const entry = lastResults[parsedArgs.data.productIndex];
     if (!entry) {
       return {
@@ -470,6 +478,7 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
   return {
     success: true,
     data: {
+      productId: product.id,
       productName: product.name,
       price: product.price,
       currency: product.currency,
@@ -492,9 +501,9 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
         name: { contains: productName, mode: 'insensitive' },
       },
     });
-  } else if (ctx.currentProductId) {
+  } else if (getFlowSelectedProductId(ctx.activeFlow)) {
     product = await prisma.product.findFirst({
-      where: { id: ctx.currentProductId, merchantId: ctx.merchantId },
+      where: { id: getFlowSelectedProductId(ctx.activeFlow)!, merchantId: ctx.merchantId },
     });
   }
 
@@ -510,6 +519,7 @@ const getProductDetails: ToolHandler = async (entities, ctx) => {
   return {
     success: true,
     data: {
+      productId: product.id,
       productName: product.name,
       description: product.description,
       price: product.price,
@@ -528,7 +538,7 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
   // the customer never has to repeat what they already told us.
   const conversation = await prisma.conversation.findUnique({
     where: { id: ctx.conversationId },
-    select: { memory: true, currentProductId: true },
+    select: { memory: true },
   });
   const memory = (conversation?.memory ?? {}) as unknown as ConversationMemory;
   const migrated = migrateMemory(memory);
@@ -544,7 +554,7 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
     activeFlow.state !== 'IDLE' ? activeFlow.productDiscovery.input.filters : undefined,
     migrated.globalInformation,
   );
-  const excludeIds = computeExclusionIds(activeFlow, conversation?.currentProductId ?? ctx.currentProductId);
+  const excludeIds = computeExclusionIds(activeFlow, getFlowSelectedProductId(ctx.activeFlow));
 
   const hasPreferences =
     prefs.terms.length > 0 ||
@@ -645,9 +655,9 @@ const createOrder: ToolHandler = async (entities, ctx) => {
       where: { merchantId: ctx.merchantId, name: { contains: productName, mode: 'insensitive' } },
     });
   }
-  if (!product && ctx.currentProductId) {
+  if (!product && getFlowSelectedProductId(ctx.activeFlow)) {
     product = await prisma.product.findFirst({
-      where: { id: ctx.currentProductId, merchantId: ctx.merchantId },
+      where: { id: getFlowSelectedProductId(ctx.activeFlow)!, merchantId: ctx.merchantId },
     });
   }
   if (!product) {
@@ -718,13 +728,13 @@ const modifyOrder: ToolHandler = async (entities, ctx) => {
     return { success: false, error: 'No fields provided to modify' };
   }
 
-  if (!ctx.currentOrderId) {
+  if (!getFlowOrderId(ctx.activeFlow)) {
     return { success: false, error: 'No pending order in context to update' };
   }
 
   const order = await prisma.order.findFirst({
     where: {
-      id: ctx.currentOrderId,
+      id: getFlowOrderId(ctx.activeFlow)!,
       merchantId: ctx.merchantId,
       customerId: ctx.customerId,
       status: 'PENDING',

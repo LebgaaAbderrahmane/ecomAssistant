@@ -183,7 +183,8 @@ function applyStateTransition(
   switch (newState) {
     case 'PRODUCT_SELECTED': {
       if (flow.state !== 'PRODUCT_DISCOVERY') return flow;
-      return toProductSelected(flow);
+      const selectedId = _result?.productId as string | undefined;
+      return toProductSelected(flow, selectedId);
     }
     case 'ORDER_PENDING': {
       if (flow.state !== 'PRODUCT_SELECTED') return flow;

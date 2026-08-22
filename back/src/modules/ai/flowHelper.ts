@@ -41,8 +41,9 @@ export function createFlow(input: {
 
 export function toProductSelected(
   flow: Extract<Flow, { state: 'PRODUCT_DISCOVERY' }>,
+  selectedProductId?: string,
 ): Extract<Flow, { state: 'PRODUCT_SELECTED' }> {
-  return { ...flow, state: 'PRODUCT_SELECTED', updatedAt: new Date().toISOString() };
+  return { ...flow, state: 'PRODUCT_SELECTED', selectedProductId, updatedAt: new Date().toISOString() };
 }
 
 export function toOrderPending(
