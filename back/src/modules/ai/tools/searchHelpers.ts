@@ -11,7 +11,6 @@ export interface CatalogEntry {
   id: string;
   name: string;
   description: string;
-  variants: unknown;
 }
 
 // ─── LLM product matching (stage: catalog search) ───────────────────────
@@ -72,11 +71,13 @@ export async function buildProductCatalog(merchantId: string): Promise<CatalogEn
       id: true,
       name: true,
       description: true,
-      variants: true,
     },
     take: CATALOG_LIMIT,
     orderBy: { createdAt: 'desc' },
   });
+
+  moduleLogger('search products 3rd line llm').warn(products, 'product catalog provided to the search llm');
+
   return products;
 }
 

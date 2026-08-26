@@ -175,6 +175,9 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     ? toolSections.join('\n\n')
     : 'No tool was called for this message — do not state facts you do not have.';
 
+  // Detect if any tool returned NOT_FOUND so we can add a hard override.
+  const hasNotFound = ctx.toolResults.some(tr => tr.result?.outcome === 'NOT_FOUND');
+
   lines.push(
     '',
     'Customer intents (in execution order):',
@@ -188,6 +191,15 @@ export function buildReplyPrompt(ctx: ReplyContext): string {
     'Context (memory):',
     JSON.stringify(ctx.memory, null, 2),
   );
+
+  if (hasNotFound) {
+    lines.push(
+      '',
+      'CRITICAL: At least one intent returned NOT_FOUND. This is a definitive answer — the product does not exist. ' +
+      'Say so directly. Never say "I\'ll check", "wait for me", "let me verify", or any similar phrase. ' +
+      'NOT_FOUND is not missing information — it IS the information.',
+    );
+  }
 
   return lines.join('\n');
 }

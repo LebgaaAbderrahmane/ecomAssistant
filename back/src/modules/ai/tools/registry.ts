@@ -22,10 +22,10 @@ import {
   recentProducts,
   type PreferenceEntities,
 } from './suggestionHelpers';
-import type { ConversationMemory, Flow } from '../memory.types';
+import type { Flow } from '../memory.types';
 import { migrateMemory, getActiveFlow } from '../flowHelper';
 import { getFlowOrderId, getFlowSelectedProductId, getFlowProductResults } from '../flowExtractors';
-import { moduleLogger, convLogger } from '../../../lib/logger';
+import { moduleLogger ,convLogger } from '../../../lib/logger';
 
 export { getFlowOrderId, getFlowSelectedProductId, getFlowProductResults };
 
@@ -35,6 +35,8 @@ interface CommuneValidation {
   wilaya?: string;
   suggestions?: string[];
 }
+
+ const toolLogger = moduleLogger('toolLogger')
 
 async function validateCommune(name: string, wilaya?: string): Promise<CommuneValidation> {
   // Exact match (case-insensitive)
@@ -111,26 +113,78 @@ function formatProducts(products: Product[]) {
 
 const searchProducts: ToolHandler = async (entities, ctx) => {
   const parsedArgs = SearchProductsArgsSchema.safeParse(entities);
+
   if (!parsedArgs.success) {
-    return { success: false, error: 'No product name provided to search for' };
+    toolLogger.warn(
+      {
+        entities,
+        error: parsedArgs.error,
+      },
+      'Search products: invalid arguments',
+    );
+
+    return {
+      success: false,
+      error: 'No product name provided to search for',
+    };
   }
+
   const query = parsedArgs.data.product;
 
-  // Resolve against conversation context first, then the catalog. The result
-  // distinguishes a resolved product (from memory or catalog) from a concrete
-  // query that is authoritatively absent (NOT_FOUND) and a bare reference that
-  // no context can resolve (AMBIGUOUS — ask the customer, don't guess).
+  toolLogger.info(
+    {
+      query,
+      merchantId: ctx.merchantId,
+    },
+    'Search products: starting search',
+  );
+
   const productCtx = {
     lastProductResults: getFlowProductResults(ctx.activeFlow),
     currentProductId: getFlowSelectedProductId(ctx.activeFlow),
   };
-  const resolved = await resolveProductRequest(query, productCtx, ctx.merchantId);
+
+
+  
+  
+  const resolved = await resolveProductRequest(
+    query,
+    productCtx,
+    ctx.merchantId,
+  );
+
 
   if (resolved.outcome === 'SUCCESS') {
-    return { success: true, data: { products: formatProducts(resolved.products) } };
+    const products = formatProducts(resolved.products);
+
+    toolLogger.info(
+      {
+        query,
+        merchantId: ctx.merchantId,
+        outcome: 'SUCCESS',
+        productCount: products.length,
+        products,
+      },
+      'Search products: results found',
+    );
+
+    return {
+      success: true,
+      data: { products },
+    };
   }
 
   if (resolved.outcome === 'AMBIGUOUS') {
+    toolLogger.warn(
+      {
+        query,
+        merchantId: ctx.merchantId,
+        outcome: 'AMBIGUOUS',
+        reason: resolved.reason,
+      },
+      'Search products: ambiguous request',
+    );
+
     return {
       success: false,
       outcome: 'AMBIGUOUS',
@@ -138,6 +192,16 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
       error: resolved.reason,
     };
   }
+
+  toolLogger.info(
+    {
+      query,
+      merchantId: ctx.merchantId,
+      outcome: 'NOT_FOUND',
+      resolvedQuery: resolved.query,
+    },
+    'Search products: product not found',
+  );
 
   return {
     success: false,
