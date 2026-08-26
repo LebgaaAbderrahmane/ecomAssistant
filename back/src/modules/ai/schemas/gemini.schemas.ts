@@ -69,8 +69,9 @@ export const INTENT_RESPONSE_SCHEMA = {
       maxItems: 4,
     },
     conversationAct: { type: 'string' as const, enum: [...ConversationActSchema.options] },
+    refersToPreviousFlow: { type: 'boolean' as const },
   },
-  required: ['intents', 'conversationAct'] as const,
+  required: ['intents', 'conversationAct', 'refersToPreviousFlow'] as const,
 };
 
 export const REPLY_RESPONSE_SCHEMA = {

@@ -25,6 +25,7 @@ export const IntentItemSchema = z.object({
 export const LLMResponseSchema = z.object({
   intents: z.array(IntentItemSchema).min(1).max(4),
   conversationAct: ConversationActSchema,
+  refersToPreviousFlow: z.boolean().default(false),
 });
 
 // ─── LLM #2 response (multi-message) ────────────────────────────────────

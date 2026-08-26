@@ -8,6 +8,7 @@ import { moduleLogger } from "../lib/logger";
 import {
   AbstractStoreConnection,
   OrderDetails,
+  OrderNotificationData,
   ProductDetails,
   TokenResult,
 } from "./AbstractStoreConnection";
@@ -346,8 +347,8 @@ export class ShopifyConnection extends AbstractStoreConnection {
     }
   }
 
-  async upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]> {
-    const saved: { id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[] = [];
+  async upsertOrders(orders: any[]): Promise<OrderNotificationData[]> {
+    const saved: OrderNotificationData[] = [];
 
     for (const o of orders) {
       const existing = await prisma.order.findFirst({
@@ -435,6 +436,10 @@ export class ShopifyConnection extends AbstractStoreConnection {
         platformOrderId: created.platformOrderId,
         totalAmount: created.totalAmount,
         wilaya: created.wilaya,
+        productId: created.productId,
+        quantity: created.quantity,
+        commune: created.commune,
+        address: created.address ?? '',
       });
     }
 

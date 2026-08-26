@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   createFlow,
+  createMemoryFromOrder,
+  addOrderFlowToMemory,
   toProductSelected,
   toOrderPending,
   toOrderConfirmed,
@@ -276,5 +278,175 @@ describe('full happy path', () => {
     flow = toFinished(flow as Extract<Flow, { state: 'ORDER_SHIPPED' }>);
 
     expect(flow.flowId).toBe(originalId);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createMemoryFromOrder
+// ---------------------------------------------------------------------------
+
+describe('createMemoryFromOrder', () => {
+  it('creates memory with ORDER_PENDING flow', () => {
+    const memory = createMemoryFromOrder({
+      orderId: 'order-1',
+      productName: 'iPhone 14',
+      totalAmount: 89000,
+    });
+    expect(memory.flows).toHaveLength(1);
+    expect(memory.flows[0].state).toBe('ORDER_PENDING');
+    expect(memory.activeFlow).toBe(memory.flows[0].flowId);
+  });
+
+  it('populates productDiscovery with order data', () => {
+    const memory = createMemoryFromOrder({
+      orderId: 'order-1',
+      productName: 'iPhone 14',
+      totalAmount: 89000,
+      productId: 'prod-123',
+    });
+    const flow = memory.flows[0];
+    if (flow.state !== 'ORDER_PENDING') throw new Error('expected ORDER_PENDING');
+    expect(flow.productDiscovery.input.productName).toBe('iPhone 14');
+    expect(flow.productDiscovery.toolResults).toHaveLength(1);
+    expect(flow.productDiscovery.toolResults[0].productName).toBe('iPhone 14');
+    expect(flow.productDiscovery.toolResults[0].price).toBe(89000);
+  });
+
+  it('populates order data with orderId and quantity', () => {
+    const memory = createMemoryFromOrder({
+      orderId: 'order-1',
+      productName: 'iPhone 14',
+      totalAmount: 89000,
+      quantity: 2,
+    });
+    const flow = memory.flows[0];
+    if (flow.state !== 'ORDER_PENDING') throw new Error('expected ORDER_PENDING');
+    expect(flow.order.orderId).toBe('order-1');
+    expect(flow.order.quantity).toBe(2);
+  });
+
+  it('defaults quantity to 1 when not provided', () => {
+    const memory = createMemoryFromOrder({
+      orderId: 'order-1',
+      productName: 'iPhone 14',
+      totalAmount: 89000,
+    });
+    const flow = memory.flows[0];
+    if (flow.state !== 'ORDER_PENDING') throw new Error('expected ORDER_PENDING');
+    expect(flow.order.quantity).toBe(1);
+  });
+
+  it('populates globalInformation from order data', () => {
+    const memory = createMemoryFromOrder({
+      orderId: 'order-1',
+      productName: 'iPhone 14',
+      totalAmount: 89000,
+      customerName: 'Ahmed',
+      wilaya: 'Alger',
+      commune: 'Bab Ezzouar',
+    });
+    expect(memory.globalInformation.customerName).toBe('Ahmed');
+    expect(memory.globalInformation.wilaya).toBe('Alger');
+    expect(memory.globalInformation.commune).toBe('Bab Ezzouar');
+  });
+
+  it('sets version to CURRENT_MEMORY_VERSION', () => {
+    const memory = createMemoryFromOrder({
+      orderId: 'order-1',
+      productName: 'iPhone 14',
+      totalAmount: 89000,
+    });
+    expect(memory.version).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addOrderFlowToMemory
+// ---------------------------------------------------------------------------
+
+describe('addOrderFlowToMemory', () => {
+  const orderInput = {
+    orderId: 'order-new',
+    productName: 'Galaxy S24',
+    totalAmount: 120000,
+    quantity: 2,
+    wilaya: 'Oran',
+    commune: 'Bir El Djir',
+    customerName: 'Sara',
+    productId: 'prod-456',
+  };
+
+  it('appends ORDER_PENDING flow to empty memory', () => {
+    const memory = addOrderFlowToMemory(
+      { version: 1, globalInformation: {}, flows: [] },
+      orderInput,
+    );
+    expect(memory.flows).toHaveLength(1);
+    expect(memory.flows[0].state).toBe('ORDER_PENDING');
+    expect(memory.activeFlow).toBe(memory.flows[0].flowId);
+  });
+
+  it('preserves existing flows when appending', () => {
+    const existing = createMemoryFromOrder({
+      orderId: 'order-old',
+      productName: 'iPhone 14',
+      totalAmount: 89000,
+    });
+    expect(existing.flows).toHaveLength(1);
+
+    const merged = addOrderFlowToMemory(existing, orderInput);
+    expect(merged.flows).toHaveLength(2);
+    expect(merged.flows[0].state).toBe('ORDER_PENDING');
+    expect(merged.flows[1].state).toBe('ORDER_PENDING');
+    // activeFlow points to the NEW flow
+    expect(merged.activeFlow).toBe(merged.flows[1].flowId);
+    expect(merged.activeFlow).not.toBe(existing.activeFlow);
+  });
+
+  it('fills missing globalInformation without overwriting existing', () => {
+    const existing = addOrderFlowToMemory(
+      { version: 1, globalInformation: { customerName: 'Ahmed', wilaya: 'Alger' }, flows: [] },
+      { orderId: 'o1', productName: 'Test', totalAmount: 100 },
+    );
+    // customerName and wilaya preserved, commune added
+    expect(existing.globalInformation.customerName).toBe('Ahmed');
+    expect(existing.globalInformation.wilaya).toBe('Alger');
+    expect(existing.globalInformation.commune).toBeUndefined();
+  });
+
+  it('overwrites globalInformation when input provides values', () => {
+    const existing = addOrderFlowToMemory(
+      { version: 1, globalInformation: { customerName: 'Ahmed' }, flows: [] },
+      { orderId: 'o1', productName: 'Test', totalAmount: 100, customerName: 'Sara', wilaya: 'Oran' },
+    );
+    expect(existing.globalInformation.customerName).toBe('Sara');
+    expect(existing.globalInformation.wilaya).toBe('Oran');
+  });
+
+  it('preserves recentIntents and other memory fields', () => {
+    const existing = addOrderFlowToMemory(
+      { version: 1, globalInformation: {}, flows: [], recentIntents: ['PRODUCT_SEARCH', 'AFFIRM'] },
+      { orderId: 'o1', productName: 'Test', totalAmount: 100 },
+    );
+    expect(existing.recentIntents).toEqual(['PRODUCT_SEARCH', 'AFFIRM']);
+  });
+
+  it('defaults productId to orderId when not provided', () => {
+    const merged = addOrderFlowToMemory(
+      { version: 1, globalInformation: {}, flows: [] },
+      { orderId: 'order-99', productName: 'Test', totalAmount: 500 },
+    );
+    const flow = merged.flows[0];
+    if (flow.state !== 'ORDER_PENDING') throw new Error('expected ORDER_PENDING');
+    expect(flow.order.productId).toBe('order-99');
+    expect(flow.productDiscovery.toolResults[0].productId).toBe('order-99');
+  });
+
+  it('creates a fresh flowId for each appended flow', () => {
+    const empty = { version: 1, globalInformation: {}, flows: [] };
+    const first = addOrderFlowToMemory(empty, orderInput);
+    const second = addOrderFlowToMemory(first, orderInput);
+    // second.flows[0] is the old flow (spread-copied), second.flows[1] is new
+    expect(second.flows[0].flowId).not.toBe(second.flows[1].flowId);
   });
 });

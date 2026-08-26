@@ -263,8 +263,8 @@ export async function persistFlowMemory(
     ? FLOW_TO_CONVERSATION_STATE[activeFlow.state]
     : 'IDLE';
 
-  log.debug(
-    { conversationId, flowState: activeFlow?.state, conversationState, flowCount: memory.flows.length },
+  log.info(
+    { conversationId, flowState: activeFlow?.state, conversationState, flowCount: memory.flows.length, activeFlowId: memory.activeFlow?.slice(0, 8) ?? null },
     'persistFlowMemory: writing',
   );
 

@@ -1,3 +1,19 @@
+export interface OrderNotificationData {
+  id: string;
+  merchantId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  productName: string;
+  platformOrderId: string;
+  totalAmount: number;
+  wilaya: string;
+  productId: string;
+  quantity: number;
+  commune: string;
+  address: string;
+}
+
 export interface OrderDetails {
   platformOrderId: string;
   customerName: string;
@@ -88,7 +104,7 @@ export abstract class AbstractStoreConnection {
     status: string,
   ): Promise<void>;
 
-  abstract upsertOrders(orders: any[]): Promise<{ id: string; merchantId: string; customerId: string; customerName: string; customerPhone: string; productName: string; platformOrderId: string; totalAmount: number; wilaya: string }[]>;
+  abstract upsertOrders(orders: any[]): Promise<OrderNotificationData[]>;
 
   // ─────────────────────────────────────────────
   // Shop info & settings

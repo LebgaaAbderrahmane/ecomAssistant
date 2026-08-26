@@ -1,6 +1,8 @@
 import prisma from '../../config/db.config';
+import type { Prisma } from '@prisma/client';
 import { buildOrderConfirmationText } from './orderConfirmation.templates';
 import { openwaService } from '../whatsapp/whatsapp.service';
+import { addOrderFlowToMemory, migrateMemory } from '../ai/flowHelper';
 import { moduleLogger } from '../../lib/logger';
 
 const log = moduleLogger('orders.confirm');
@@ -14,6 +16,30 @@ export const sendOrderConfirmation = async (orderId: string) => {
   const conversation = await prisma.conversation.findFirstOrThrow({
     where: { merchantId: order.merchantId, customerId: order.customerId },
   });
+
+  // Append an ORDER_PENDING flow to the existing memory so the customer
+  // can confirm the order by replying "yes". Preserves any existing flows.
+  const existingMemory = migrateMemory(conversation.memory);
+  const memory = addOrderFlowToMemory(existingMemory, {
+    orderId: order.id,
+    productName: order.productName,
+    totalAmount: order.totalAmount,
+    quantity: order.quantity,
+    wilaya: order.wilaya,
+    commune: order.commune,
+    customerName: order.customer.name ?? undefined,
+    productId: order.productId,
+  });
+
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: {
+      memory: memory as unknown as Prisma.InputJsonValue,
+      state: 'WAITING_CONFIRMATION',
+    },
+  });
+
+  log.info({ conversationId: conversation.id, orderId, state: 'WAITING_CONFIRMATION' }, 'initialized ORDER_PENDING flow memory');
 
   const language = order.customer.language ?? conversation.language ?? 'auto';
 

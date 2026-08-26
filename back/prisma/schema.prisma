@@ -234,6 +234,8 @@ model Message {
 
   parsedIntents Json?
 
+  refersToPreviousFlow Boolean @default(false)
+
   toolResults Json?
   
   createdAt DateTime @default(now())

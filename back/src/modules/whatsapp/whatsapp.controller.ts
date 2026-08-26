@@ -14,6 +14,8 @@ import { cancelPendingLayer2Jobs } from "../../queues/layer2.queue";
 import { transcribeAudio } from "../ai/media/transcription.service";
 import { captionImage } from "../ai/media/imageCaption.service";
 import { moduleLogger, convLogger } from "../../lib/logger";
+import { addOrderFlowToMemory, migrateMemory } from "../ai/flowHelper";
+import type { Prisma } from "@prisma/client";
 
 const MEDIA_DIR = path.resolve("/app/uploads/media");
 
@@ -692,6 +694,10 @@ export async function sendOrderNotification(order: {
   platformOrderId: string;
   totalAmount: number;
   wilaya: string;
+  productId: string;
+  quantity: number;
+  commune: string;
+  address: string;
 }): Promise<void> {
   const {
     merchantId,
@@ -703,6 +709,9 @@ export async function sendOrderNotification(order: {
     totalAmount,
     wilaya,
     id: orderId,
+    productId,
+    quantity,
+    commune,
   } = order;
 
   const log = moduleLogger('whatsapp.order-confirm', { orderId: platformOrderId });
@@ -729,6 +738,31 @@ export async function sendOrderNotification(order: {
     customerId,
     customerPhone,
   );
+
+  // Append an ORDER_PENDING flow to the existing memory so the customer
+  // can confirm the order by replying "yes". Preserves any existing flows
+  // (e.g. a PRODUCT_DISCOVERY flow from earlier browsing).
+  const existingMemory = migrateMemory(conversation.memory);
+  const memory = addOrderFlowToMemory(existingMemory, {
+    orderId,
+    productName,
+    totalAmount,
+    quantity,
+    wilaya,
+    commune,
+    customerName,
+    productId,
+  });
+
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: {
+      memory: memory as unknown as Prisma.InputJsonValue,
+      state: 'WAITING_CONFIRMATION',
+    },
+  });
+
+  log.info({ conversationId: conversation.id, orderId, state: 'WAITING_CONFIRMATION' }, 'initialized ORDER_PENDING flow memory');
 
   // Load merchant templates from AgentConfig
   const agentConfig = await prisma.agentConfig.findUnique({

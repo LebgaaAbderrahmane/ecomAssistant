@@ -2,6 +2,7 @@ import {
   CURRENT_MEMORY_VERSION,
   Flow,
   FlowFilter,
+  FlowProduct,
   ConversationMemory,
   OrderData,
   ShippingData,
@@ -29,6 +30,81 @@ export function createFlow(input: {
       toolResults: [],
     },
   };
+}
+
+/**
+ * Append an ORDER_PENDING flow to an existing ConversationMemory from external
+ * order data (e.g. a Shopify webhook). Preserves all existing flows, global
+ * information, and other memory fields. Sets activeFlow to the new flow.
+ */
+export function addOrderFlowToMemory(
+  existingMemory: ConversationMemory,
+  input: {
+    orderId: string;
+    productName: string;
+    totalAmount: number;
+    quantity?: number;
+    wilaya?: string;
+    commune?: string;
+    customerName?: string;
+    productId?: string;
+  },
+): ConversationMemory {
+  const now = new Date().toISOString();
+  const flow: Flow = {
+    flowId: crypto.randomUUID(),
+    state: 'ORDER_PENDING',
+    createdAt: now,
+    updatedAt: now,
+    productDiscovery: {
+      input: { productName: input.productName, filters: {} },
+      toolResults: [{
+        productId: input.productId ?? input.orderId,
+        productName: input.productName,
+        price: input.totalAmount,
+        variants: [],
+      } as FlowProduct],
+    },
+    order: {
+      orderId: input.orderId,
+      productId: input.productId ?? input.orderId,
+      quantity: input.quantity ?? 1,
+    },
+  };
+
+  return {
+    ...existingMemory,
+    globalInformation: {
+      ...existingMemory.globalInformation,
+      ...(input.customerName && { customerName: input.customerName }),
+      ...(input.wilaya && { wilaya: input.wilaya }),
+      ...(input.commune && { commune: input.commune }),
+    },
+    flows: [...existingMemory.flows, flow],
+    activeFlow: flow.flowId,
+  };
+}
+
+/**
+ * Build a fresh ConversationMemory with an ORDER_PENDING flow from external
+ * order data. Use when no existing conversation memory exists.
+ */
+export function createMemoryFromOrder(input: {
+  orderId: string;
+  productName: string;
+  totalAmount: number;
+  quantity?: number;
+  wilaya?: string;
+  commune?: string;
+  customerName?: string;
+  productId?: string;
+}): ConversationMemory {
+  const empty: ConversationMemory = {
+    version: CURRENT_MEMORY_VERSION,
+    globalInformation: {},
+    flows: [],
+  };
+  return addOrderFlowToMemory(empty, input);
 }
 
 // ---------------------------------------------------------------------------

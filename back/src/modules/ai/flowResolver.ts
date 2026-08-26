@@ -162,9 +162,6 @@ export function scoreFlow(
   const recencyScore = SIGNAL_WEIGHTS.recency * recencyFactor;
   score += recencyScore;
   if (recencyFactor > 0.5) {
-    // Only tag it as a "matched" signal once it's still meaningfully fresh
-    // (within one half-life) — otherwise every flow would show 'recency'
-    // in matchedSignals even when it contributed almost nothing.
     matchedSignals.push('recency');
   }
 
@@ -186,11 +183,25 @@ export function scoreFlow(
     matchedSignals.push('stateMatch');
   }
 
+  const summary = buildFlowSummary(flow);
+  log.debug(
+    {
+      flowId: flow.flowId.slice(0, 8),
+      state: flow.state,
+      product: 'productDiscovery' in flow ? flow.productDiscovery.input.productName : null,
+      score,
+      matchedSignals,
+      productRef,
+      summary,
+    },
+    'scoreFlow',
+  );
+
   return {
     flowId: flow.flowId,
     score,
     matchedSignals,
-    summary: buildFlowSummary(flow),
+    summary,
   };
 }
 
@@ -213,11 +224,24 @@ function pickAmongCandidates(
   const sorted = [...scored].sort((a, b) => b.score - a.score);
   const [top, second] = sorted;
 
+  log.info(
+    {
+      candidates: sorted.map((c) => ({
+        flowId: c.flowId.slice(0, 8),
+        score: c.score,
+        signals: c.matchedSignals,
+        summary: c.summary,
+      })),
+      activeFlowId: activeFlowId?.slice(0, 8) ?? null,
+    },
+    'pickAmongCandidates',
+  );
+
   if (!second || top.score > second.score) {
     const action = top.flowId === activeFlowId ? 'CONTINUE' : 'SWITCH';
-    log.debug(
-      { flowId: top.flowId, score: top.score, action },
-      'resolveFlow: picked winner',
+    log.info(
+      { winnerFlowId: top.flowId.slice(0, 8), score: top.score, runnerUpScore: second?.score, action },
+      'pickAmongCandidates: winner',
     );
     return action === 'CONTINUE'
       ? { action: 'CONTINUE', flowId: top.flowId }
@@ -225,9 +249,9 @@ function pickAmongCandidates(
   }
 
   const tied = sorted.filter((c) => c.score === top.score);
-  log.debug(
-    { tied: tied.map((c) => c.flowId), score: top.score },
-    'resolveFlow: CLARIFY (tied candidates)',
+  log.info(
+    { tied: tied.map((c) => c.flowId.slice(0, 8)), score: top.score },
+    'pickAmongCandidates: CLARIFY (tied candidates)',
   );
   return { action: 'CLARIFY', candidates: tied };
 }
@@ -237,12 +261,29 @@ function pickAmongCandidates(
 // ---------------------------------------------------------------------------
 
 export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
-  const { extraction, conversation } = input;
+  const { extraction, conversation, refersToPreviousFlow } = input;
   const { intent, entities } = extraction;
   const { activeFlowId, flows } = conversation;
 
+  log.info(
+    {
+      intent: String(intent),
+      entities,
+      activeFlowId: activeFlowId?.slice(0, 8) ?? null,
+      flowCount: flows.length,
+      refersToPreviousFlow: refersToPreviousFlow ?? false,
+      flowSummaries: flows.map((f) => ({
+        flowId: f.flowId.slice(0, 8),
+        state: f.state,
+        product: 'productDiscovery' in f ? f.productDiscovery.input.productName : null,
+      })),
+    },
+    'resolveFlow: input',
+  );
+
   // 1. Classify intent
   const category = classifyIntent(intent);
+  log.debug({ intent: String(intent), category }, 'resolveFlow: classified');
 
   // 2. NO_FLOW_LOOKUP: intent doesn't need flow resolution
   if (category === 'NO_FLOW_LOOKUP') {
@@ -253,7 +294,7 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
   // 3. No flows exist — create a new one
   if (flows.length === 0) {
     const productName = extractProductRef(entities) ?? 'unknown';
-    log.debug({ intent: String(intent), productName }, 'resolveFlow: CREATE (no flows)');
+    log.info({ intent: String(intent), productName }, 'resolveFlow: CREATE (no flows exist)');
     return {
       action: 'CREATE',
       productName,
@@ -261,29 +302,35 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
     };
   }
 
-  // 4. Find active flow. Covers both "no activeFlowId set" and
-  //    "activeFlowId points at a flow that no longer exists" — both fall
-  //    through to createOrScore identically, so there's no need for them
-  //    to be two separate branches.
+  // 4. Find active flow.
   const activeFlow = activeFlowId
     ? flows.find((f) => f.flowId === activeFlowId)
     : undefined;
 
   if (!activeFlow) {
+    log.info(
+      { activeFlowId: activeFlowId?.slice(0, 8) ?? null, flowCount: flows.length },
+      'resolveFlow: active flow not found, falling through to createOrScore',
+    );
     return createOrScore(flows, entities, intent);
   }
+
+  log.info(
+    {
+      activeFlowId: activeFlow.flowId.slice(0, 8),
+      activeFlowState: activeFlow.state,
+      activeFlowProduct: 'productDiscovery' in activeFlow ? activeFlow.productDiscovery.input.productName : null,
+    },
+    'resolveFlow: active flow found',
+  );
 
   // 5. Active flow + STATE_INTENT
   if (category === 'STATE_INTENT') {
     const intentStr = intent as string;
 
-    // PRODUCT_SEARCH/SUGGEST while in ORDER_PENDING/CONFIRMED -> CREATE new
-    // flow. Kept ahead of the compatibility gate below on purpose: if
-    // these become STATE_INTENTs, they still aren't in either state's
-    // compatible-intent list, so the gate would otherwise reject them as
-    // INVALID_ACTION before this override ever ran.
     if (['PRODUCT_SEARCH', 'PRODUCT_SUGGEST'].includes(intentStr)) {
       if (activeFlow.state === 'ORDER_PENDING' || activeFlow.state === 'ORDER_CONFIRMED') {
+        log.info({ intent: intentStr, activeState: activeFlow.state }, 'resolveFlow: CREATE (search during order)');
         return {
           action: 'CREATE',
           productName: extractProductRef(entities) ?? 'unknown',
@@ -292,14 +339,64 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
       }
     }
 
-    // Any state-mutating intent not valid for the current state ->
-    // INVALID_ACTION. Driven by the same compatibility table used for
-    // stateMatch scoring, so e.g. ORDER_CANCEL on an already-ORDER_SHIPPED
-    // flow is now correctly rejected instead of silently falling through
-    // to CONTINUE.
     if (!isIntentCompatibleWithState(intentStr, activeFlow.state)) {
+      // The intent doesn't fit the active flow. Check if the customer is
+      // referring to a different existing flow before returning INVALID_ACTION.
+      const productRef = extractProductRef(entities);
+      if (productRef || refersToPreviousFlow) {
+        const otherFlows = flows.filter((f) => f.flowId !== activeFlow.flowId);
+        // When customer explicitly refers back, recency alone is enough (score ≥ 2).
+        // Otherwise require explicitReference (score ≥ 3).
+        const minScore = refersToPreviousFlow ? 2 : 3;
+        const scored = otherFlows
+          .map((f) => ({ flow: f, ...scoreFlow(f, entities, intent as string) }))
+          .filter((c) => c.score >= minScore);
+
+        log.info(
+          {
+            intent: intentStr,
+            activeState: activeFlow.state,
+            productRef: productRef ?? null,
+            refersToPreviousFlow: refersToPreviousFlow ?? false,
+            minScore,
+            candidates: scored.map((c) => ({
+              flowId: c.flow.flowId.slice(0, 8),
+              score: c.score,
+              signals: c.matchedSignals,
+              product: 'productDiscovery' in c.flow ? c.flow.productDiscovery.input.productName : null,
+            })),
+          },
+          'resolveFlow: STATE_INTENT incompatible, checking other flows',
+        );
+
+        if (scored.length === 1) {
+          log.info(
+            { switchTo: scored[0].flow.flowId.slice(0, 8), score: scored[0].score, signals: scored[0].matchedSignals },
+            'resolveFlow: SWITCH (state intent, different flow matches)',
+          );
+          return { action: 'SWITCH', flowId: scored[0].flow.flowId };
+        }
+
+        if (scored.length > 1) {
+          const winner = pickAmongCandidates(scored, activeFlow.flowId);
+          if (winner.action === 'SWITCH') {
+            log.info(
+              { switchTo: winner.flowId, reason: 'multiple matches, best score' },
+              'resolveFlow: SWITCH (state intent, best match)',
+            );
+            return winner;
+          }
+          // pickAmongCandidates returned CLARIFY — fall through
+          log.info(
+            { candidates: scored.map((c) => ({ flowId: c.flow.flowId.slice(0, 8), score: c.score })) },
+            'resolveFlow: CLARIFY (multiple other flows match)',
+          );
+          return winner;
+        }
+      }
+
       log.info(
-        { intent: intentStr, state: activeFlow.state, flowId: activeFlow.flowId },
+        { intent: intentStr, state: activeFlow.state, flowId: activeFlow.flowId.slice(0, 8) },
         'resolveFlow: INVALID_ACTION',
       );
       return {
@@ -308,7 +405,7 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
       };
     }
 
-    // Otherwise CONTINUE on the active flow
+    log.info({ intent: intentStr, flowId: activeFlow.flowId.slice(0, 8), state: activeFlow.state }, 'resolveFlow: CONTINUE (state intent on active flow)');
     return { action: 'CONTINUE', flowId: activeFlow.flowId };
   }
 
@@ -316,14 +413,32 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
   if (category === 'QUERY_INTENT') {
     const productRef = extractProductRef(entities);
 
-    // Product reference present — check which flow it matches
+    log.info(
+      { intent: String(intent), productRef, activeFlowState: activeFlow.state },
+      'resolveFlow: QUERY_INTENT',
+    );
+
     if (productRef) {
       const scored = flows
         .map((f) => scoreFlow(f, entities, intent as string))
         .filter((c) => c.matchedSignals.includes('explicitReference'));
 
+      log.info(
+        {
+          matchedFlows: scored.map((c) => ({
+            flowId: c.flowId.slice(0, 8),
+            score: c.score,
+            signals: c.matchedSignals,
+            summary: c.summary,
+          })),
+          totalFlows: flows.length,
+          productRef,
+        },
+        'resolveFlow: QUERY_INTENT scored candidates with explicitReference',
+      );
+
       if (scored.length === 0) {
-        // Product matches nothing — CREATE
+        log.info({ productRef }, 'resolveFlow: CREATE (product matches no existing flow)');
         return {
           action: 'CREATE',
           productName: productRef,
@@ -334,10 +449,9 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
       return pickAmongCandidates(scored, activeFlow.flowId);
     }
 
-    // No product reference — user likely refers to the current flow context
-    // But PRODUCT_SEARCH/PRODUCT_SUGGEST while in ORDER_PENDING/CONFIRMED means new search
     if (['PRODUCT_SEARCH', 'PRODUCT_SUGGEST'].includes(intent as string)) {
       if (activeFlow.state === 'ORDER_PENDING' || activeFlow.state === 'ORDER_CONFIRMED') {
+        log.info({ intent, activeState: activeFlow.state }, 'resolveFlow: CREATE (search/suggest without ref during order)');
         return {
           action: 'CREATE',
           productName: 'unknown',
@@ -346,11 +460,11 @@ export function resolveFlow(input: FlowResolverInput): FlowResolverOutput {
       }
     }
 
-    // Active flow has a product or order — continue on it
+    log.info({ intent: String(intent), flowId: activeFlow.flowId.slice(0, 8), state: activeFlow.state }, 'resolveFlow: CONTINUE (no product ref, use active flow)');
     return { action: 'CONTINUE', flowId: activeFlow.flowId };
   }
 
-  // Fallback
+  log.warn({ intent: String(intent) }, 'resolveFlow: CREATE (fallback)');
   return {
     action: 'CREATE',
     productName: extractProductRef(entities) ?? 'unknown',
@@ -369,6 +483,7 @@ function createOrScore(
 ): FlowResolverOutput {
   const intentStr = isSuggestedIntent(intent) ? null : intent;
   if (!intentStr) {
+    log.info({ intent: 'suggested' }, 'createOrScore: CREATE (suggested intent)');
     return {
       action: 'CREATE',
       productName: extractProductRef(entities) ?? 'unknown',
@@ -378,10 +493,21 @@ function createOrScore(
 
   const scored = flows.map((f) => scoreFlow(f, entities, intentStr));
 
-  // Without an explicit product match, recency + stateMatch alone aren't
-  // enough confidence to guess which flow the user means.
+  log.info(
+    {
+      candidates: scored.map((c) => ({
+        flowId: c.flowId.slice(0, 8),
+        score: c.score,
+        signals: c.matchedSignals,
+        summary: c.summary,
+      })),
+    },
+    'createOrScore: scored all candidates',
+  );
+
   const hasExplicit = scored.some((c) => c.matchedSignals.includes('explicitReference'));
   if (!hasExplicit) {
+    log.info({ intent: intentStr }, 'createOrScore: CREATE (no explicit product match in any flow)');
     return {
       action: 'CREATE',
       productName: extractProductRef(entities) ?? 'unknown',
@@ -389,8 +515,7 @@ function createOrScore(
     };
   }
 
-  // No active flow in this path, so the result is always SWITCH (or
-  // CLARIFY on a tie) — never CONTINUE.
+  log.debug({ intent: intentStr }, 'createOrScore: picking among candidates');
   return pickAmongCandidates(scored, undefined);
 }
 

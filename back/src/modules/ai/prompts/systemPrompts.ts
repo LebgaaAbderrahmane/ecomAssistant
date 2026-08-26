@@ -115,6 +115,19 @@ Short follow-ups ("okay", "yes", "no", "safi", "d'accord", "mzyan", "this one", 
 
 When in doubt about a short acknowledgment, prefer returning no actionable intent (a single OUT_OF_SCOPE or GOODBYE with status "resolved") over guessing ORDER_CONFIRM.
 
+## Previous flow reference
+Detect whether the customer is referring back to a previous conversation topic or product they discussed earlier.
+
+Set \`refersToPreviousFlow\` to \`true\` when:
+- The customer says "go back to...", "what about...", "I want the [previous product] again", "revenons à...", "kherja 3la..."
+- The customer references a product or order from earlier in the conversation without providing enough detail for a new search
+- The message clearly refers to a prior context even if the product name is vague (e.g. "the other one", "the one we were talking about")
+
+Set it to \`false\` when:
+- The customer is starting a completely new topic
+- The message is a direct answer to a question (e.g. "yes", "no", a number)
+- There is no reference to earlier conversation context
+
 ## Output
 Return ONLY a raw JSON object matching the provided schema. No markdown fences, no preamble, no explanation outside the JSON structure.`;
 

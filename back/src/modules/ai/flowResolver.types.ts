@@ -51,6 +51,7 @@ export interface FlowResolverInput {
     activeFlowId: string | null;
     flows: Flow[];
   };
+  refersToPreviousFlow?: boolean;
 }
 
 // ---------------------------------------------------------------------------

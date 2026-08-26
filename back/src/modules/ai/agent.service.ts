@@ -296,10 +296,31 @@ async function executeTools(
     // Execute tool with per-intent error handling
     let result: ToolResult;
     try {
+      log.info(
+        {
+          tool: toolName,
+          intent: intentToString(item.intent),
+          entities,
+          activeFlowId: executionContext.activeFlow?.flowId.slice(0, 8) ?? null,
+          activeFlowState: executionContext.activeFlow?.state ?? null,
+        },
+        'tool: executing',
+      );
       result = await executeTool(toolName, entities, executionContext);
-      log.info({ tool: toolName, intent: intentToString(item.intent), outcome: result.outcome ?? (result.success ? 'SUCCESS' : 'FAIL') }, 'tool executed');
+      const productCount = Array.isArray(result.data?.products) ? (result.data.products as unknown[]).length : undefined;
+      log.info(
+        {
+          tool: toolName,
+          intent: intentToString(item.intent),
+          outcome: result.outcome ?? (result.success ? 'SUCCESS' : 'FAIL'),
+          productCount,
+          error: result.error,
+          data: productCount !== undefined ? undefined : result.data,
+        },
+        'tool: executed',
+      );
     } catch (err) {
-      log.error({ tool: toolName, intent: intentToString(item.intent), err }, 'tool failed');
+      log.error({ tool: toolName, intent: intentToString(item.intent), err }, 'tool: threw');
       result = { success: false, error: 'Tool execution failed' };
     }
     toolResultCache.set(toolKey, result);
@@ -310,6 +331,15 @@ async function executeTools(
     if (executionContext.activeFlow && result) {
       const updated = applyToolToFlow(executionContext.activeFlow, toolName, result);
       if (updated && updated !== executionContext.activeFlow) {
+        log.info(
+          {
+            tool: toolName,
+            from: executionContext.activeFlow.state,
+            to: updated.state,
+            flowId: updated.flowId.slice(0, 8),
+          },
+          'flow: state transition from tool',
+        );
         executionContext.activeFlow = updated;
         const idx = memory.flows.findIndex((f) => f.flowId === updated.flowId);
         if (idx >= 0) memory.flows[idx] = updated;
@@ -357,7 +387,17 @@ async function executeTools(
     } else {
       try {
         result = await executeTool('suggestProducts', entities, executionContext);
-        log.info({ tool: 'suggestProducts', intent: intentToString(item.intent), outcome: result.outcome ?? (result.success ? 'SUCCESS' : 'FAIL') }, 'tool executed');
+        const sugCount = Array.isArray(result.data?.products) ? (result.data.products as unknown[]).length : undefined;
+        log.info(
+          {
+            tool: 'suggestProducts',
+            intent: intentToString(item.intent),
+            outcome: result.outcome ?? (result.success ? 'SUCCESS' : 'FAIL'),
+            productCount: sugCount,
+            error: result.error,
+          },
+          'tool executed',
+        );
       } catch (err) {
         log.error({ tool: 'suggestProducts', intent: intentToString(item.intent), err }, 'tool failed');
         result = { success: false, error: 'Tool execution failed' };
@@ -515,6 +555,24 @@ export const processMessage = async (messageId: string) => {
 
   const log = msgLogger({ conversationId: conversation.id, messageId });
 
+  log.info(
+    {
+      text: message.text?.slice(0, 200),
+      messageType: message.messageType,
+      direction: message.direction,
+      conversationState: conversation.state,
+      takenOver: conversation.takenOverByHuman,
+      flowCount: memory.flows.length,
+      activeFlowId: memory.activeFlow ?? null,
+      flowSummaries: memory.flows.map((f) => ({
+        flowId: f.flowId.slice(0, 8),
+        state: f.state,
+        product: 'productDiscovery' in f ? f.productDiscovery.input.productName : null,
+      })),
+    },
+    'processMessage: received',
+  );
+
   // Was the human already in control when this message arrived? Read before any
   // processing: the deferred path applies only to pre-existing takeover, not to
   // escalations triggered by this very message.
@@ -632,6 +690,22 @@ export const processMessage = async (messageId: string) => {
   // Save primary intent to message record (backward compat)
   const primaryIntent = sortedIntents[0];
 
+  log.info(
+    {
+      primaryIntent: intentToString(primaryIntent.intent),
+      primaryEntities: primaryIntent.entities,
+      conversationAct: parsed.conversationAct,
+      allIntents: sortedIntents.map((i) => ({
+        intent: intentToString(i.intent),
+        entities: i.entities,
+        confidence: i.confidence,
+        status: i.status,
+        order: i.order,
+      })),
+    },
+    'intent details',
+  );
+
   await prisma.message.update({
     where: { id: messageId },
     data: {
@@ -639,6 +713,7 @@ export const processMessage = async (messageId: string) => {
       entities: primaryIntent.entities,
       confidence: primaryIntent.confidence,
       parsedIntents: sortedIntents as unknown as Prisma.InputJsonValue,
+      refersToPreviousFlow: parsed.refersToPreviousFlow,
     },
   });
 
@@ -646,21 +721,41 @@ export const processMessage = async (messageId: string) => {
   // Determines which flow this message continues, creates, or switches to.
   // Runs after intent extraction but before tool execution so the execution
   // context always has the correct activeFlow.
+  const resolverEntities = toFlowResolverEntities(primaryIntent.entities);
+  log.info(
+    {
+      intent: intentToString(primaryIntent.intent),
+      resolverEntities,
+      activeFlowId: memory.activeFlow ?? null,
+      flowCount: memory.flows.length,
+    },
+    'flow resolution: input',
+  );
+
   const resolverResult = resolveFlow({
     extraction: {
       intent: primaryIntent.intent,
-      entities: toFlowResolverEntities(primaryIntent.entities),
+      entities: resolverEntities,
       confidence: primaryIntent.confidence,
     },
     conversation: {
       activeFlowId: memory.activeFlow ?? null,
       flows: memory.flows,
     },
+    refersToPreviousFlow: parsed.refersToPreviousFlow,
   });
 
-  log.debug(
-    { action: resolverResult.action, intent: intentToString(primaryIntent.intent) },
-    'flow resolution',
+  log.info(
+    {
+      action: resolverResult.action,
+      intent: intentToString(primaryIntent.intent),
+      ...(resolverResult.action === 'CREATE' && { productName: resolverResult.productName }),
+      ...(resolverResult.action === 'CONTINUE' && { flowId: resolverResult.flowId }),
+      ...(resolverResult.action === 'SWITCH' && { flowId: resolverResult.flowId }),
+      ...(resolverResult.action === 'INVALID_ACTION' && { reason: resolverResult.reason }),
+      ...(resolverResult.action === 'CLARIFY' && { candidates: resolverResult.candidates.map(c => ({ flowId: c.flowId.slice(0, 8), score: c.score, signals: c.matchedSignals, summary: c.summary })) }),
+    },
+    'flow resolution: result',
   );
 
   switch (resolverResult.action) {
@@ -671,12 +766,13 @@ export const processMessage = async (messageId: string) => {
       });
       memory.flows.push(newFlow);
       memory.activeFlow = newFlow.flowId;
-      log.debug({ flowId: newFlow.flowId, productName: resolverResult.productName }, 'created new flow');
+      log.info({ flowId: newFlow.flowId, productName: resolverResult.productName, totalFlows: memory.flows.length }, 'flow resolution: created new flow');
       break;
     }
     case 'CONTINUE':
     case 'SWITCH':
       memory.activeFlow = resolverResult.flowId;
+      log.info({ flowId: resolverResult.flowId, action: resolverResult.action }, 'flow resolution: switched/continued active flow');
       break;
     case 'INVALID_ACTION':
       log.info(
@@ -686,7 +782,7 @@ export const processMessage = async (messageId: string) => {
       break;
     case 'CLARIFY':
       log.info(
-        { candidates: resolverResult.candidates.map(c => c.flowId) },
+        { candidates: resolverResult.candidates.map(c => ({ flowId: c.flowId.slice(0, 8), score: c.score, summary: c.summary })) },
         'flow resolution: ambiguous, multiple flows match equally',
       );
       break;
@@ -706,6 +802,17 @@ export const processMessage = async (messageId: string) => {
     customerWilaya: customer.wilaya,
     customerCommune: customer.commune,
   };
+
+  log.info(
+    {
+      activeFlowId: executionContext.activeFlow?.flowId.slice(0, 8) ?? null,
+      activeFlowState: executionContext.activeFlow?.state ?? null,
+      activeFlowProduct: executionContext.activeFlow && 'productDiscovery' in executionContext.activeFlow
+        ? executionContext.activeFlow.productDiscovery.input.productName
+        : null,
+    },
+    'execution context',
+  );
 
   // ─── Suggested intents: record + escalate ───────────────────────────
   // When the LLM proposes a new intent, we persist it (count +1) and hand the
@@ -840,6 +947,15 @@ export const processDeferredLayer2 = async (messageId: string) => {
 
   const log = msgLogger({ conversationId: conversation.id, messageId });
 
+  log.info(
+    {
+      conversationState: conversation.state,
+      flowCount: memory.flows.length,
+      activeFlowId: memory.activeFlow ?? null,
+    },
+    'processDeferredLayer2: received',
+  );
+
   const parsedIntents = (message.parsedIntents as unknown as IntentItem[] | null) ?? [];
   if (parsedIntents.length === 0) {
     log.info('no parsedIntents to process, nothing deferred');
@@ -848,6 +964,15 @@ export const processDeferredLayer2 = async (messageId: string) => {
 
   const sortedIntents = sortIntents(parsedIntents);
   const primaryIntent = sortedIntents[0];
+
+  log.info(
+    {
+      primaryIntent: intentToString(primaryIntent.intent),
+      primaryEntities: primaryIntent.entities,
+      allIntents: sortedIntents.map(i => intentToString(i.intent)),
+    },
+    'processDeferredLayer2: intent details',
+  );
 
   // ─── Flow resolution (primary intent) ──────────────────────────────────
   // Re-resolve so the active flow is correct before read tools execute.
@@ -865,6 +990,7 @@ export const processDeferredLayer2 = async (messageId: string) => {
       activeFlowId: memory.activeFlow ?? null,
       flows: memory.flows,
     },
+    refersToPreviousFlow: message.refersToPreviousFlow,
   });
 
   log.debug(

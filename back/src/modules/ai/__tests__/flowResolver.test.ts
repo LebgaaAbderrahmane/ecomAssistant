@@ -224,19 +224,19 @@ describe('resolveFlow', () => {
       }
     });
 
-    it('INVALID_ACTION for ORDER_CONFIRM on flow without order', () => {
+    it('INVALID_ACTION for ORDER_CONFIRM on flow without order (no other flows)', () => {
       const flow = discoveryFlow('f1', 'shoes');
       const result = resolveFlow(makeInput('ORDER_CONFIRM', {}, [flow], 'f1'));
       expect(result.action).toBe('INVALID_ACTION');
     });
 
-    it('INVALID_ACTION for ORDER_MODIFY on flow without order', () => {
+    it('INVALID_ACTION for ORDER_MODIFY on flow without order (no other flows)', () => {
       const flow = selectedFlow('f1', 'shoes');
       const result = resolveFlow(makeInput('ORDER_MODIFY', {}, [flow], 'f1'));
       expect(result.action).toBe('INVALID_ACTION');
     });
 
-    it('INVALID_ACTION for ORDER_CANCEL on flow without order', () => {
+    it('INVALID_ACTION for ORDER_CANCEL on flow without order (no other flows)', () => {
       const flow = discoveryFlow('f1', 'shoes');
       const result = resolveFlow(makeInput('ORDER_CANCEL', {}, [flow], 'f1'));
       expect(result.action).toBe('INVALID_ACTION');
@@ -278,6 +278,94 @@ describe('resolveFlow', () => {
       };
       const result = resolveFlow(makeInput('STATUS_CHECK', {}, [flow], 'f1'));
       expect(result.action).toBe('CONTINUE');
+    });
+  });
+
+  describe('STATE_INTENT incompatible — switch to other flow', () => {
+    it('SWITCH when ORDER_CREATE with productRef matches another flow', () => {
+      const active = discoveryFlow('f1', 'jackets');
+      const iphone = discoveryFlow('f2', 'iPhone 14 Pro Max', [product('iPhone 14 Pro Max')]);
+      const result = resolveFlow(
+        makeInput('ORDER_CREATE', { productName: 'iPhone 14 Pro Max' }, [active, iphone], 'f1'),
+      );
+      expect(result.action).toBe('SWITCH');
+      if (result.action === 'SWITCH') {
+        expect(result.flowId).toBe('f2');
+      }
+    });
+
+    it('SWITCH when ORDER_CONFIRM with productRef matches another flow', () => {
+      const active = discoveryFlow('f1', 'jackets');
+      const shoes = pendingFlow('f2', 'nike shoes');
+      const result = resolveFlow(
+        makeInput('ORDER_CONFIRM', { productName: 'nike shoes' }, [active, shoes], 'f1'),
+      );
+      expect(result.action).toBe('SWITCH');
+      if (result.action === 'SWITCH') {
+        expect(result.flowId).toBe('f2');
+      }
+    });
+
+    it('INVALID_ACTION when productRef does not match any other flow', () => {
+      const active = discoveryFlow('f1', 'jackets');
+      const result = resolveFlow(
+        makeInput('ORDER_CREATE', { productName: 'unknown item' }, [active], 'f1'),
+      );
+      expect(result.action).toBe('INVALID_ACTION');
+    });
+
+    it('CLARIFY when productRef matches multiple other flows', () => {
+      const active = discoveryFlow('f1', 'jackets');
+      const shoes1 = discoveryFlow('f2', 'nike shoes', [product('nike shoes')]);
+      const shoes2 = discoveryFlow('f3', 'adidas shoes', [product('adidas shoes')]);
+      const result = resolveFlow(
+        makeInput('ORDER_CREATE', { productName: 'shoes' }, [active, shoes1, shoes2], 'f1'),
+      );
+      // CLARIFY because multiple candidates have explicitReference
+      expect(result.action).toBe('CLARIFY');
+    });
+
+    it('SWITCH when refersToPreviousFlow=true and recency matches another flow', () => {
+      const active = discoveryFlow('f1', 'jackets');
+      // iphone flow has no productRef in entities but is recent
+      const iphone = discoveryFlow('f2', 'iPhone 14 Pro Max');
+      iphone.updatedAt = new Date().toISOString();
+      const result = resolveFlow(
+        {
+          extraction: { intent: 'ORDER_CREATE', entities: {}, confidence: 0.9 },
+          conversation: { activeFlowId: 'f1', flows: [active, iphone] },
+          refersToPreviousFlow: true,
+        },
+      );
+      expect(result.action).toBe('SWITCH');
+      if (result.action === 'SWITCH') {
+        expect(result.flowId).toBe('f2');
+      }
+    });
+
+    it('INVALID_ACTION when refersToPreviousFlow=false and no productRef matches', () => {
+      const active = discoveryFlow('f1', 'jackets');
+      const iphone = discoveryFlow('f2', 'iPhone 14 Pro Max');
+      const result = resolveFlow(
+        {
+          extraction: { intent: 'ORDER_CREATE', entities: {}, confidence: 0.9 },
+          conversation: { activeFlowId: 'f1', flows: [active, iphone] },
+          refersToPreviousFlow: false,
+        },
+      );
+      expect(result.action).toBe('INVALID_ACTION');
+    });
+
+    it('INVALID_ACTION when refersToPreviousFlow=true but no other flows exist', () => {
+      const active = discoveryFlow('f1', 'jackets');
+      const result = resolveFlow(
+        {
+          extraction: { intent: 'ORDER_CREATE', entities: {}, confidence: 0.9 },
+          conversation: { activeFlowId: 'f1', flows: [active] },
+          refersToPreviousFlow: true,
+        },
+      );
+      expect(result.action).toBe('INVALID_ACTION');
     });
   });
 
