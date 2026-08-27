@@ -30,7 +30,7 @@ export const TOOL_FLOW_STATE_MAP: Partial<Record<ToolName, FlowState>> = {
   searchProducts: 'PRODUCT_DISCOVERY',
   recallPreviousProducts: 'PRODUCT_DISCOVERY',
   suggestProducts: 'PRODUCT_DISCOVERY',
-  chooseProduct: 'PRODUCT_SELECTED',
+  selectProduct: 'PRODUCT_SELECTED',
   getProductDetails: 'PRODUCT_SELECTED',
   createOrder: 'ORDER_PENDING',
   confirmOrder: 'ORDER_CONFIRMED',
@@ -158,7 +158,25 @@ export function applyToolResult(
   success: boolean,
   result?: Record<string, unknown>,
 ): Flow {
-  if (!success) return flow;
+  if (!success) {
+    // createOrder records partial order data (product, quantity) even when
+    // delivery fields are missing, so a follow-up message doesn't lose them.
+    // The order is only persisted to the DB on a later, complete attempt.
+    if (
+      toolName === 'createOrder' &&
+      flow.state === 'PRODUCT_SELECTED' &&
+      result?.productId
+    ) {
+      const orderData: OrderData = {
+        orderId: result.orderId as string | undefined,
+        productId: result.productId as string | undefined,
+        quantity: result.quantity as number | undefined,
+      };
+      const transitioned = toOrderPending(flow, orderData);
+      return applyDataRecording(transitioned, toolName, result);
+    }
+    return flow;
+  }
 
   const newState = transitionState(flow.state, toolName, success);
   if (newState === flow.state) {
@@ -218,10 +236,13 @@ function applyDataRecording(
     case 'recallPreviousProducts':
     case 'suggestProducts': {
       const products = result?.products as FlowProduct[] | undefined;
-      if (products?.length) {
-        return recordProductResults(flow, products);
+      let updated = products?.length ? recordProductResults(flow, products) : flow;
+      // Auto-select when exactly one product is returned — the customer
+       // clearly meant this product, no need for an explicit selectProduct.
+      if (products?.length === 1 && updated.state !== 'IDLE' && !updated.currentProductId) {
+        updated = { ...updated, currentProductId: products[0].productId, updatedAt: new Date().toISOString() } as Flow;
       }
-      return flow;
+      return updated;
     }
     case 'modifyOrder': {
       if (!hasOrder(flow)) return flow;

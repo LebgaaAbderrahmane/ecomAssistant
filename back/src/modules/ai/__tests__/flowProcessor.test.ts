@@ -89,8 +89,8 @@ describe('TOOL_FLOW_STATE_MAP', () => {
     expect(TOOL_FLOW_STATE_MAP.suggestProducts).toBe('PRODUCT_DISCOVERY');
   });
 
-  it('maps chooseProduct to PRODUCT_SELECTED', () => {
-    expect(TOOL_FLOW_STATE_MAP.chooseProduct).toBe('PRODUCT_SELECTED');
+  it('maps selectProduct to PRODUCT_SELECTED', () => {
+    expect(TOOL_FLOW_STATE_MAP.selectProduct).toBe('PRODUCT_SELECTED');
   });
 
   it('maps getProductDetails to PRODUCT_SELECTED', () => {
@@ -155,8 +155,8 @@ describe('transitionState', () => {
     expect(transitionState('ORDER_PENDING', 'cancelOrder', true)).toBe('ORDER_CANCELLED');
   });
 
-  it('transitions PRODUCT_DISCOVERY → PRODUCT_SELECTED on chooseProduct success', () => {
-    expect(transitionState('PRODUCT_DISCOVERY', 'chooseProduct', true)).toBe('PRODUCT_SELECTED');
+  it('transitions PRODUCT_DISCOVERY → PRODUCT_SELECTED on selectProduct success', () => {
+    expect(transitionState('PRODUCT_DISCOVERY', 'selectProduct', true)).toBe('PRODUCT_SELECTED');
   });
 });
 
@@ -290,16 +290,16 @@ describe('applyToolResult', () => {
     });
   });
 
-  describe('chooseProduct', () => {
+  describe('selectProduct', () => {
     it('transitions to PRODUCT_SELECTED', () => {
       const flow = discoveryFlow();
-      const result = applyToolResult(flow, 'chooseProduct', true);
+      const result = applyToolResult(flow, 'selectProduct', true);
       expect(result.state).toBe('PRODUCT_SELECTED');
     });
 
     it('stays on failure', () => {
       const flow = discoveryFlow();
-      const result = applyToolResult(flow, 'chooseProduct', false);
+      const result = applyToolResult(flow, 'selectProduct', false);
       expect(result.state).toBe('PRODUCT_DISCOVERY');
     });
   });

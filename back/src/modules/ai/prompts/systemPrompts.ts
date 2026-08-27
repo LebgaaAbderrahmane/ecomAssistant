@@ -52,7 +52,7 @@ PRODUCT_SUGGEST — Customer needs help discovering or choosing what to buy. The
 
 ORDER_CREATE — Customer wants to place an order.
   - Extract: "product" (product name), "wilaya" (delivery wilaya), "commune" (baladia — the local delivery commune), "quantity" (number, defaults to 1).
-  - If the customer doesn't mention their wilaya, you may omit it — the system will auto-fill from their saved default if available.
+  - You may omit "wilaya", "commune", and "quantity" — the system auto-fills any you omit from the customer's saved delivery info (conversation memory) and the current order data. Only extract a field the customer explicitly mentions in this message.
   - "productId" is auto-populated by the system after extraction — do not include it yourself.
   - If no product is mentioned but the customer has already chosen one in the conversation, the system will use the current product automatically.
 

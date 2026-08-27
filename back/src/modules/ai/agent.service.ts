@@ -8,6 +8,7 @@ import { executeTool, ToolResult } from './tools/registry';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, Flow } from './memory.types';
 import { migrateMemory, getActiveFlow, createFlow } from './flowHelper';
+import { getFlowCurrentProductId, getFlowProductResults } from './flowExtractors';
 import { persistFlowMemory, applyToolResult } from './flowProcessor';
 import { resolveFlow, toFlowResolverEntities } from './flowResolver';
 import type { IntentItem } from './schemas/ai.schemas';
@@ -219,6 +220,56 @@ async function executeTools(
     customerCommune: customer.commune,
   };
 
+  // ─── Product context resolution ──────────────────────────────────────
+  // When currentProductId is not set, the system automatically resolves it:
+  // 1. If search results exist and entities contain selection info → auto-select
+  // 2. If no search results → redirect to searchProducts
+  async function resolveProductContext(
+    intent: IntentField,
+    entities: Record<string, string | number | boolean | null>,
+  ): Promise<{ intent: IntentField; entities: Record<string, string | number | boolean | null> }> {
+    const toolName = resolveTool(intent, entities);
+    if (toolName !== 'getProductDetails') {
+      return { intent, entities };
+    }
+
+    const currentProductId = getFlowCurrentProductId(executionContext.activeFlow);
+    if (currentProductId) {
+      return { intent, entities };
+    }
+
+    const results = getFlowProductResults(executionContext.activeFlow);
+    const hasProductIndex = entities.productIndex !== undefined && typeof entities.productIndex === 'number';
+    const productName = entities.productName ?? entities.product;
+    const hasProductName = typeof productName === 'string' && productName.length > 0;
+
+    // Case 1: Search results exist and customer is selecting from them
+    if (results?.length && (hasProductIndex || hasProductName)) {
+      log.info({ productIndex: entities.productIndex, productName }, 'auto-selecting product before details');
+      const selectResult = await executeTool('selectProduct', entities, executionContext);
+      if (selectResult.success) {
+        executionContext.activeFlow = applyToolToFlow(executionContext.activeFlow, 'selectProduct', selectResult);
+      }
+      return { intent, entities };
+    }
+
+    // Case 2: No search results — execute search first, then let original tool run
+    if (hasProductName) {
+      log.info({ productName }, 'no search results, executing search before details');
+      const searchResult = await executeTool('searchProducts', { product: productName }, executionContext);
+      if (searchResult.success) {
+        executionContext.activeFlow = applyToolToFlow(executionContext.activeFlow, 'searchProducts', searchResult);
+      }
+      // Return original intent — getProductDetails will run next and use
+      // currentProductId if the search auto-selected (single result), or
+      // return AMBIGUOUS if multiple results were found.
+      return { intent, entities };
+    }
+
+    // Case 3: Can't resolve — fall through to tool which returns AMBIGUOUS
+    return { intent, entities };
+  }
+
   const intents = opts.only
     ? sortedIntents.filter((item) => {
         const toolName = resolveTool(item.intent, item.entities);
@@ -244,7 +295,7 @@ async function executeTools(
 
   for (const item of intents) {
     // Product intents are never short-circuited on "unresolved": their tools
-    // (searchProducts / chooseProduct / getProductDetails / suggestProducts)
+    // (searchProducts / selectProduct / getProductDetails / suggestProducts)
     // resolve the reference from conversation memory first and only report
     // AMBIGUOUS when neither the message nor the memory can identify a product.
     // Other intents that the LLM could not act on are recorded as AMBIGUOUS and skipped.
@@ -261,7 +312,7 @@ async function executeTools(
     }
 
     // Resolve tool from intent
-    const toolName = resolveTool(item.intent, item.entities);
+    let toolName = resolveTool(item.intent, item.entities);
     if (!toolName) {
       toolResults.push({ intent: intentToString(item.intent), result: null });
       continue;
@@ -275,6 +326,15 @@ async function executeTools(
         entities.productId = resolvedId;
         log.info({ productId: resolvedId, productName: entities.product }, 'resolved productId from name');
       }
+    }
+
+    // Pre-process: resolve product context (auto-select or redirect to search)
+    const resolved = await resolveProductContext(item.intent, entities);
+    item.intent = resolved.intent;
+    Object.assign(entities, resolved.entities);
+    const finalToolName = resolveTool(item.intent, entities);
+    if (finalToolName && finalToolName !== toolName) {
+      toolName = finalToolName;
     }
 
     // Dedupe identical tool calls within one message (e.g. LLM #1 emitting the

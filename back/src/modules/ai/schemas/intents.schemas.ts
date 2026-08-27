@@ -76,7 +76,7 @@ export function intentToString(intent: IntentField): string {
 export const ReadToolNameSchema = z.enum([
   'searchProducts',
   'recallPreviousProducts',
-  'chooseProduct',
+  'selectProduct',
   'getProductDetails',
   'suggestProducts',
   'calculateShipping',
@@ -112,7 +112,7 @@ export function isWriteTool(name: ToolName): name is WriteToolName {
 // based on whether a product entity is present (catalog search) or absent
 // (recall from conversation memory).
 const INTENT_TOOL_MAP: Partial<Record<Intent, ToolName>> = {
-  PRODUCT_SELECT: 'chooseProduct',
+  PRODUCT_SELECT: 'selectProduct',
   PRODUCT_DETAILS: 'getProductDetails',
   PRODUCT_SUGGEST: 'suggestProducts',
   ORDER_CREATE: 'createOrder',
@@ -144,7 +144,7 @@ export const RecallPreviousProductsArgsSchema = z.object({
   limit: z.number().int().positive().max(10).optional(),
 });
 
-export const ChooseProductArgsSchema = z.object({
+export const SelectProductArgsSchema = z.object({
   productName: z.string().min(1).optional(),
   productIndex: z.number().int().min(0).optional(),
 }).refine(data => data.productName || data.productIndex !== undefined, {
@@ -168,10 +168,12 @@ export const CreateOrderArgsSchema = z.object({
   productId: z.string().min(1).optional(),
   product: z.string().min(1).optional(),
   wilaya: z.string().min(1).optional(),
-  commune: z.string().min(1),
-  quantity: z.number().int().positive().default(1),
-}).refine(data => data.productId || data.product, {
-  message: 'Either productId or product name is required',
+  commune: z.string().min(1).optional(),
+  quantity: z.preprocess(
+    v => (typeof v === 'number' ? v : v === null || v === undefined || v === '' ? undefined : Number(v)),
+    z.number().int().positive().optional(),
+  ),
+  communeSuggestion: z.string().min(1).optional(),
 });
 
 export const ConfirmOrderArgsSchema = z.object({
@@ -182,7 +184,10 @@ export const ConfirmOrderArgsSchema = z.object({
 export const ModifyOrderArgsSchema = z.object({
   wilaya: z.string().min(1).optional(),
   commune: z.string().min(1).optional(),
-  quantity: z.number().int().positive().optional(),
+  quantity: z.preprocess(
+    v => (typeof v === 'number' ? v : v === null || v === undefined || v === '' ? undefined : Number(v)),
+    z.number().int().positive().optional(),
+  ),
 }).refine(
   data => data.wilaya !== undefined || data.commune !== undefined || data.quantity !== undefined,
   { message: 'At least one of wilaya, commune, or quantity must be provided' },

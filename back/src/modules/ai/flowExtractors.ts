@@ -1,4 +1,5 @@
 import type { Flow } from './memory.types';
+import { moduleLogger } from "../../lib/logger"
 
 // ---------------------------------------------------------------------------
 // Flow extraction helpers
@@ -10,17 +11,26 @@ import type { Flow } from './memory.types';
 // back to explicit entity args or return a "not in context" error.
 // ---------------------------------------------------------------------------
 
+const logger = moduleLogger('flow extraction: ')
+
 export function getFlowOrderId(flow: Flow | null): string | undefined {
   if (!flow) return undefined;
   if ('order' in flow && flow.order?.orderId) return flow.order.orderId;
   return undefined;
 }
 
-export function getFlowSelectedProductId(flow: Flow | null): string | undefined {
+/** Returns the current product ID for the flow. This is the primary way tools
+ *  should resolve the product in focus. Set by selectProduct, auto-selected
+ *  from single search results, or determined from the customer's message. */
+export function getFlowCurrentProductId(flow: Flow | null): string | undefined {
   if (!flow) return undefined;
-  if (flow.state === 'PRODUCT_SELECTED' && flow.selectedProductId) return flow.selectedProductId;
-  if ('order' in flow && flow.order?.productId) return flow.order.productId;
-  return undefined;
+  if (flow.state === 'IDLE') return undefined;
+  return flow.currentProductId;
+}
+
+/** @deprecated Use getFlowCurrentProductId. Kept for backward compat during migration. */
+export function getFlowSelectedProductId(flow: Flow | null): string | undefined {
+  return getFlowCurrentProductId(flow);
 }
 
 export function getFlowProductResults(flow: Flow | null): Array<{ id: string; name: string }> | undefined {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getFlowOrderId, getFlowSelectedProductId, getFlowProductResults } from '../flowExtractors';
+import { getFlowOrderId, getFlowCurrentProductId, getFlowSelectedProductId, getFlowProductResults } from '../flowExtractors';
 import type { Flow } from '../memory.types';
 
 const IDLE: Flow = {
@@ -28,7 +28,7 @@ const PRODUCT_SELECTED: Flow = {
   state: 'PRODUCT_SELECTED',
   createdAt: '2025-01-01T00:00:00.000Z',
   updatedAt: '2025-01-01T00:00:00.000Z',
-  selectedProductId: 'p1',
+  currentProductId: 'p1',
   productDiscovery: {
     input: { productName: 'shoes', filters: {} },
     toolResults: [
@@ -42,6 +42,7 @@ const ORDER_PENDING: Flow = {
   state: 'ORDER_PENDING',
   createdAt: '2025-01-01T00:00:00.000Z',
   updatedAt: '2025-01-01T00:00:00.000Z',
+  currentProductId: 'p1',
   productDiscovery: {
     input: { productName: 'shoes', filters: {} },
     toolResults: [],
@@ -67,33 +68,40 @@ describe('getFlowOrderId', () => {
   });
 });
 
-describe('getFlowSelectedProductId', () => {
+describe('getFlowCurrentProductId', () => {
   it('returns undefined for null', () => {
-    expect(getFlowSelectedProductId(null)).toBeUndefined();
+    expect(getFlowCurrentProductId(null)).toBeUndefined();
   });
 
   it('returns undefined for IDLE', () => {
-    expect(getFlowSelectedProductId(IDLE)).toBeUndefined();
+    expect(getFlowCurrentProductId(IDLE)).toBeUndefined();
   });
 
   it('returns undefined for PRODUCT_DISCOVERY (no selection yet)', () => {
-    expect(getFlowSelectedProductId(PRODUCT_DISCOVERY)).toBeUndefined();
+    expect(getFlowCurrentProductId(PRODUCT_DISCOVERY)).toBeUndefined();
   });
 
-  it('returns selectedProductId for PRODUCT_SELECTED', () => {
-    expect(getFlowSelectedProductId(PRODUCT_SELECTED)).toBe('p1');
+  it('returns currentProductId for PRODUCT_SELECTED', () => {
+    expect(getFlowCurrentProductId(PRODUCT_SELECTED)).toBe('p1');
   });
 
-  it('returns productId from order for ORDER_PENDING', () => {
-    expect(getFlowSelectedProductId(ORDER_PENDING)).toBe('p1');
+  it('returns currentProductId for ORDER_PENDING', () => {
+    expect(getFlowCurrentProductId(ORDER_PENDING)).toBe('p1');
   });
 
-  it('returns undefined for PRODUCT_SELECTED without selectedProductId', () => {
+  it('returns undefined for PRODUCT_SELECTED without currentProductId', () => {
     const flow: Flow = {
       ...PRODUCT_SELECTED,
-      selectedProductId: undefined,
+      currentProductId: undefined,
     };
-    expect(getFlowSelectedProductId(flow)).toBeUndefined();
+    expect(getFlowCurrentProductId(flow)).toBeUndefined();
+  });
+});
+
+describe('getFlowSelectedProductId (deprecated alias)', () => {
+  it('delegates to getFlowCurrentProductId', () => {
+    expect(getFlowSelectedProductId(PRODUCT_SELECTED)).toBe('p1');
+    expect(getFlowSelectedProductId(null)).toBeUndefined();
   });
 });
 

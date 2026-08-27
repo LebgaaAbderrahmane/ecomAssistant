@@ -198,7 +198,7 @@ function selectedMemory(flowId: string, productName = 'shoes', productId = 'p1')
       {
         ...disc.flows[0],
         state: 'PRODUCT_SELECTED' as const,
-        selectedProductId: productId,
+        currentProductId: productId,
       } as Flow,
     ],
   };
@@ -319,12 +319,12 @@ describe('flow integration — end-to-end pipeline', () => {
     expect(mem!.activeFlow).toBe(mem!.flows[0].flowId);
   });
 
-  // 2. Product selection: discovery → PRODUCT_SELECTED via chooseProduct
-  it('transitions to PRODUCT_SELECTED on chooseProduct', async () => {
+   // 2. Product selection: discovery → PRODUCT_SELECTED via selectProduct
+   it('transitions to PRODUCT_SELECTED on selectProduct', async () => {
     const { processMessage } = await import('../agent.service');
 
     const flowId = 'flow-sel';
-    // Pre-populate flow with product results so chooseProduct can resolve by index
+     // Pre-populate flow with product results so selectProduct can resolve by index
     const memWithProducts = discoveryMemory(flowId);
     const discFlow = memWithProducts.flows[0] as Extract<Flow, { state: 'PRODUCT_DISCOVERY' }>;
     discFlow.productDiscovery.toolResults = [
@@ -340,7 +340,7 @@ describe('flow integration — end-to-end pipeline', () => {
       )
       .mockResolvedValueOnce(replyResponse(['Parfait, je retiens la première option.']));
 
-    // chooseProduct queries the product by ID from the flow
+     // selectProduct queries the product by ID from the flow
     productFindFirst.mockResolvedValue({ id: 'p1', name: 'Shoes Pro', price: 5000, stockStatus: 'in_stock', description: 'Best shoes', currency: 'DZD' });
 
     await processMessage('msg-1');
@@ -380,6 +380,53 @@ describe('flow integration — end-to-end pipeline', () => {
     expect(mem!.flows).toHaveLength(1);
     expect(mem!.flows[0].state).toBe('ORDER_PENDING');
     expect((mem!.flows[0] as Extract<Flow, { state: 'ORDER_PENDING' }>).order?.orderId).toBe('order-new');
+  });
+
+  it('reads delivery info from memory when order args omit them', async () => {
+    const { processMessage } = await import('../agent.service');
+
+    // Product selected; the customer's commune + wilaya are saved in memory's
+    // globalInformation from a previous exchange. The order message only names
+    // the product/quantity.
+    const flowId = 'flow-ord';
+    const memory = selectedMemory(flowId, 'Shoes Pro', 'p1');
+    memory.globalInformation = { wilaya: 'Alger', commune: 'Bab Ezzouar' };
+    setupMocks(baseMessage('Order 2 of them', 'PRODUCT_SELECTED', memory));
+
+    callLLMMock
+      .mockResolvedValueOnce(
+        intentResponse([
+          { intent: 'ORDER_CREATE', entities: { quantity: 2 }, confidence: 0.9, order: 1 },
+        ]),
+      )
+      .mockResolvedValueOnce(replyResponse(['Commande passée !']));
+
+    // createOrder reads conversation memory to resolve delivery info
+    conversationFindUnique.mockResolvedValue({
+      id: CONVERSATION_ID,
+      merchantId: MERCHANT_ID,
+      customerId: CUSTOMER_ID,
+      memory,
+    });
+
+    // createOrder validates commune via DB (from memory, not args)
+    communeFindFirst.mockResolvedValue({ name: 'Bab Ezzouar', wilaya: 'Alger' });
+    // createOrder finds product by ID from the flow's currentProductId
+    productFindFirst.mockResolvedValue({ id: 'p1', name: 'Shoes Pro', price: 5000, stockStatus: 'in_stock', currency: 'DZD' });
+    // delivery cost for Alger
+    wilayaDeliveryCostFindFirst.mockResolvedValue({ cost: 500 });
+    orderCreate.mockResolvedValue({ id: 'order-new', status: 'PENDING' });
+
+    await processMessage('msg-1');
+
+    // Order created with delivery info pulled from memory and quantity from args
+    const orderArgs = orderCreate.mock.calls[0]?.[0] as {
+      data: { wilaya: string; commune: string; quantity: number };
+    };
+    expect(orderArgs.data.wilaya).toBe('Alger');
+    expect(orderArgs.data.commune).toBe('Bab Ezzouar');
+    expect(orderArgs.data.quantity).toBe(2);
+    expect(orderCreate).toHaveBeenCalledTimes(1);
   });
 
   // 4. New search during active order: creates new flow, old flow stays

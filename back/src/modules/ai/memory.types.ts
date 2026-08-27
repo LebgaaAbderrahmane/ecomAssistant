@@ -70,6 +70,12 @@ interface FlowBase {
   flowId: string;
   createdAt: string;
   updatedAt: string;
+  /** The ID of the product currently in focus for this flow. Set when a product
+   *  is explicitly selected (selectProduct), auto-selected (single search result),
+   *  or determined from the customer's message. Used by downstream tools
+   *  (getProductDetails, createOrder, etc.) to resolve the product without
+   *  relying on entity extraction. */
+  currentProductId?: string;
 }
 
 /**
@@ -87,7 +93,6 @@ export type Flow =
   | (FlowBase & {
       state: 'PRODUCT_SELECTED';
       productDiscovery: ProductDiscoveryData;
-      selectedProductId?: string;
     })
   | (FlowBase & {
       state: 'ORDER_PENDING';

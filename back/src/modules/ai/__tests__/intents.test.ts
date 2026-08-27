@@ -23,7 +23,7 @@ describe('suggestProducts intent routing', () => {
 
   it('does not route other intents to suggestProducts', () => {
     expect(resolveTool('PRODUCT_SEARCH', { product: 'iphone 15' })).toBe('searchProducts');
-    expect(resolveTool('PRODUCT_SELECT', { productIndex: 1 })).toBe('chooseProduct');
+    expect(resolveTool('PRODUCT_SELECT', { productIndex: 1 })).toBe('selectProduct');
     expect(resolveTool('PRODUCT_DETAILS', { productName: 'x' })).toBe('getProductDetails');
     expect(resolveTool('ORDER_CREATE', {})).toBe('createOrder');
   });
@@ -50,7 +50,7 @@ describe('tool execution policies (read / write)', () => {
   });
 
   it('classifies the navigation tools as READ', () => {
-    for (const tool of ['searchProducts', 'recallPreviousProducts', 'chooseProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
+      for (const tool of ['searchProducts', 'recallPreviousProducts', 'selectProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
       expect(isReadTool(tool)).toBe(true);
       expect(isWriteTool(tool)).toBe(false);
     }

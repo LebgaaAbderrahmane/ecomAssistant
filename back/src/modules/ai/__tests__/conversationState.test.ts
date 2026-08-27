@@ -10,7 +10,7 @@ describe('TOOL_STATE_TRANSITIONS', () => {
     expect(TOOL_STATE_TRANSITIONS.searchProducts).toBe('PRODUCT_DISCOVERY');
     expect(TOOL_STATE_TRANSITIONS.recallPreviousProducts).toBe('PRODUCT_DISCOVERY');
     expect(TOOL_STATE_TRANSITIONS.suggestProducts).toBe('PRODUCT_DISCOVERY');
-    expect(TOOL_STATE_TRANSITIONS.chooseProduct).toBe('PRODUCT_SELECTED');
+    expect(TOOL_STATE_TRANSITIONS.selectProduct).toBe('PRODUCT_SELECTED');
     expect(TOOL_STATE_TRANSITIONS.getProductDetails).toBe('PRODUCT_SELECTED');
     expect(TOOL_STATE_TRANSITIONS.createOrder).toBe('WAITING_CONFIRMATION');
     expect(TOOL_STATE_TRANSITIONS.confirmOrder).toBe('CONFIRMED');
@@ -39,7 +39,7 @@ describe('nextConversationState', () => {
 
   it('(3) selecting a product after a search moves to PRODUCT_SELECTED', () => {
     expect(
-      nextConversationState('PRODUCT_DISCOVERY', 'chooseProduct', true),
+      nextConversationState('PRODUCT_DISCOVERY', 'selectProduct', true),
     ).toBe('PRODUCT_SELECTED');
   });
 

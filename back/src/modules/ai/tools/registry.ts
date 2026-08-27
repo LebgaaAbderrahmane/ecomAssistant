@@ -8,8 +8,7 @@ import {
   ConfirmOrderArgsSchema,
   CancelOrderArgsSchema,
   CreateOrderArgsSchema,
-  ChooseProductArgsSchema,
-  GetProductDetailsArgsSchema,
+  SelectProductArgsSchema,
   SuggestProductsArgsSchema,
   ModifyOrderArgsSchema,
 } from '../schemas/intents.schemas';
@@ -24,10 +23,10 @@ import {
 } from './suggestionHelpers';
 import type { Flow } from '../memory.types';
 import { migrateMemory, getActiveFlow } from '../flowHelper';
-import { getFlowOrderId, getFlowSelectedProductId, getFlowProductResults } from '../flowExtractors';
+import { getFlowOrderId, getFlowCurrentProductId, getFlowProductResults } from '../flowExtractors';
 import { moduleLogger ,convLogger } from '../../../lib/logger';
 
-export { getFlowOrderId, getFlowSelectedProductId, getFlowProductResults };
+export { getFlowOrderId, getFlowCurrentProductId, getFlowProductResults };
 
 interface CommuneValidation {
   valid: boolean;
@@ -141,7 +140,7 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
 
   const productCtx = {
     lastProductResults: getFlowProductResults(ctx.activeFlow),
-    currentProductId: getFlowSelectedProductId(ctx.activeFlow),
+    currentProductId: getFlowCurrentProductId(ctx.activeFlow),
   };
 
 
@@ -411,7 +410,7 @@ const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
   // "hadak"). Resolve from conversation context (flow data) first.
   const productCtx = {
     lastProductResults: getFlowProductResults(ctx.activeFlow),
-    currentProductId: getFlowSelectedProductId(ctx.activeFlow),
+    currentProductId: getFlowCurrentProductId(ctx.activeFlow),
   };
   const fromContext = await resolveProductRequest(undefined, productCtx, ctx.merchantId);
   if (fromContext.outcome === 'SUCCESS') {
@@ -476,10 +475,10 @@ const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
   };
 };
 
-const chooseProduct: ToolHandler = async (entities, ctx) => {
-  const parsedArgs = ChooseProductArgsSchema.safeParse(entities);
+const selectProduct: ToolHandler = async (entities, ctx) => {
+  const parsedArgs = SelectProductArgsSchema.safeParse(entities);
   if (!parsedArgs.success) {
-    return { success: false, error: 'No product name or index provided to choose' };
+    return { success: false, error: 'No product name or index provided to select' };
   }
 
   let product: Product | null = null;
@@ -514,11 +513,6 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
     return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
   }
 
-  await prisma.conversation.update({
-    where: { id: ctx.conversationId },
-    data: { currentProductId: product.id },
-  });
-
   return {
     success: true,
     data: {
@@ -532,33 +526,86 @@ const chooseProduct: ToolHandler = async (entities, ctx) => {
   };
 };
 
-const getProductDetails: ToolHandler = async (entities, ctx) => {
-  const parsedArgs = GetProductDetailsArgsSchema.safeParse(entities);
-  const productName = parsedArgs.success ? parsedArgs.data.productName : undefined;
+const getProductDetails: ToolHandler = async (_entities, ctx) => {
+  const logger = toolLogger.child({
+    tool: 'getProductDetails',
+    conversationId: ctx.conversationId,
+    merchantId: ctx.merchantId,
+    customerId: ctx.customerId,
+  });
 
-  let product: Product | null = null;
+  logger.info('getProductDetails: started');
 
-  if (productName) {
-    product = await prisma.product.findFirst({
-      where: {
-        merchantId: ctx.merchantId,
-        name: { contains: productName, mode: 'insensitive' },
-      },
-    });
-  } else if (getFlowSelectedProductId(ctx.activeFlow)) {
-    product = await prisma.product.findFirst({
-      where: { id: getFlowSelectedProductId(ctx.activeFlow)!, merchantId: ctx.merchantId },
-    });
+  // --------------------------------------------------
+  // Resolve current product from flow
+  // --------------------------------------------------
+
+  const productId = getFlowCurrentProductId(ctx.activeFlow);
+
+  logger.info(
+    { productId: String(productId) },
+    'getProductDetails: resolved current product',
+  );
+
+  if (!productId) {
+    logger.warn(
+      'getProductDetails: no product selected',
+    );
+
+    return {
+      success: false,
+      outcome: 'AMBIGUOUS',
+      error:
+        'No product selected. Ask the customer which product they want to know about.',
+    };
   }
+
+  // --------------------------------------------------
+  // Fetch product
+  // --------------------------------------------------
+
+  logger.info(
+    { productId },
+    'getProductDetails: fetching product',
+  );
+
+  const product = await prisma.product.findFirst({
+    where: {
+      id: productId,
+      merchantId: ctx.merchantId,
+    },
+  });
 
   if (!product) {
-    return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
+    logger.warn(
+      { productId },
+      'getProductDetails: product not found',
+    );
+
+    return {
+      success: false,
+      outcome: 'NOT_FOUND',
+      error: 'Product not found',
+    };
   }
 
-  await prisma.conversation.update({
-    where: { id: ctx.conversationId },
-    data: { currentProductId: product.id },
-  });
+  logger.info(
+    {
+      productId: product.id,
+      productName: product.name,
+      stockStatus: product.stockStatus,
+    },
+    'getProductDetails: product found',
+  );
+
+  // --------------------------------------------------
+  // Success
+  // --------------------------------------------------
+
+  logger.info(
+    { productId: product.id },
+    'getProductDetails: completed successfully',
+  );
 
   return {
     success: true,
@@ -597,7 +644,7 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
     activeFlow.state !== 'IDLE' ? activeFlow.productDiscovery.input.filters : undefined,
     memory.globalInformation,
   );
-  const excludeIds = computeExclusionIds(activeFlow, getFlowSelectedProductId(ctx.activeFlow));
+  const excludeIds = computeExclusionIds(activeFlow, getFlowCurrentProductId(ctx.activeFlow));
 
   const hasPreferences =
     prefs.terms.length > 0 ||
@@ -649,73 +696,421 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
 };
 
 const createOrder: ToolHandler = async (entities, ctx) => {
+  const logger = toolLogger.child({
+    tool: 'createOrder',
+    conversationId: ctx.conversationId,
+    merchantId: ctx.merchantId,
+    customerId: ctx.customerId,
+  });
+
+  logger.info('createOrder: started');
+
+  // --------------------------------------------------
+  // Validate arguments
+  // --------------------------------------------------
+
   const parsedArgs = CreateOrderArgsSchema.safeParse(entities);
+
   if (!parsedArgs.success) {
-    const missing = parsedArgs.error.issues.map(i => i.path.join('.')).join(', ');
-    return { success: false, error: `Missing required fields: ${missing}` };
-  }
+    const missing = parsedArgs.error.issues
+      .map(i => i.path.join('.'))
+      .join(', ');
 
-  const { productId, product: productName, quantity } = parsedArgs.data;
+    logger.warn(
+      { issues: parsedArgs.error.issues, missing },
+      'createOrder: argument validation failed',
+    );
 
-  // Auto-fill wilaya/commune from saved customer delivery info if not provided
-  const wilaya = parsedArgs.data.wilaya ?? ctx.customerWilaya ?? undefined;
-  const communeInput = parsedArgs.data.commune;
-
-  if (!wilaya) {
-    return { success: false, error: 'Missing required field: wilaya' };
-  }
-
-  // Validate commune exists
-  const communeCheck = await validateCommune(communeInput, wilaya);
-  if (!communeCheck.valid) {
-    if (communeCheck.suggestions?.length) {
-      const list = communeCheck.suggestions.join(', ');
-      return {
-        success: false,
-        error: `Baladia "${communeInput}" makanach. Chno khatrek? ${list}`,
-      };
-    }
     return {
       success: false,
-      error: `Baladia "${communeInput}" makanach f l'wilaya dyal ${wilaya}.`,
+      error: `Missing required fields: ${missing}`,
     };
   }
-  const commune = communeCheck.commune!;
+
+  const {
+    productId,
+    product: productName,
+    quantity: quantityArg,
+  } = parsedArgs.data;
+
+  logger.info(
+    {
+      productId,
+      productName,
+      quantity: quantityArg,
+    },
+    'createOrder: arguments validated',
+  );
+
+  // --------------------------------------------------
+  // Load conversation memory (for delivery + quantity reuse)
+  // --------------------------------------------------
+  // Read the customer's saved delivery info (commune, wilaya) and any pending
+  // order data from conversation memory so a follow-up message never loses
+  // fields (e.g. quantity) the customer already provided.
+  const conv = await prisma.conversation.findUnique({
+    where: { id: ctx.conversationId },
+    select: { memory: true },
+  });
+  const memory = migrateMemory(conv?.memory);
+  const memoryActiveFlow = getActiveFlow(memory) ?? null;
+
+  const memoryWilaya = memory.globalInformation.wilaya;
+  const memoryCommune = memory.globalInformation.commune;
+  const orderActiveFlow = ctx.activeFlow && 'order' in ctx.activeFlow
+    ? ctx.activeFlow
+    : memoryActiveFlow && 'order' in memoryActiveFlow
+      ? memoryActiveFlow
+      : null;
+  const memoryQuantity = orderActiveFlow?.order.quantity;
+
+  // --------------------------------------------------
+  // Resolve delivery information
+  // --------------------------------------------------
+
+  const wilaya =
+    parsedArgs.data.wilaya ??
+    memoryWilaya ??
+    ctx.customerWilaya ??
+    undefined;
+
+  const communeInput =
+    parsedArgs.data.commune ??
+    memoryCommune;
+
+  const quantity =
+    quantityArg ??
+    memoryQuantity ??
+    1;
+
+  logger.info(
+    {
+      wilaya,
+      commune: communeInput,
+      quantity,
+      wilayaSource: parsedArgs.data.wilaya
+        ? 'input'
+        : memoryWilaya
+          ? 'memory'
+          : ctx.customerWilaya
+            ? 'customer'
+            : 'missing',
+      communeSource: parsedArgs.data.commune
+        ? 'input'
+        : memoryCommune
+          ? 'memory'
+          : 'missing',
+      quantitySource: quantityArg
+        ? 'input'
+        : memoryQuantity
+          ? 'memory'
+          : 'default',
+    },
+    'createOrder: delivery information resolved',
+  );
+
+  // --------------------------------------------------
+  // Resolve product
+  // --------------------------------------------------
 
   let product: Product | null = null;
+
   if (productId) {
+    logger.info(
+      { productId },
+      'createOrder: searching product by productId',
+    );
+
     product = await prisma.product.findFirst({
-      where: { id: productId, merchantId: ctx.merchantId },
+      where: {
+        id: productId,
+        merchantId: ctx.merchantId,
+      },
     });
+
+    if (product) {
+      logger.info(
+        {
+          productId: product.id,
+          productName: product.name,
+        },
+        'createOrder: product found by productId',
+      );
+    } else {
+      logger.warn(
+        { productId },
+        'createOrder: product not found by productId',
+      );
+    }
   }
+
   if (!product && productName) {
+    logger.info(
+      { productName },
+      'createOrder: searching product by name',
+    );
+
     product = await prisma.product.findFirst({
-      where: { merchantId: ctx.merchantId, name: { contains: productName, mode: 'insensitive' } },
+      where: {
+        merchantId: ctx.merchantId,
+        name: {
+          contains: productName,
+          mode: 'insensitive',
+        },
+      },
     });
+
+    if (product) {
+      logger.info(
+        {
+          productId: product.id,
+          productName: product.name,
+        },
+        'createOrder: product found by name',
+      );
+    } else {
+      logger.warn(
+        { productName },
+        'createOrder: product not found by name',
+      );
+    }
   }
-  if (!product && getFlowSelectedProductId(ctx.activeFlow)) {
+
+  const currentProductId =
+    getFlowCurrentProductId(ctx.activeFlow);
+
+  if (!product && currentProductId) {
+    logger.info(
+      { currentProductId },
+      'createOrder: searching product from active flow',
+    );
+
     product = await prisma.product.findFirst({
-      where: { id: getFlowSelectedProductId(ctx.activeFlow)!, merchantId: ctx.merchantId },
+      where: {
+        id: currentProductId,
+        merchantId: ctx.merchantId,
+      },
     });
+
+    if (product) {
+      logger.info(
+        {
+          productId: product.id,
+          productName: product.name,
+        },
+        'createOrder: product found from active flow',
+      );
+    } else {
+      logger.warn(
+        { currentProductId },
+        'createOrder: active flow product not found',
+      );
+    }
   }
+
   if (!product) {
-    return { success: false, error: `Product not found. Choose a product first.` };
+    logger.warn(
+      {
+        productId,
+        productName,
+        currentProductId,
+      },
+      'createOrder: product could not be resolved',
+    );
+
+    return {
+      success: false,
+      error: 'Product not found. Choose a product first.',
+    };
   }
+
+  // --------------------------------------------------
+  // Validate delivery information
+  // --------------------------------------------------
+
+  const partialOrderData = {
+    productId: product.id,
+    ...(quantity !== undefined && { quantity }),
+  };
+
+  if (!wilaya) {
+    logger.warn(
+      'createOrder: missing wilaya',
+    );
+
+    return {
+      success: false,
+      error: 'Missing required field: wilaya',
+      data: { ...partialOrderData },
+    };
+  }
+
+  if (!communeInput) {
+    logger.warn(
+      'createOrder: missing commune',
+    );
+
+    return {
+      success: false,
+      error: 'Missing required field: commune',
+      data: { ...partialOrderData },
+    };
+  }
+
+  logger.info(
+    {
+      wilaya,
+      commune: communeInput,
+    },
+    'createOrder: validating commune',
+  );
+
+  // const communeCheck = await validateCommune(
+  //   communeInput,
+  //   wilaya,
+  // );
+
+  // if (!communeCheck.valid) {
+  //   logger.warn(
+  //     {
+  //       wilaya,
+  //       commune: communeInput,
+  //       suggestions: communeCheck.suggestions,
+  //     },
+  //     'createOrder: commune validation failed',
+  //   );
+
+  //   if (communeCheck.suggestions?.length) {
+  //     const list = communeCheck.suggestions.join(', ');
+
+  //     logger.info(
+  //       {
+  //         suggestions: communeCheck.suggestions,
+  //       },
+  //       'createOrder: returning commune suggestions',
+  //     );
+
+  //     return {
+  //       success: false,
+  //       error: `Baladia "${communeInput}" makanach. Chno khatrek? ${list}`,
+  //       data: { ...partialOrderData },
+  //     };
+  //   }
+
+  //   return {
+  //     success: false,
+  //     error: `Baladia "${communeInput}" makanach f l'wilaya dyal ${wilaya}.`,
+  //     data: { ...partialOrderData },
+  //   };
+  // }
+
+  const commune = communeInput;
+
+  logger.info(
+    {
+      wilaya,
+      commune,
+    },
+    'createOrder: commune validated',
+  );
+
+  // --------------------------------------------------
+  // Stock validation
+  // --------------------------------------------------
 
   if (product.stockStatus === 'out_of_stock') {
-    return { success: false, error: `Product "${product.name}" is out of stock` };
+    logger.warn(
+      {
+        productId: product.id,
+        productName: product.name,
+      },
+      'createOrder: product is out of stock',
+    );
+
+    return {
+      success: false,
+      error: `Product "${product.name}" is out of stock`,
+    };
   }
 
-  const deliveryCostRow = await prisma.wilayaDeliveryCost.findFirst({
-    where: { merchantId: ctx.merchantId, wilaya: { equals: wilaya, mode: 'insensitive' } },
-  });
+  logger.info(
+    {
+      productId: product.id,
+      productName: product.name,
+      quantity,
+      price: product.price,
+    },
+    'createOrder: product validated',
+  );
+
+  // --------------------------------------------------
+  // Delivery cost
+  // --------------------------------------------------
+
+  logger.info(
+    { wilaya },
+    'createOrder: searching delivery cost',
+  );
+
+  const deliveryCostRow =
+    await prisma.wilayaDeliveryCost.findFirst({
+      where: {
+        merchantId: ctx.merchantId,
+        wilaya: {
+          equals: wilaya,
+          mode: 'insensitive',
+        },
+      },
+    });
+
   if (!deliveryCostRow) {
-    convLogger({ conversationId: ctx.conversationId }).warn({ wilaya }, 'createOrder: no delivery cost configured, defaulting to 0');
+    logger.warn(
+      { wilaya },
+      'createOrder: no delivery cost configured, defaulting to 0',
+    );
+  } else {
+    logger.info(
+      {
+        wilaya,
+        deliveryCost: deliveryCostRow.cost,
+      },
+      'createOrder: delivery cost found',
+    );
   }
-  const deliveryCostValue = deliveryCostRow?.cost ?? 0;
-  const totalAmount = product.price * quantity + deliveryCostValue;
+
+  const deliveryCostValue =
+    deliveryCostRow?.cost ?? 0;
+
+  const totalAmount =
+    product.price * quantity + deliveryCostValue;
+
+  logger.info(
+    {
+      productId: product.id,
+      quantity,
+      productPrice: product.price,
+      deliveryCost: deliveryCostValue,
+      totalAmount,
+    },
+    'createOrder: total calculated',
+  );
+
+  // --------------------------------------------------
+  // Create order
+  // --------------------------------------------------
 
   const platformOrderId = `FAKE-${Date.now()}`;
+
+  logger.info(
+    {
+      productId: product.id,
+      quantity,
+      wilaya,
+      commune,
+      totalAmount,
+    },
+    'createOrder: creating order',
+  );
 
   const order = await prisma.order.create({
     data: {
@@ -732,18 +1127,97 @@ const createOrder: ToolHandler = async (entities, ctx) => {
     },
   });
 
-  // Save delivery info to customer record for future orders
+  logger.info(
+    {
+      orderId: order.id,
+      productId: product.id,
+      totalAmount,
+    },
+    'createOrder: order created',
+  );
+
+  // --------------------------------------------------
+  // Save customer delivery information
+  // --------------------------------------------------
+
+  logger.info(
+    {
+      customerId: ctx.customerId,
+      wilaya,
+      commune,
+    },
+    'createOrder: updating customer delivery information',
+  );
+
   await prisma.customer.update({
     where: { id: ctx.customerId },
     data: { wilaya, commune },
   });
 
+  logger.info(
+    { customerId: ctx.customerId },
+    'createOrder: customer delivery information updated',
+  );
+
+  // --------------------------------------------------
+  // Update conversation
+  // --------------------------------------------------
+
+  logger.info(
+    {
+      orderId: order.id,
+      state: 'WAITING_CONFIRMATION',
+    },
+    'createOrder: updating conversation',
+  );
+
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
-    data: { currentOrderId: order.id, state: 'WAITING_CONFIRMATION' },
+    data: {
+      currentOrderId: order.id,
+      state: 'WAITING_CONFIRMATION',
+    },
   });
 
+  logger.info(
+    {
+      orderId: order.id,
+      state: 'WAITING_CONFIRMATION',
+    },
+    'createOrder: conversation updated',
+  );
+
+  // --------------------------------------------------
+  // Enqueue order job
+  // --------------------------------------------------
+
+  logger.info(
+    { orderId: order.id },
+    'createOrder: enqueueing order job',
+  );
+
   await enqueueOrderJob(order.id);
+
+  logger.info(
+    { orderId: order.id },
+    'createOrder: order job enqueued',
+  );
+
+  // --------------------------------------------------
+  // Success
+  // --------------------------------------------------
+
+  logger.info(
+    {
+      orderId: order.id,
+      productId: product.id,
+      quantity,
+      totalAmount,
+      wilaya,
+      commune,
+    },
+    'createOrder: completed successfully',
+  );
 
   return {
     success: true,
@@ -915,7 +1389,7 @@ const escalateConversation: ToolHandler = async (_entities, ctx) => {
 export const readToolRegistry: Record<ReadToolName, ToolHandler> = {
   searchProducts,
   recallPreviousProducts,
-  chooseProduct,
+  selectProduct,
   getProductDetails,
   suggestProducts,
   calculateShipping,
