@@ -41,29 +41,73 @@ export type ProductCard = {
   image?: string;
 };
 
-/** Collects per-product image cards from search tool results so each search
- *  result can be sent as its own image message. Products without an image are
+/** Collects image cards from tool results so each product image can be sent as
+ *  its own WhatsApp message. Handles two shapes:
+ *   - search/select results carrying a `productCards` array (each with an
+ *     `images` array of URLs), and
+ *   - a single `getProductDetails` result carrying `productImages`.
+ *  One card is produced per image; products/messages without an image are
  *  skipped (the text reply still surfaces them). */
 export function collectProductCards(toolResults: ToolResultEntry[]): ProductCard[] {
   const cards: ProductCard[] = [];
+
+  const pushImage = (
+    id: unknown,
+    name: unknown,
+    price: unknown,
+    currency: unknown,
+    image: string,
+  ) => {
+    cards.push({
+      id: String(id),
+      name: String(name),
+      price: Number(price),
+      currency: String(currency ?? 'DZD'),
+      image,
+    });
+  };
+
   for (const tr of toolResults) {
     const data = tr.result?.data;
-    if (data && Array.isArray(data.productCards)) {
+    if (!data) continue;
+
+    // Single-product details: productImages is an array of URL strings.
+    if (Array.isArray(data.productImages)) {
+      for (const img of data.productImages as unknown[]) {
+        if (typeof img === 'string' && img) {
+          pushImage(data.productId, data.productName, data.price, data.currency, img);
+        }
+      }
+    }
+
+    // Multi-product results: productCards arrays, each with an images array.
+    if (Array.isArray(data.productCards)) {
       for (const c of data.productCards as unknown[]) {
-        const card = c as Partial<ProductCard>;
-        if (card && typeof card.image === 'string' && card.image) {
-          cards.push({
-            id: String(card.id),
-            name: String(card.name),
-            price: Number(card.price),
-            currency: String(card.currency ?? 'DZD'),
-            image: card.image,
-          });
+        const card = c as Partial<ProductCard> & { images?: unknown };
+        const images = Array.isArray(card.images)
+          ? (card.images as unknown[]).filter((u): u is string => typeof u === 'string' && !!u)
+          : [];
+        for (const img of images) {
+          pushImage(card.id, card.name, card.price, card.currency, img);
         }
       }
     }
   }
+
   return cards;
+}
+
+/**
+ * Detects whether the customer explicitly asked for a product photo/picture.
+ * Product details are only accompanied by an image message when the customer
+ * actually wanted to see it — not on every details query (e.g. "how much?").
+ */
+const IMAGE_REQUEST_PATTERN =
+  /(photo|pictur|image|صور|صورة|صوّر|montre\s*-?\s*(moi)?|show\s*(me)?)/i;
+
+export function customerRequestedImages(text: string): boolean {
+  if (!text) return false;
+  return IMAGE_REQUEST_PATTERN.test(text);
 }
 
 const PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -97,7 +141,8 @@ export async function downloadProductImage(url: string): Promise<{ base64: strin
 /** Sends each product card's image as its own WhatsApp message. Each image is
  *  downloaded locally and sent as base64 (more reliable than handing OpenWA a
  *  remote URL). A product whose image fails to download is skipped — the text
- *  reply still surfaces it. */
+ *  reply still surfaces the product. The image carries no caption: product
+ *  details are conveyed by the text reply, so captions would be redundant. */
 export async function sendProductImages(
   waSessionId: string,
   to: string,
@@ -112,13 +157,11 @@ export async function sendProductImages(
         await openwaService.sendImage(waSessionId, to, {
           base64: media.base64,
           mimetype: media.mimetype,
-          caption: `${c.name} — ${c.price} ${c.currency}`,
         });
       } else {
         // Fall back to the URL so OpenWA's own fetch has a chance.
         await openwaService.sendImage(waSessionId, to, {
           url: image,
-          caption: `${c.name} — ${c.price} ${c.currency}`,
         });
       }
     } catch (err) {

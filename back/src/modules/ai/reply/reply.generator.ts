@@ -8,7 +8,7 @@ import { intentToString } from '../schemas/intents.schemas';
 import { openwaService } from '../../whatsapp/whatsapp.service';
 import { persistFlowMemory } from '../flow/flowProcessor';
 import type { ToolResultEntry } from '../execution/execution.types';
-import { buildEffectiveText, collectProductCards, sendProductImages } from '../outbound/product.media';
+import { buildEffectiveText, collectProductCards, sendProductImages, customerRequestedImages } from '../outbound/product.media';
 import type { Layer2ReplyState } from './reply.types';
 
 // ─── Layer 2, step 2: reply generation ───────────────────────────────────
@@ -92,20 +92,36 @@ export async function generateResponse(
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
       if (customer?.phone) {
-        // Send each search result as its own image message before the reply text.
-        const productCards = collectProductCards(toolResults);
-        if (productCards.length >= 1) {
-          try {
-            await sendProductImages(
-              waSession.sessionId,
-              customer.phone,
-              productCards,
-              log,
+        // Only accompany a product-details reply with an image when the customer
+        // explicitly asked for a picture (e.g. "send a photo"). A plain details
+        // query (e.g. "how much?") gets text only. Search results are always sent
+        // as images — showing the discovered products is the point.
+        const hasDetailsImages =
+          toolResults.some((tr) => {
+            const data = tr.result?.data as Record<string, unknown> | undefined;
+            return (
+              !!data &&
+              Array.isArray(data.productImages) &&
+              (data.productImages as unknown[]).length > 0
             );
-            log.info({ to: customer.phone, count: productCards.length }, 'product images sent via WhatsApp');
-          } catch (imgErr) {
-            // Image failures must not abort the reply — fall through to text.
-            log.warn({ err: imgErr, count: productCards.length }, 'failed to send product images, sending text reply only');
+          });
+        const wantsPicture = customerRequestedImages(effectiveText);
+
+        if (!hasDetailsImages || wantsPicture) {
+          const productCards = collectProductCards(toolResults);
+          if (productCards.length >= 1) {
+            try {
+              await sendProductImages(
+                waSession.sessionId,
+                customer.phone,
+                productCards,
+                log,
+              );
+              log.info({ to: customer.phone, count: productCards.length }, 'product images sent via WhatsApp');
+            } catch (imgErr) {
+              // Image failures must not abort the reply — fall through to text.
+              log.warn({ err: imgErr, count: productCards.length }, 'failed to send product images, sending text reply only');
+            }
           }
         }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildIntentPrompt } from '../prompts/promptBuilder';
+import { buildIntentPrompt, buildReplyPrompt, type ReplyContext } from '../prompts/promptBuilder';
 import type { Flow } from '../memory.types';
 
 const activeFlow: Flow = {
@@ -128,5 +128,38 @@ describe('buildIntentPrompt', () => {
     const resultsSection = prompt.substring(prompt.indexOf('Last product search results (index'));
     expect(resultsSection).not.toMatch(/Old Memory Product/);
     expect(resultsSection).toMatch(/Nike Air/);
+  });
+});
+
+describe('buildReplyPrompt', () => {
+  const REPLY_BASE: ReplyContext = {
+    intents: [{ intent: 'PRODUCT_DETAILS', entities: {}, status: 'executed' }],
+    conversationAct: 'informative',
+    toolResults: [
+      {
+        intent: 'PRODUCT_DETAILS',
+        result: {
+          success: true,
+          data: {
+            productName: 'Serwal',
+            price: 2500,
+            description: 'Un serwal confortable',
+            productImages: ['https://img/1.jpg'],
+          },
+        },
+      },
+    ],
+    memory: { version: 1 as const, globalInformation: {}, flows: [] as Flow[] },
+  };
+
+  it('includes the getProductDetails answer-fidelity rule', () => {
+    const prompt = buildReplyPrompt(REPLY_BASE);
+    expect(prompt).toMatch(/answer ONLY the specific question the customer asked/i);
+    expect(prompt).toMatch(/Never recite every field/);
+  });
+
+  it('includes the picture-confirmation guidance', () => {
+    const prompt = buildReplyPrompt(REPLY_BASE);
+    expect(prompt).toMatch(/photo.*being sent/i);
   });
 });

@@ -6,6 +6,7 @@ import { enqueueOrderJob } from '../../queues/order.queue';
 import { moduleLogger } from '../../lib/logger';
 import { FakeOrderInput } from '../../validators/order.validator';
 import eventBus from '../../events/eventBus';
+import { conversationService } from '../whatsapp/conversation.service';
 
 interface GetOrdersParams {
   merchantId: string;
@@ -181,16 +182,15 @@ export const ingestOrder = async (input: FakeOrderInput) => {
     throw err;
   }
 
-  // TODO: duplicate of the conversation find-or-create logic in
-  // fakeMessages.service.ts — collapse both onto conversation.service.ts's
-  // helper once its exported function name is confirmed.
-  const conversation =
-    (await prisma.conversation.findFirst({
-      where: { merchantId: input.merchantId, customerId: customer.id, state: { notIn: ['FINISHED', 'CANCELLED'] } },
-    })) ??
-    (await prisma.conversation.create({
-      data: { merchantId: input.merchantId, customerId: customer.id },
-    }));
+  // Continue the customer's existing conversation (there is exactly one per
+  // merchant+customer). findOrCreateByCustomer is race-safe: it uses an atomic
+  // upsert on the unique key so concurrent Shopify orders can never collide on
+  // a second create (P2002) — the existing conversation is always reused.
+  const conversation = await conversationService.findOrCreateByCustomer(
+    input.merchantId,
+    customer.id,
+    customer.phone,
+  );
 
   await prisma.conversation.update({
     where: { id: conversation.id },

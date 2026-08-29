@@ -85,18 +85,23 @@ export const conversationService = {
     });
   },
 
+  /**
+   * Race-safe find-or-create for a customer's conversation. Uses an atomic
+   * `upsert` on the `@@unique([merchantId, customerId])` key so concurrent
+   * requests for the same merchant+customer can never both attempt a `create`
+   * and collide on the unique constraint (P2002). Because there is exactly one
+   * conversation per merchant+customer, an existing conversation is always
+   * continued rather than creating a duplicate.
+   */
   findOrCreateByCustomer: async (
     merchantId: string,
     customerId: string,
     customerPhone: string,
   ) => {
-    const existing = await prisma.conversation.findUnique({
+    return prisma.conversation.upsert({
       where: { merchantId_customerId: { merchantId, customerId } },
-    });
-    if (existing) return existing;
-
-    return prisma.conversation.create({
-      data: {
+      update: {},
+      create: {
         merchantId,
         customerId,
         customerPhone,
@@ -111,19 +116,10 @@ export const conversationService = {
     customerId: string,
     customerPhone: string,
   ) => {
-    const existing = await prisma.conversation.findUnique({
+    return prisma.conversation.upsert({
       where: { merchantId_customerId: { merchantId, customerId } },
-    });
-    if (existing) {
-      await prisma.conversation.update({
-        where: { id: existing.id },
-        data: { currentOrderId: orderId },
-      });
-      return existing;
-    }
-
-    return prisma.conversation.create({
-      data: {
+      update: { currentOrderId: orderId },
+      create: {
         merchantId,
         customerId,
         customerPhone,

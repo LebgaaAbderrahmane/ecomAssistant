@@ -358,12 +358,10 @@ describe('flow integration — end-to-end pipeline', () => {
     expect(first[1]).toBe('+213555000000');
     expect(first[2]).toMatchObject({
       url: 'https://img/shoes-pro.jpg',
-      caption: 'Shoes Pro — 5000 DZD',
     });
     const second = sendImage.mock.calls[1];
     expect(second[2]).toMatchObject({
       url: 'https://img/shoes-lite.jpg',
-      caption: 'Shoes Lite — 3000 DZD',
     });
   });
 
@@ -395,7 +393,70 @@ describe('flow integration — end-to-end pipeline', () => {
     const first = sendImage.mock.calls[0];
     expect(first[2]).toMatchObject({
       url: 'https://img/shoes-pro.jpg',
-      caption: 'Shoes Pro — 5000 DZD',
+    });
+  });
+
+  it('does not send an image on a product-details query unless a picture is requested', async () => {
+    const { processMessage } = await import('../agent.service');
+
+    const flowId = 'flow-details';
+    setupMocks(baseMessage('Quel est le prix ?', 'PRODUCT_SELECTED', selectedMemory(flowId, 'Shoes Pro', 'p1')));
+    productFindFirst.mockResolvedValue({
+      id: 'p1',
+      name: 'Shoes Pro',
+      price: 5000,
+      currency: 'DZD',
+      images: ['https://img/shoes-pro.jpg'],
+      stockStatus: 'in_stock',
+      description: 'Best shoes',
+      category: 'shoes',
+    });
+
+    callLLMMock.mockReset();
+    callLLMMock
+      .mockResolvedValueOnce(
+        intentResponse([
+          { intent: 'PRODUCT_DETAILS', entities: {}, confidence: 0.9, order: 1 },
+        ]),
+      )
+      .mockResolvedValueOnce(replyResponse(['C\'est 5000 DZD.']));
+
+    await processMessage('msg-1');
+
+    // Details returned (image available) but customer did not ask for a photo.
+    expect(sendImage).not.toHaveBeenCalled();
+  });
+
+  it('sends the image when a product-details query asks for a photo', async () => {
+    const { processMessage } = await import('../agent.service');
+
+    const flowId = 'flow-details-photo';
+    setupMocks(baseMessage('Envoie une photo', 'PRODUCT_SELECTED', selectedMemory(flowId, 'Shoes Pro', 'p1')));
+    productFindFirst.mockResolvedValue({
+      id: 'p1',
+      name: 'Shoes Pro',
+      price: 5000,
+      currency: 'DZD',
+      images: ['https://img/shoes-pro.jpg'],
+      stockStatus: 'in_stock',
+      description: 'Best shoes',
+      category: 'shoes',
+    });
+
+    callLLMMock.mockReset();
+    callLLMMock
+      .mockResolvedValueOnce(
+        intentResponse([
+          { intent: 'PRODUCT_DETAILS', entities: {}, confidence: 0.9, order: 1 },
+        ]),
+      )
+      .mockResolvedValueOnce(replyResponse(['Voici la photo.']));
+
+    await processMessage('msg-1');
+
+    expect(sendImage).toHaveBeenCalledTimes(1);
+    expect(sendImage.mock.calls[0][2]).toMatchObject({
+      url: 'https://img/shoes-pro.jpg',
     });
   });
 

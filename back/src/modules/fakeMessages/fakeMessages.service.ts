@@ -1,6 +1,7 @@
 import prisma from "../../config/db.config";
 import { enqueueMessageJob } from "../../queues/message.queue";
 import { FakeMessageInput } from '../../validators/messages.validator';
+import { conversationService } from "../whatsapp/conversation.service";
 
 export const ingestFakeMessage = async (input: FakeMessageInput) => {
   const customer = await prisma.customer.upsert({
@@ -9,13 +10,11 @@ export const ingestFakeMessage = async (input: FakeMessageInput) => {
     create: { merchantId: input.merchantId, phone: input.customerPhone },
   });
 
-  const conversation =
-    (await prisma.conversation.findFirst({
-      where: { merchantId: input.merchantId, customerId: customer.id, state: { not: 'FINISHED' } },
-    })) ??
-    (await prisma.conversation.create({
-      data: { merchantId: input.merchantId, customerId: customer.id },
-    }));
+  const conversation = await conversationService.findOrCreateByCustomer(
+    input.merchantId,
+    customer.id,
+    customer.phone,
+  );
 
   const message = await prisma.message.create({
     data: {
