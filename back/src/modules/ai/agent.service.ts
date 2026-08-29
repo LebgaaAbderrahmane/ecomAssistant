@@ -187,6 +187,101 @@ type Layer2ReplyState = {
   memory: ConversationMemory;
 };
 
+type ProductCard = {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  image?: string;
+};
+
+/** Collects per-product image cards from search tool results so each search
+ *  result can be sent as its own image message. Products without an image are
+ *  skipped (the text reply still surfaces them). */
+function collectProductCards(toolResults: ToolResultEntry[]): ProductCard[] {
+  const cards: ProductCard[] = [];
+  for (const tr of toolResults) {
+    const data = tr.result?.data;
+    if (data && Array.isArray(data.productCards)) {
+      for (const c of data.productCards as unknown[]) {
+        const card = c as Partial<ProductCard>;
+        if (card && typeof card.image === 'string' && card.image) {
+          cards.push({
+            id: String(card.id),
+            name: String(card.name),
+            price: Number(card.price),
+            currency: String(card.currency ?? 'DZD'),
+            image: card.image,
+          });
+        }
+      }
+    }
+  }
+  return cards;
+}
+
+const PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const PRODUCT_IMAGE_TIMEOUT_MS = 15_000;
+
+/** Downloads a remote product image and returns it as base64 + mimetype for
+ *  direct WhatsApp upload. Sending base64 avoids relying on OpenWA's own
+ *  remote fetch, which refuses HTTP redirects that Shopify's CDN commonly
+ *  returns — the cause of product images never arriving. Returns null on any
+ *  download/parse failure so the caller can fall back gracefully. */
+async function downloadProductImage(url: string): Promise<{ base64: string; mimetype: string } | null> {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(PRODUCT_IMAGE_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const blob = await res.blob();
+    if (!blob || blob.size === 0 || blob.size > PRODUCT_IMAGE_MAX_BYTES) {
+      return null;
+    }
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const mimetype = (res.headers.get('content-type') ?? '').split(';')[0].trim() || 'image/jpeg';
+    return { base64: buf.toString('base64'), mimetype };
+  } catch {
+    return null;
+  }
+}
+
+/** Sends each product card's image as its own WhatsApp message. Each image is
+ *  downloaded locally and sent as base64 (more reliable than handing OpenWA a
+ *  remote URL). A product whose image fails to download is skipped — the text
+ *  reply still surfaces it. */
+async function sendProductImages(
+  waSessionId: string,
+  to: string,
+  cards: ProductCard[],
+  log: ReturnType<typeof msgLogger>,
+): Promise<void> {
+  for (const c of cards) {
+    const image = c.image as string;
+    const media = await downloadProductImage(image);
+    try {
+      if (media) {
+        await openwaService.sendImage(waSessionId, to, {
+          base64: media.base64,
+          mimetype: media.mimetype,
+          caption: `${c.name} — ${c.price} ${c.currency}`,
+        });
+      } else {
+        // Fall back to the URL so OpenWA's own fetch has a chance.
+        await openwaService.sendImage(waSessionId, to, {
+          url: image,
+          caption: `${c.name} — ${c.price} ${c.currency}`,
+        });
+      }
+    } catch (err) {
+      log.warn({ err, productId: c.id, image }, 'failed to send product image');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+}
+
 // ─── Layer 2, step 1: tool execution ────────────────────────────────────
 // Runs the backend functions for the message's intents and returns the results
 // plus the memory state the reply needs. `opts.only` restricts which tools run:
@@ -580,6 +675,23 @@ async function generateResponse(
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
       if (customer?.phone) {
+        // Send each search result as its own image message before the reply text.
+        const productCards = collectProductCards(toolResults);
+        if (productCards.length >= 1) {
+          try {
+            await sendProductImages(
+              waSession.sessionId,
+              customer.phone,
+              productCards,
+              log,
+            );
+            log.info({ to: customer.phone, count: productCards.length }, 'product images sent via WhatsApp');
+          } catch (imgErr) {
+            // Image failures must not abort the reply — fall through to text.
+            log.warn({ err: imgErr, count: productCards.length }, 'failed to send product images, sending text reply only');
+          }
+        }
+
         await openwaService.sendMessagesSequentially(
           waSession.sessionId,
           customer.phone,

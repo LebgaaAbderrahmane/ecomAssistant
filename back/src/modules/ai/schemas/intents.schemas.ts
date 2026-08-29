@@ -129,16 +129,24 @@ export function resolveTool(intent: IntentField, entities: Record<string, unknow
     return null;
   }
   if (intent === 'PRODUCT_SEARCH') {
-    return entities.product ? 'searchProducts' : 'recallPreviousProducts';
+    return entities.product || entities.productName
+      ? 'searchProducts'
+      : 'recallPreviousProducts';
   }
   return INTENT_TOOL_MAP[intent] ?? null;
 }
 
 // ─── Tool argument schemas ──────────────────────────────────────────────
 
-export const SearchProductsArgsSchema = z.object({
-  product: z.string().min(1),
-});
+export const SearchProductsArgsSchema = z
+  .object({
+    product: z.string().min(1).optional(),
+    productName: z.string().min(1).optional(),
+  })
+  .refine((d) => d.product || d.productName, {
+    message: 'No product name provided to search for',
+    path: ['product'],
+  });
 
 export const RecallPreviousProductsArgsSchema = z.object({
   limit: z.number().int().positive().max(10).optional(),

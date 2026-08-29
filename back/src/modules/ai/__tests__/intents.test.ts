@@ -21,8 +21,16 @@ describe('suggestProducts intent routing', () => {
     expect(resolveTool('PRODUCT_SUGGEST', { category: 'shoes' })).toBe('suggestProducts');
   });
 
-  it('does not route other intents to suggestProducts', () => {
+  it('routes PRODUCT_SEARCH to searchProducts when a product reference is present', () => {
     expect(resolveTool('PRODUCT_SEARCH', { product: 'iphone 15' })).toBe('searchProducts');
+    expect(resolveTool('PRODUCT_SEARCH', { productName: 'shoes' })).toBe('searchProducts');
+  });
+
+  it('routes PRODUCT_SEARCH to recallPreviousProducts when no product reference is present', () => {
+    expect(resolveTool('PRODUCT_SEARCH', {})).toBe('recallPreviousProducts');
+  });
+
+  it('does not route other intents to suggestProducts', () => {
     expect(resolveTool('PRODUCT_SELECT', { productIndex: 1 })).toBe('selectProduct');
     expect(resolveTool('PRODUCT_DETAILS', { productName: 'x' })).toBe('getProductDetails');
     expect(resolveTool('ORDER_CREATE', {})).toBe('createOrder');

@@ -127,16 +127,28 @@ export const openwaService = {
   sendImage: async (
     sessionId: string,
     to: string,
-    opts: { url: string; caption?: string },
+    opts: { url?: string; base64?: string; mimetype?: string; caption?: string },
   ): Promise<SendResult> => {
+    const body: Record<string, unknown> = {
+      chatId: addSuffix(to),
+    };
+    if (opts.caption) body.caption = opts.caption;
+    if (opts.base64 && opts.mimetype) {
+      body.base64 = opts.base64;
+      body.mimetype = opts.mimetype;
+    } else {
+      body.url = opts.url;
+    }
+
+    moduleLogger('whatsapp').info(
+      { mode: opts.base64 ? 'base64' : 'url', imageUrl: opts.url, mimetype: opts.mimetype },
+      'image send',
+    );
+
     return request<SendResult>(
       "POST",
       `/sessions/${sessionId}/messages/send-image`,
-      {
-        chatId: addSuffix(to),
-        url: opts.url,
-        caption: opts.caption,
-      },
+      body,
     );
   },
 

@@ -149,7 +149,7 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
     };
   }
 
-  const query = parsedArgs.data.product;
+  const query = parsedArgs.data.product ?? parsedArgs.data.productName;
 
   toolLogger.info(
     {
@@ -192,9 +192,7 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
       success: true,
       data: {
         products,
-        ...(resolved.products.length > 1
-          ? { productCards: formatProductCards(resolved.products) }
-          : {}),
+        productCards: formatProductCards(resolved.products),
       },
     };
   }
@@ -440,7 +438,13 @@ const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
   };
   const fromContext = await resolveProductRequest(undefined, productCtx, ctx.merchantId);
   if (fromContext.outcome === 'SUCCESS') {
-    return { success: true, data: { products: formatProducts(fromContext.products) } };
+    return {
+      success: true,
+      data: {
+        products: formatProducts(fromContext.products),
+        productCards: formatProductCards(fromContext.products),
+      },
+    };
   }
 
   // Deeper fallback: scan message history for product entities from earlier
@@ -497,6 +501,7 @@ const recallPreviousProducts: ToolHandler = async (_entities, ctx) => {
     success: true,
     data: {
       products: formatProducts(ordered),
+      productCards: formatProductCards(ordered),
     },
   };
 };

@@ -102,11 +102,13 @@ vi.mock('../clients/gemini.client', () => ({
 // ─── Mock WhatsApp ─────────────────────────────────────────────────────────
 const sendMessagesSequentially = vi.fn();
 const sendText = vi.fn();
+const sendImage = vi.fn();
 
 vi.mock('../../whatsapp/whatsapp.service', () => ({
   openwaService: {
     sendMessagesSequentially: (...a: unknown[]) => sendMessagesSequentially(...a),
     sendText: (...a: unknown[]) => sendText(...a),
+    sendImage: (...a: unknown[]) => sendImage(...a),
   },
 }));
 
@@ -274,8 +276,14 @@ function setupMocks(msg: ReturnType<typeof baseMessage>) {
   resolveProductRequest.mockResolvedValue({ outcome: 'NOT_FOUND', reason: 'no products' });
   sendMessagesSequentially.mockResolvedValue(undefined);
   sendText.mockResolvedValue(undefined);
+  sendImage.mockResolvedValue({ messageId: 'wa-1' });
   enqueueLayer2Job.mockResolvedValue(undefined);
   enqueueOrderJob.mockResolvedValue(undefined);
+
+  // Prevent real network access from downloadProductImage during tests. Reject
+  // fast so the product-image path falls back to sending the URL instead of
+  // blocking on a real (hanging) fetch.
+  global.fetch = vi.fn().mockRejectedValue(new Error('network disabled in tests'));
 }
 
 /** Get the last conversation.update that wrote a `memory` field (persistFlowMemory). */
@@ -317,6 +325,78 @@ describe('flow integration — end-to-end pipeline', () => {
     expect(mem!.flows).toHaveLength(1);
     expect(mem!.flows[0].state).toBe('PRODUCT_DISCOVERY');
     expect(mem!.activeFlow).toBe(mem!.flows[0].flowId);
+  });
+
+  it('sends each product as its own image message on a multi-result search', async () => {
+    const { processMessage } = await import('../agent.service');
+
+    setupMocks(baseMessage('I need shoes'));
+
+    resolveProductRequest.mockResolvedValue({
+      outcome: 'SUCCESS',
+      source: 'catalog',
+      products: [
+        { id: 'p1', name: 'Shoes Pro', price: 5000, currency: 'DZD', images: ['https://img/shoes-pro.jpg'] },
+        { id: 'p2', name: 'Shoes Lite', price: 3000, currency: 'DZD', images: ['https://img/shoes-lite.jpg'] },
+      ],
+    });
+
+    callLLMMock.mockReset();
+    callLLMMock
+      .mockResolvedValueOnce(
+        intentResponse([
+          { intent: 'PRODUCT_SEARCH', entities: { productName: 'shoes' }, confidence: 0.9, order: 1 },
+        ]),
+      )
+      .mockResolvedValueOnce(replyResponse(['Voici plusieurs options pour vous.']));
+
+    await processMessage('msg-1');
+
+    expect(sendImage).toHaveBeenCalledTimes(2);
+    const first = sendImage.mock.calls[0];
+    expect(first[0]).toBe('session-1');
+    expect(first[1]).toBe('+213555000000');
+    expect(first[2]).toMatchObject({
+      url: 'https://img/shoes-pro.jpg',
+      caption: 'Shoes Pro — 5000 DZD',
+    });
+    const second = sendImage.mock.calls[1];
+    expect(second[2]).toMatchObject({
+      url: 'https://img/shoes-lite.jpg',
+      caption: 'Shoes Lite — 3000 DZD',
+    });
+  });
+
+  it('sends the product image on a single-result search', async () => {
+    const { processMessage } = await import('../agent.service');
+
+    setupMocks(baseMessage('I need shoes'));
+
+    resolveProductRequest.mockResolvedValue({
+      outcome: 'SUCCESS',
+      source: 'catalog',
+      products: [
+        { id: 'p1', name: 'Shoes Pro', price: 5000, currency: 'DZD', images: ['https://img/shoes-pro.jpg'] },
+      ],
+    });
+
+    callLLMMock.mockReset();
+    callLLMMock
+      .mockResolvedValueOnce(
+        intentResponse([
+          { intent: 'PRODUCT_SEARCH', entities: { productName: 'shoes' }, confidence: 0.9, order: 1 },
+        ]),
+      )
+      .mockResolvedValueOnce(replyResponse(['Voici ce que j\'ai trouvé.']));
+
+    await processMessage('msg-1');
+
+    expect(sendImage).toHaveBeenCalledTimes(1);
+    const first = sendImage.mock.calls[0];
+    expect(first[2]).toMatchObject({
+      url: 'https://img/shoes-pro.jpg',
+      caption: 'Shoes Pro — 5000 DZD',
+    });
   });
 
    // 2. Product selection: discovery → PRODUCT_SELECTED via selectProduct
