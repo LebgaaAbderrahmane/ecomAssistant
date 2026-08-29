@@ -22,8 +22,8 @@ import {
   type PreferenceEntities,
 } from './suggestionHelpers';
 import type { Flow } from '../memory.types';
-import { migrateMemory, getActiveFlow } from '../flowHelper';
-import { getFlowOrderId, getFlowCurrentProductId, getFlowProductResults } from '../flowExtractors';
+import { migrateMemory, getActiveFlow } from '../flow/flowHelper';
+import { getFlowOrderId, getFlowCurrentProductId, getFlowProductResults } from '../flow/flowExtractors';
 import { moduleLogger ,convLogger } from '../../../lib/logger';
 
 export { getFlowOrderId, getFlowCurrentProductId, getFlowProductResults };

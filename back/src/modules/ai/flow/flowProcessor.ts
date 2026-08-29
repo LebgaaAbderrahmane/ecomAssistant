@@ -1,14 +1,14 @@
-import prisma from '../../config/db.config';
+import prisma from '../../../config/db.config';
 import type { Prisma } from '@prisma/client';
-import type { ToolName } from './schemas/intents.schemas';
+import type { ToolName } from '../schemas/intents.schemas';
 import {
   type Flow,
   type FlowState,
   type FlowProduct,
   type OrderData,
   type ConversationMemory,
-} from './memory.types';
-import { moduleLogger } from '../../lib/logger';
+} from '../memory.types';
+import { moduleLogger } from '../../../lib/logger';
 import {
   toProductSelected,
   toOrderPending,

@@ -1,7 +1,7 @@
-import { isSuggestedIntent } from './schemas/intents.schemas';
-import type { IntentField } from './schemas/intents.schemas';
-import type { Flow, FlowState } from './memory.types';
-import { moduleLogger } from '../../lib/logger';
+import { isSuggestedIntent } from '../schemas/intents.schemas';
+import type { IntentField } from '../schemas/intents.schemas';
+import type { Flow, FlowState } from '../memory.types';
+import { moduleLogger } from '../../../lib/logger';
 import {
   type IntentCategory,
   type FlowResolverEntities,

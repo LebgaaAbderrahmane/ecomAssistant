@@ -7,7 +7,7 @@ import {
   recordOrder,
   applyToolResult,
   persistFlowMemory,
-} from '../flowProcessor';
+} from '../flow/flowProcessor';
 import type { Flow, FlowProduct, ConversationMemory } from '../memory.types';
 
 // ---------------------------------------------------------------------------

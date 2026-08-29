@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getFlowOrderId, getFlowCurrentProductId, getFlowSelectedProductId, getFlowProductResults } from '../flowExtractors';
+import { getFlowOrderId, getFlowCurrentProductId, getFlowSelectedProductId, getFlowProductResults } from '../flow/flowExtractors';
 import type { Flow } from '../memory.types';
 
 const IDLE: Flow = {

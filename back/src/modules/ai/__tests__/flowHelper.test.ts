@@ -9,7 +9,7 @@ import {
   toOrderShipped,
   toOrderCancelled,
   toFinished,
-} from '../flowHelper';
+} from '../flow/flowHelper';
 import type { Flow } from '../memory.types';
 
 afterEach(() => {

@@ -3,7 +3,7 @@ import {
   migrateMemory,
   getActiveFlow,
   findFlowById,
-} from '../flowHelper';
+} from '../flow/flowHelper';
 import { CURRENT_MEMORY_VERSION } from '../memory.types';
 import type { ConversationMemory, Flow } from '../memory.types';
 

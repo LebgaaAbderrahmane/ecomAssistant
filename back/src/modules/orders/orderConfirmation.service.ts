@@ -2,7 +2,7 @@ import prisma from '../../config/db.config';
 import type { Prisma } from '@prisma/client';
 import { buildOrderConfirmationText } from './orderConfirmation.templates';
 import { openwaService } from '../whatsapp/whatsapp.service';
-import { addOrderFlowToMemory, migrateMemory } from '../ai/flowHelper';
+import { addOrderFlowToMemory, migrateMemory } from '../ai/flow/flowHelper';
 import { moduleLogger } from '../../lib/logger';
 
 const log = moduleLogger('orders.confirm');

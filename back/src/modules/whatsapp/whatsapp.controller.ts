@@ -14,7 +14,7 @@ import { cancelPendingLayer2Jobs } from "../../queues/layer2.queue";
 import { transcribeAudio } from "../ai/media/transcription.service";
 import { captionImage } from "../ai/media/imageCaption.service";
 import { moduleLogger, convLogger } from "../../lib/logger";
-import { addOrderFlowToMemory, migrateMemory } from "../ai/flowHelper";
+import { addOrderFlowToMemory, migrateMemory } from "../ai/flow/flowHelper";
 import type { Prisma } from "@prisma/client";
 
 const MEDIA_DIR = path.resolve("/app/uploads/media");

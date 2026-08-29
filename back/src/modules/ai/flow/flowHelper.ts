@@ -6,7 +6,7 @@ import {
   ConversationMemory,
   OrderData,
   ShippingData,
-} from './memory.types';
+} from '../memory.types';
 
 // ---------------------------------------------------------------------------
 // Creation
