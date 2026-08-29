@@ -136,6 +136,16 @@ export function toOrderConfirmed(
   return { ...flow, state: 'ORDER_CONFIRMED', shipping, updatedAt: new Date().toISOString() };
 }
 
+/** Confirms an order directly from PRODUCT_SELECTED, for orders created and
+ *  confirmed entirely in-conversation (no separate confirmation step). */
+export function toOrderConfirmedDirect(
+  flow: Extract<Flow, { state: 'PRODUCT_SELECTED' }>,
+  order: OrderData,
+  shipping: ShippingData = {},
+): Extract<Flow, { state: 'ORDER_CONFIRMED' }> {
+  return { ...flow, state: 'ORDER_CONFIRMED', order, shipping, updatedAt: new Date().toISOString() };
+}
+
 export function toOrderShipped(
   flow: Extract<Flow, { state: 'ORDER_CONFIRMED' }>,
 ): Extract<Flow, { state: 'ORDER_SHIPPED' }> {

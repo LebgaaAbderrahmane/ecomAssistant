@@ -13,6 +13,14 @@ export const sendOrderConfirmation = async (orderId: string) => {
     include: { customer: true },
   });
 
+  // Orders created and confirmed entirely in-conversation never get the
+  // external confirmation template — the customer already confirmed by placing
+  // the order in chat. The in-conversation acknowledgment is sufficient.
+  if (order.orderSource === 'CONVERSATION') {
+    log.info({ orderId, orderSource: order.orderSource }, 'conversational order, skipping confirmation template');
+    return;
+  }
+
   const conversation = await prisma.conversation.findFirstOrThrow({
     where: { merchantId: order.merchantId, customerId: order.customerId },
   });

@@ -698,6 +698,7 @@ export async function sendOrderNotification(order: {
   quantity: number;
   commune: string;
   address: string;
+  orderSource?: 'CONVERSATION' | 'PLATFORM';
 }): Promise<void> {
   const {
     merchantId,
@@ -712,9 +713,17 @@ export async function sendOrderNotification(order: {
     productId,
     quantity,
     commune,
+    orderSource,
   } = order;
 
   const log = moduleLogger('whatsapp.order-confirm', { orderId: platformOrderId });
+
+  // Orders created and confirmed entirely in-conversation must never trigger the
+  // external confirmation template — the customer already confirmed in chat.
+  if (orderSource === 'CONVERSATION') {
+    log.info({ orderId, orderSource }, 'conversational order, skipping confirmation template');
+    return;
+  }
 
   if (!customerPhone) {
     log.info('skipping notification — no phone');

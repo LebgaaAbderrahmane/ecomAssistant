@@ -8,7 +8,10 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/modules/ai/__tests__/**/*.test.ts'],
+    include: [
+      'src/modules/ai/__tests__/**/*.test.ts',
+      'src/modules/orders/__tests__/**/*.test.ts',
+    ],
     globals: false,
   },
 });

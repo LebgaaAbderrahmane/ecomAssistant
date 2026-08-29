@@ -305,16 +305,31 @@ describe('applyToolResult', () => {
   });
 
   describe('createOrder', () => {
-    it('transitions PRODUCT_SELECTED → ORDER_PENDING with order data', () => {
+    it('transitions PRODUCT_SELECTED → ORDER_CONFIRMED with order data when created in-conversation', () => {
       const flow = selectedFlow();
       const result = applyToolResult(flow, 'createOrder', true, {
         orderId: 'order-99',
         productId: 'pid-shoes',
         quantity: 2,
       });
+      // An order created and confirmed entirely in-conversation is confirmed
+      // immediately — there is no separate confirmation step.
+      expect(result.state).toBe('ORDER_CONFIRMED');
+      if (result.state === 'ORDER_CONFIRMED') {
+        expect(result.order.orderId).toBe('order-99');
+        expect(result.order.quantity).toBe(2);
+      }
+    });
+
+    it('holds ORDER_PENDING with partial data when incomplete (no orderId yet)', () => {
+      const flow = selectedFlow();
+      const result = applyToolResult(flow, 'createOrder', false, {
+        productId: 'pid-shoes',
+        quantity: 2,
+      });
       expect(result.state).toBe('ORDER_PENDING');
       if (result.state === 'ORDER_PENDING') {
-        expect(result.order.orderId).toBe('order-99');
+        expect(result.order.productId).toBe('pid-shoes');
         expect(result.order.quantity).toBe(2);
       }
     });

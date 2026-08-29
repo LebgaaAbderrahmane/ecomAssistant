@@ -431,8 +431,8 @@ describe('flow integration — end-to-end pipeline', () => {
     expect(mem!.flows[0].state).toBe('PRODUCT_SELECTED');
   });
 
-  // 3. Order creation: selected → ORDER_PENDING via createOrder
-  it('transitions to ORDER_PENDING on createOrder', async () => {
+  // 3. Order creation: selected → ORDER_CONFIRMED via createOrder
+  it('transitions to ORDER_CONFIRMED on createOrder', async () => {
     const { processMessage } = await import('../agent.service');
 
     const flowId = 'flow-ord';
@@ -450,16 +450,20 @@ describe('flow integration — end-to-end pipeline', () => {
     communeFindFirst.mockResolvedValue({ name: 'Bab Ezzouar', wilaya: 'Alger' });
     // createOrder finds product by ID
     productFindFirst.mockResolvedValue({ id: 'p1', name: 'Shoes Pro', price: 5000, stockStatus: 'in_stock', currency: 'DZD' });
-    // createOrder creates the order
-    orderCreate.mockResolvedValue({ id: 'order-new', status: 'PENDING' });
+    // createOrder creates the order as confirmed (in-conversation order)
+    orderCreate.mockResolvedValue({ id: 'order-new', status: 'CONFIRMED', orderSource: 'CONVERSATION' });
 
     await processMessage('msg-1');
 
     const mem = lastPersistedMemory();
     expect(mem).not.toBeNull();
     expect(mem!.flows).toHaveLength(1);
-    expect(mem!.flows[0].state).toBe('ORDER_PENDING');
-    expect((mem!.flows[0] as Extract<Flow, { state: 'ORDER_PENDING' }>).order?.orderId).toBe('order-new');
+    // A conversational order is confirmed immediately — no separate confirm step.
+    expect(mem!.flows[0].state).toBe('ORDER_CONFIRMED');
+    expect((mem!.flows[0] as Extract<Flow, { state: 'ORDER_CONFIRMED' }>).order?.orderId).toBe('order-new');
+
+    // No confirmation template is enqueued for a conversational order.
+    expect(enqueueOrderJob).not.toHaveBeenCalled();
   });
 
   it('reads delivery info from memory when order args omit them', async () => {
@@ -495,7 +499,7 @@ describe('flow integration — end-to-end pipeline', () => {
     productFindFirst.mockResolvedValue({ id: 'p1', name: 'Shoes Pro', price: 5000, stockStatus: 'in_stock', currency: 'DZD' });
     // delivery cost for Alger
     wilayaDeliveryCostFindFirst.mockResolvedValue({ cost: 500 });
-    orderCreate.mockResolvedValue({ id: 'order-new', status: 'PENDING' });
+    orderCreate.mockResolvedValue({ id: 'order-new', status: 'CONFIRMED', orderSource: 'CONVERSATION' });
 
     await processMessage('msg-1');
 

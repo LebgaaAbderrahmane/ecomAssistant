@@ -13,6 +13,7 @@ import {
   toProductSelected,
   toOrderPending,
   toOrderConfirmed,
+  toOrderConfirmedDirect,
   toOrderCancelled,
 } from './flowHelper';
 
@@ -176,6 +177,23 @@ export function applyToolResult(
       return applyDataRecording(transitioned, toolName, result);
     }
     return flow;
+  }
+
+  // An order created and confirmed entirely in-conversation jumps straight to
+  // ORDER_CONFIRMED — the customer already provided all details, so there is no
+  // separate confirmation step. (External orders still confirm via confirmOrder.)
+  if (toolName === 'createOrder' && flow.state === 'PRODUCT_SELECTED' && result?.orderId) {
+    const orderData: OrderData = {
+      orderId: result.orderId as string | undefined,
+      productId: result.productId as string | undefined,
+      quantity: result.quantity as number | undefined,
+    };
+    const transitioned = toOrderConfirmedDirect(flow, orderData);
+    log.debug(
+      { flowId: flow.flowId, tool: toolName, from: flow.state, to: transitioned.state },
+      'applyToolResult: state transition',
+    );
+    return applyDataRecording(transitioned, toolName, result);
   }
 
   const newState = transitionState(flow.state, toolName, success);

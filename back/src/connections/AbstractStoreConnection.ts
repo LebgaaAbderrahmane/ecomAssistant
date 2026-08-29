@@ -12,6 +12,7 @@ export interface OrderNotificationData {
   quantity: number;
   commune: string;
   address: string;
+  orderSource?: 'CONVERSATION' | 'PLATFORM';
 }
 
 export interface OrderDetails {

@@ -152,6 +152,7 @@ model Order {
   totalAmount      Float
   deliveryCost     Float       @default(0)
   status           OrderStatus @default(PENDING)
+  orderSource      OrderSource @default(PLATFORM)
   trackingNumber   String?
   deliveryProvider String?
   createdAt        DateTime    @default(now())
@@ -340,6 +341,11 @@ enum OrderStatus {
   DELIVERED
 
   CANCELLED
+}
+
+enum OrderSource {
+  CONVERSATION
+  PLATFORM
 }
 
 enum MessageDirection {

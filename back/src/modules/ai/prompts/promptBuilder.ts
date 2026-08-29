@@ -1,6 +1,7 @@
 import { INTENT_EXTRACTION_RULES, REPLY_GENERATION_RULES } from './systemPrompts';
 import type { ConversationMemory } from '../memory.types';
 import type { ToolResult } from '../tools/registry';
+import type { RecentConversationMessage } from '../conversation/history.service';
 
 const ID_KEY_PATTERN = /^id$|^[a-z]+[Ii]d$/;
 
@@ -23,6 +24,13 @@ export interface AgentContext {
   memory: ConversationMemory;
   knownSuggestedIntents?: Array<{ name: string; description: string | null }>;
   lastAssistantMessage?: string | null;
+  recentMessages?: RecentConversationMessage[];
+}
+
+function renderTranscript(recentMessages: RecentConversationMessage[]): string {
+  return recentMessages
+    .map((m) => `[${m.sender}] ${m.text}`)
+    .join('\n');
 }
 
 export function buildIntentPrompt(ctx: AgentContext): string {
@@ -41,6 +49,14 @@ export function buildIntentPrompt(ctx: AgentContext): string {
     sections.push(
       '',
       `Last assistant message (what the customer is reacting to): "${ctx.lastAssistantMessage}"`,
+    );
+  }
+
+  if (ctx.recentMessages?.length) {
+    sections.push(
+      '',
+      'Recent conversation transcript (oldest → newest):',
+      renderTranscript(ctx.recentMessages),
     );
   }
 

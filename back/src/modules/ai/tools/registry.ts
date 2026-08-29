@@ -12,7 +12,6 @@ import {
   SuggestProductsArgsSchema,
   ModifyOrderArgsSchema,
 } from '../schemas/intents.schemas';
-import { enqueueOrderJob } from '../../../queues/order.queue';
 import { resolveProductRequest, fetchProductsByIds, matchProductsWithLLM } from './searchHelpers';
 import {
   consolidatePreferences,
@@ -1155,6 +1154,11 @@ const createOrder: ToolHandler = async (entities, ctx) => {
       quantity,
       totalAmount,
       deliveryCost: deliveryCostValue,
+      // The customer created the order in-conversation and already provided all
+      // order details, so it is created confirmed and never needs the external
+      // confirmation-template flow.
+      status: 'CONFIRMED',
+      orderSource: 'CONVERSATION',
     },
   });
 
@@ -1193,45 +1197,25 @@ const createOrder: ToolHandler = async (entities, ctx) => {
   // --------------------------------------------------
   // Update conversation
   // --------------------------------------------------
-
-  logger.info(
-    {
-      orderId: order.id,
-      state: 'WAITING_CONFIRMATION',
-    },
-    'createOrder: updating conversation',
-  );
+  // The order was confirmed in-conversation: don't set WAITING_CONFIRMATION and
+  // don't enqueue the confirmation template job. The in-conversation reply the
+  // LLM generates is the confirmation acknowledgment.
 
   await prisma.conversation.update({
     where: { id: ctx.conversationId },
     data: {
       currentOrderId: order.id,
-      state: 'WAITING_CONFIRMATION',
+      state: 'CONFIRMED',
     },
   });
 
   logger.info(
     {
       orderId: order.id,
-      state: 'WAITING_CONFIRMATION',
+      state: 'CONFIRMED',
+      orderSource: 'CONVERSATION',
     },
-    'createOrder: conversation updated',
-  );
-
-  // --------------------------------------------------
-  // Enqueue order job
-  // --------------------------------------------------
-
-  logger.info(
-    { orderId: order.id },
-    'createOrder: enqueueing order job',
-  );
-
-  await enqueueOrderJob(order.id);
-
-  logger.info(
-    { orderId: order.id },
-    'createOrder: order job enqueued',
+    'createOrder: conversation updated (auto-confirmed)',
   );
 
   // --------------------------------------------------

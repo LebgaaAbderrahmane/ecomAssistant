@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { classifyIntent, scoreFlow, resolveFlow, toFlowResolverEntities } from '../flow/flowResolver';
 import type { Flow, FlowProduct } from '../memory.types';
-import type { FlowResolverInput, FlowResolverEntities } from '../flowResolver.types';
+import type { FlowResolverInput, FlowResolverEntities } from '../flow/flowResolver.types';
 import type { IntentField } from '../schemas/intents.schemas';
 
 // ---------------------------------------------------------------------------

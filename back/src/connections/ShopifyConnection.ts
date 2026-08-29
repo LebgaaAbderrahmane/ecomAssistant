@@ -440,6 +440,7 @@ export class ShopifyConnection extends AbstractStoreConnection {
         quantity: created.quantity,
         commune: created.commune,
         address: created.address ?? '',
+        orderSource: created.orderSource,
       });
     }
 

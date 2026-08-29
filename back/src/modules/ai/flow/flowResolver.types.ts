@@ -1,5 +1,5 @@
-import type { IntentField } from './schemas/intents.schemas';
-import type { Flow, FlowFilter } from './memory.types';
+import type { IntentField } from '../schemas/intents.schemas';
+import type { Flow, FlowFilter } from '../memory.types';
 
 // ---------------------------------------------------------------------------
 // Intent classification for flow routing

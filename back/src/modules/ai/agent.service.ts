@@ -21,6 +21,7 @@ import { generateResponse } from './reply/reply.generator';
 import { applyFlowResolution } from './flow/flow.orchestrator';
 import { recordSuggestedIntents, escalateForSuggestedIntent, checkEscalationThreshold } from './escalation/escalation.service';
 import { buildEffectiveText } from './outbound/product.media';
+import { getRecentMessages } from './conversation/history.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
 const ALL_TOOLS = [...ReadToolNameSchema.options, ...WriteToolNameSchema.options];
@@ -58,16 +59,20 @@ export const processMessage = async (messageId: string) => {
   // escalations triggered by this very message.
   const wasTakenOver = conversation.takenOverByHuman;
 
-  // Last thing the assistant said before this message. LLM #1 needs it to
-  // interpret short follow-ups ("okay", "yes", "this one") relative to what
-  // the assistant actually did last — e.g. present search results — instead of
-  // reading them off the raw conversation state (which may be a stale
-  // WAITING_CONFIRMATION from an earlier order that was never confirmed).
-  const lastAssistantMessage = await prisma.message.findFirst({
-    where: { conversationId: conversation.id, direction: 'OUT', id: { not: messageId } },
-    orderBy: { createdAt: 'desc' },
-    select: { text: true },
+  // Last messages in this conversation (both directions, oldest → newest),
+  // excluding the current client message being processed (it is supplied to
+  // LLM #1 separately as the input turn, not duplicated in the history).
+  // LLM #1 needs the history to interpret short follow-ups ("okay", "yes",
+  // "this one") relative to what was actually said recently, rather than
+  // reading them off the raw conversation state (which may be stale).
+  const recentMessages = await getRecentMessages(conversation.id, {
+    limit: 10,
+    excludeId: messageId,
   });
+  // Keep the single last-assistant-message field for any consumers that rely on
+  // it; derive it from the transcript rather than issuing a second query.
+  const lastAssistantMessage =
+    [...recentMessages].reverse().find((m) => m.sender === 'assistant')?.text ?? null;
 
   // --- Load AgentConfig ---
   const agentConfig = await prisma.agentConfig.findUnique({
@@ -136,7 +141,8 @@ export const processMessage = async (messageId: string) => {
     allowedTools: ALL_TOOLS,
     memory,
     knownSuggestedIntents,
-    lastAssistantMessage: lastAssistantMessage?.text ?? null,
+    lastAssistantMessage,
+    recentMessages,
   };
   const rawIntent = await callLLM({
     systemPrompt: buildIntentPrompt(intentContext),
