@@ -124,6 +124,22 @@ export const openwaService = {
     );
   },
 
+  sendImage: async (
+    sessionId: string,
+    to: string,
+    opts: { url: string; caption?: string },
+  ): Promise<SendResult> => {
+    return request<SendResult>(
+      "POST",
+      `/sessions/${sessionId}/messages/send-image`,
+      {
+        chatId: addSuffix(to),
+        url: opts.url,
+        caption: opts.caption,
+      },
+    );
+  },
+
   sendChatState: async (
     sessionId: string,
     to: string,
@@ -179,6 +195,23 @@ export const openwaService = {
       // Brief pause between messages so they don't dump as a wall
       if (i < messages.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+  },
+
+  sendImagesSequentially: async (
+    sessionId: string,
+    to: string,
+    images: Array<{ url: string; caption?: string }>,
+  ): Promise<void> => {
+    const delay = 300;
+
+    for (let i = 0; i < images.length; i++) {
+      await openwaService.sendImage(sessionId, to, images[i]);
+
+      // Brief pause between messages so they don't dump as a wall
+      if (i < images.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   },
