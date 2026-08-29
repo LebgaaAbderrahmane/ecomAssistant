@@ -110,6 +110,27 @@ function formatProducts(products: Product[]) {
   }));
 }
 
+/** First image URL for a product, or undefined when none is available.
+ *  Product.images is stored as a JSON array of URL strings. */
+function firstImageUrl(p: Product): string | undefined {
+  return Array.isArray(p.images) && typeof p.images[0] === 'string'
+    ? (p.images[0] as string)
+    : undefined;
+}
+
+/** Per-product cards carrying the image URL for the messaging layer. These are
+ *  returned alongside an LLM-facing `products` payload (which stays lean — no
+ *  images) so Phase C can send each search result as its own image message. */
+function formatProductCards(products: Product[]) {
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    currency: p.currency,
+    image: firstImageUrl(p),
+  }));
+}
+
 const searchProducts: ToolHandler = async (entities, ctx) => {
   const parsedArgs = SearchProductsArgsSchema.safeParse(entities);
 
@@ -169,7 +190,12 @@ const searchProducts: ToolHandler = async (entities, ctx) => {
 
     return {
       success: true,
-      data: { products },
+      data: {
+        products,
+        ...(resolved.products.length > 1
+          ? { productCards: formatProductCards(resolved.products) }
+          : {}),
+      },
     };
   }
 
