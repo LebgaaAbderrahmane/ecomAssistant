@@ -148,6 +148,12 @@ export const processMessage = async (messageId: string) => {
     systemPrompt: buildIntentPrompt(intentContext),
     userMessage: effectiveText,
     responseSchema: INTENT_RESPONSE_SCHEMA,
+    context: {
+      merchantId: conversation.merchantId,
+      conversationId: conversation.id,
+      messageId,
+      purpose: 'intent',
+    },
   });
 
   let parsed;

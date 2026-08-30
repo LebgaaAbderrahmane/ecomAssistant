@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { CallLLMParams, ContentPart } from './llm.client';
 import { moduleLogger } from '../../../lib/logger';
+import { recordLlmUsage } from '../usage/llmUsage.service';
 
 const apiKeys = [
   process.env.GEMINI_API_KEY_1,
@@ -8,6 +9,7 @@ const apiKeys = [
   process.env.GEMINI_API_KEY_3,
   process.env.GEMINI_API_KEY_4,
   process.env.GEMINI_API_KEY_5,
+  process.env.GEMINI_API_KEY_6,
 ].filter((key): key is string => Boolean(key));
 
 if (apiKeys.length === 0) {
@@ -76,6 +78,7 @@ export async function callLLM({
   userMessage,
   responseSchema,
   responseMimeType,
+  context,
 }: CallLLMParams): Promise<string> {
   const startedAt = Date.now();
 
@@ -84,9 +87,11 @@ export async function callLLM({
     (responseSchema ? 'application/json' : 'text/plain');
 
   let lastError: unknown;
+  let lastAttempt = 0;
 
   for (let attempt = 0; attempt < clients.length; attempt++) {
     const client = getNextClient();
+    lastAttempt = attempt + 1;
 
     try {
       const response = await client.models.generateContent({
@@ -109,19 +114,49 @@ export async function callLLM({
         promptTokens: usage?.promptTokenCount,
         completionTokens: usage?.candidatesTokenCount,
         attempt: attempt + 1,
+        purpose: context?.purpose,
       }, 'llm call completed');
+
+      recordLlmUsage({
+        ...(context ?? {}),
+        model: MODEL_NAME,
+        promptTokens: usage?.promptTokenCount ?? 0,
+        completionTokens: usage?.candidatesTokenCount ?? 0,
+        latencyMs,
+        attempt: attempt + 1,
+        success: true,
+      });
 
       return response.text ?? '';
     } catch (error) {
       lastError = error;
 
       if (!isQuotaError(error)) {
+        recordLlmUsage({
+          ...(context ?? {}),
+          model: MODEL_NAME,
+          promptTokens: 0,
+          completionTokens: 0,
+          latencyMs: Date.now() - startedAt,
+          attempt: lastAttempt,
+          success: false,
+        });
         throw error;
       }
 
       moduleLogger('llm').warn({ attempt: attempt + 1, totalClients: clients.length }, 'Gemini quota exceeded, rotating API key');
     }
   }
+
+  recordLlmUsage({
+    ...(context ?? {}),
+    model: MODEL_NAME,
+    promptTokens: 0,
+    completionTokens: 0,
+    latencyMs: Date.now() - startedAt,
+    attempt: lastAttempt,
+    success: false,
+  });
 
   throw lastError;
 }

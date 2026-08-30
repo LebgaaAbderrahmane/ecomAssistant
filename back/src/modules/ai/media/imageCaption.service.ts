@@ -78,6 +78,7 @@ export async function captionImage(filePath: string, mimeType: string): Promise<
     systemPrompt: buildImageCaptionPrompt(),
     userMessage: parts,
     responseSchema: IMAGE_CAPTION_SCHEMA,
+    context: { purpose: 'caption' },
   });
 
   const parsed = JSON.parse(raw);

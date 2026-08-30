@@ -32,6 +32,7 @@ export async function transcribeAudio(filePath: string, mimeType: string): Promi
     systemPrompt: buildTranscriptionPrompt(),
     userMessage: parts,
     responseMimeType: 'text/plain',
+    context: { purpose: 'transcription' },
   });
 
   return transcript.trim();

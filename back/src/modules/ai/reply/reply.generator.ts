@@ -59,6 +59,12 @@ export async function generateResponse(
     systemPrompt: buildReplyPrompt(replyContext),
     userMessage: effectiveText,
     responseSchema: REPLY_RESPONSE_SCHEMA,
+    context: {
+      merchantId: conversation.merchantId,
+      conversationId: conversation.id,
+      messageId,
+      purpose: 'reply',
+    },
   });
 
   let replyParsed;

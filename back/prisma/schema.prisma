@@ -380,3 +380,26 @@ model SuggestedIntent {
 
   @@index([count(sort: Desc)])
 }
+
+// One row per LLM (Gemini) call, for token-consumption monitoring and cost
+// attribution. Written asynchronously (non-blocking) from the LLM client so
+// token accounting never adds latency to the reply path.
+model LlmUsage {
+  id               String    @id @default(cuid())
+  merchantId       String?
+  conversationId   String?
+  messageId        String?
+  purpose          String?
+  model            String
+  promptTokens     Int       @default(0)
+  completionTokens Int       @default(0)
+  totalTokens      Int       @default(0)
+  latencyMs        Int       @default(0)
+  attempt          Int       @default(1)
+  success          Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  @@index([merchantId, createdAt(sort: Desc)])
+  @@index([conversationId])
+  @@index([createdAt(sort: Desc)])
+}

@@ -1,7 +1,7 @@
 import type { Product } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../../../config/db.config';
-import { callLLM } from '../clients/llm.client';
+import { callLLM, type CallLLMContext } from '../clients/llm.client';
 import type { ProductResult } from '../memory.types';
 import { moduleLogger } from '../../../lib/logger';
 
@@ -84,6 +84,7 @@ export async function buildProductCatalog(merchantId: string): Promise<CatalogEn
 export async function matchProductsWithLLM(
   catalog: CatalogEntry[],
   query: string,
+  context?: CallLLMContext,
 ): Promise<{ ids: string[]; isReference: boolean }> {
   const userMessage = `Catalog:\n${JSON.stringify(catalog)}\n\nSearch query: ${query}`;
 
@@ -91,6 +92,7 @@ export async function matchProductsWithLLM(
     systemPrompt: PRODUCT_MATCH_SYSTEM_PROMPT,
     userMessage,
     responseSchema: PRODUCT_MATCH_SCHEMA,
+    context: { ...(context ?? {}), purpose: 'search' },
   });
 
   let parsed: z.infer<typeof ProductMatchSchema>;
@@ -206,7 +208,7 @@ export async function resolveProductRequest(
     return { outcome: 'NOT_FOUND', query: trimmed };
   }
 
-  const { ids, isReference } = await matchProductsWithLLM(catalog, trimmed);
+  const { ids, isReference } = await matchProductsWithLLM(catalog, trimmed, { merchantId });
   if (ids.length) {
     const products = await fetchProductsByIds(merchantId, ids);
     if (products.length) {

@@ -701,7 +701,10 @@ const suggestProducts: ToolHandler = async (entities, ctx) => {
     // as searchProducts); fall back to the SQL order when the matcher yields
     // nothing.
     const query = prefs.terms.join(', ') || 'recommended product';
-    const { ids } = await matchProductsWithLLM(catalog, query);
+    const { ids } = await matchProductsWithLLM(catalog, query, {
+      merchantId: ctx.merchantId,
+      conversationId: ctx.conversationId,
+    });
     const ranked = ids.length ? await fetchProductsByIds(ctx.merchantId, ids) : [];
     products = ranked.length
       ? ranked.slice(0, 5)
