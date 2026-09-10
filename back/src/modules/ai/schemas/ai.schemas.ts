@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IntentFieldSchema, ConversationActSchema } from './intents.schemas';
+import { IntentFieldSchema, ConversationActSchema, ProductDetailFieldSchema } from './intents.schemas';
 
 // Entities are intentionally loose at this layer — each tool tightens its own
 // argument shape via its own Zod schema. This just guards against the
@@ -19,6 +19,10 @@ export const IntentItemSchema = z.object({
   // candidates + unresolvedReason default to null when Gemini omits them
   candidates: z.array(z.string()).nullable().default(null),
   unresolvedReason: z.string().nullable().default(null),
+  // For PRODUCT_DETAILS: the specific fields the customer asked about
+  // (price, images, description, variants, stock, category). Empty when the
+  // request names no specific fields. getProductDetails returns only these.
+  details: z.array(ProductDetailFieldSchema).max(6).default([]),
 });
 
 // ─── LLM #1 response (multi-intent) ────────────────────────────────────

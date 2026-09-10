@@ -3,6 +3,21 @@ import { z } from 'zod';
 // ─── Intent enum (12 values) ────────────────────────────────────────────
 // Multi-intent extraction: a single customer message may produce 1-4 intents.
 // See systemPrompts.ts INTENT_EXTRACTION_RULES for segmentation rules.
+// ─── Product detail fields ───────────────────────────────────────────────
+// The specific pieces of information a customer asks for in a PRODUCT_DETAILS
+// request (price, images, description, variants, stock, category). LLM #1
+// emits the subset the customer actually asked about; getProductDetails
+// returns ONLY those fields (defaulting to name + price when none are given).
+export const ProductDetailFieldSchema = z.enum([
+  'price',
+  'images',
+  'description',
+  'variants',
+  'stock',
+  'category',
+]);
+export type ProductDetailField = z.infer<typeof ProductDetailFieldSchema>;
+
 export const IntentSchema = z.enum([
   // Product
   'PRODUCT_SEARCH',
@@ -161,6 +176,9 @@ export const SelectProductArgsSchema = z.object({
 
 export const GetProductDetailsArgsSchema = z.object({
   productName: z.string().min(1).optional(),
+  // The specific fields the customer asked about. getProductDetails returns
+  // ONLY these (defaulting to name + price when empty).
+  details: z.array(ProductDetailFieldSchema).max(6).default([]),
 });
 
 export const SuggestProductsArgsSchema = z.object({

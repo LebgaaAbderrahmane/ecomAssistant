@@ -98,22 +98,33 @@ export async function generateResponse(
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
       if (customer?.phone) {
-        // Only accompany a product-details reply with an image when the customer
-        // explicitly asked for a picture (e.g. "send a photo"). A plain details
-        // query (e.g. "how much?") gets text only. Search results are always sent
-        // as images — showing the discovered products is the point.
-        const hasDetailsImages =
-          toolResults.some((tr) => {
-            const data = tr.result?.data as Record<string, unknown> | undefined;
-            return (
-              !!data &&
-              Array.isArray(data.productImages) &&
-              (data.productImages as unknown[]).length > 0
-            );
-          });
-        const wantsPicture = customerRequestedImages(effectiveText);
+        // When to accompany the reply with product photos:
+        //  - Search results are always sent as images — showing the discovered
+        //    products is the point.
+        //  - Product details are sent as images only when the customer actually
+        //    asked for a photo — either via LLM #1 extracting an explicit
+        //    "images" field (the getProductDetails tool returns productImages
+        //    only in that case) or via the text heuristic as a fallback.
+        const hasSearchResults = toolResults.some((tr) => {
+          const data = tr.result?.data as Record<string, unknown> | undefined;
+          return (
+            !!data &&
+            Array.isArray(data.products) &&
+            (data.products as unknown[]).length > 0
+          );
+        });
+        const hasDetailsImages = toolResults.some((tr) => {
+          const data = tr.result?.data as Record<string, unknown> | undefined;
+          return (
+            !!data &&
+            Array.isArray(data.productImages) &&
+            (data.productImages as unknown[]).length > 0
+          );
+        });
+        const wantsPicture =
+          customerRequestedImages(effectiveText) || hasDetailsImages;
 
-        if (!hasDetailsImages || wantsPicture) {
+        if (hasSearchResults || wantsPicture) {
           const productCards = collectProductCards(toolResults);
           if (productCards.length >= 1) {
             try {

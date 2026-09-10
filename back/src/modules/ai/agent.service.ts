@@ -3,7 +3,7 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, AgentContext } from './prompts/promptBuilder';
-import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, isSuggestedIntent, intentToString } from './schemas/intents.schemas';
+import { IntentSchema, isSuggestedIntent, intentToString } from './schemas/intents.schemas';
 import { topSuggested } from './suggestedIntents.service';
 import { migrateMemory, getActiveFlow } from './flow/flowHelper';
 import { persistFlowMemory } from './flow/flowProcessor';
@@ -24,7 +24,6 @@ import { buildEffectiveText } from './outbound/product.media';
 import { getRecentMessages } from './conversation/history.service';
 
 const ALL_INTENTS = IntentSchema.options as readonly string[] as string[];
-const ALL_TOOLS = [...ReadToolNameSchema.options, ...WriteToolNameSchema.options];
 
 export const processMessage = async (messageId: string) => {
   const message = await prisma.message.findUniqueOrThrow({
@@ -138,12 +137,24 @@ export const processMessage = async (messageId: string) => {
   const intentContext: AgentContext = {
     state: conversation.state,
     allowedIntents: ALL_INTENTS,
-    allowedTools: ALL_TOOLS,
-    memory,
     knownSuggestedIntents,
     lastAssistantMessage,
     recentMessages,
   };
+
+
+  log.info({
+    systemPrompt: buildIntentPrompt(intentContext),
+    userMessage: effectiveText,
+    responseSchema: INTENT_RESPONSE_SCHEMA,
+    context: {
+      merchantId: conversation.merchantId,
+      conversationId: conversation.id,
+      messageId,
+      purpose: 'intent',
+    },
+  },'the prompt sent to the llm to extract intents')
+
   const rawIntent = await callLLM({
     systemPrompt: buildIntentPrompt(intentContext),
     userMessage: effectiveText,

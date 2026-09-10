@@ -460,6 +460,70 @@ describe('flow integration — end-to-end pipeline', () => {
     });
   });
 
+  it('does not send an image when only price details are explicitly requested', async () => {
+    const { processMessage } = await import('../agent.service');
+
+    const flowId = 'flow-details-price';
+    setupMocks(baseMessage('Quel est le prix ?', 'PRODUCT_SELECTED', selectedMemory(flowId, 'Shoes Pro', 'p1')));
+    productFindFirst.mockResolvedValue({
+      id: 'p1',
+      name: 'Shoes Pro',
+      price: 5000,
+      currency: 'DZD',
+      images: ['https://img/shoes-pro.jpg'],
+      stockStatus: 'in_stock',
+      description: 'Best shoes',
+      category: 'shoes',
+    });
+
+    callLLMMock.mockReset();
+    callLLMMock
+      .mockResolvedValueOnce(
+        intentResponse([
+          { intent: 'PRODUCT_DETAILS', entities: {}, details: ['price'], confidence: 0.9, order: 1 },
+        ]),
+      )
+      .mockResolvedValueOnce(replyResponse(['C\'est 5000 DZD.']));
+
+    await processMessage('msg-1');
+
+    // Only price was requested: the tool must not return images, so no photo is sent.
+    expect(sendImage).not.toHaveBeenCalled();
+  });
+
+  it('sends an image when details explicitly request images', async () => {
+    const { processMessage } = await import('../agent.service');
+
+    const flowId = 'flow-details-img';
+    setupMocks(baseMessage('Montre-moi le produit', 'PRODUCT_SELECTED', selectedMemory(flowId, 'Shoes Pro', 'p1')));
+    productFindFirst.mockResolvedValue({
+      id: 'p1',
+      name: 'Shoes Pro',
+      price: 5000,
+      currency: 'DZD',
+      images: ['https://img/shoes-pro.jpg'],
+      stockStatus: 'in_stock',
+      description: 'Best shoes',
+      category: 'shoes',
+    });
+
+    callLLMMock.mockReset();
+    callLLMMock
+      .mockResolvedValueOnce(
+        intentResponse([
+          { intent: 'PRODUCT_DETAILS', entities: {}, details: ['images'], confidence: 0.9, order: 1 },
+        ]),
+      )
+      .mockResolvedValueOnce(replyResponse(['Voici une photo.']));
+
+    await processMessage('msg-1');
+
+    expect(sendImage).toHaveBeenCalledTimes(1);
+    expect(sendImage.mock.calls[0][2]).toMatchObject({
+      url: 'https://img/shoes-pro.jpg',
+    });
+  });
+
    // 2. Product selection: discovery → PRODUCT_SELECTED via selectProduct
    it('transitions to PRODUCT_SELECTED on selectProduct', async () => {
     const { processMessage } = await import('../agent.service');

@@ -8,6 +8,8 @@ import {
   isWriteTool,
   resolveTool,
   SuggestProductsArgsSchema,
+  GetProductDetailsArgsSchema,
+  ProductDetailFieldSchema,
 } from '../schemas/intents.schemas';
 
 describe('suggestProducts intent routing', () => {
@@ -95,5 +97,41 @@ describe('SuggestProductsArgsSchema', () => {
 
   it('rejects negative prices', () => {
     expect(SuggestProductsArgsSchema.safeParse({ maxPrice: -5 }).success).toBe(false);
+  });
+});
+
+describe('GetProductDetailsArgsSchema', () => {
+  it('accepts a photo request and carries the images field', () => {
+    const parsed = GetProductDetailsArgsSchema.safeParse({ details: ['images'] });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.details).toEqual(['images']);
+  });
+
+  it('accepts multiple requested fields', () => {
+    const parsed = GetProductDetailsArgsSchema.safeParse({
+      details: ['price', 'images', 'description', 'variants', 'stock', 'category'],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('defaults to an empty details array when omitted', () => {
+    const parsed = GetProductDetailsArgsSchema.safeParse({});
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.details).toEqual([]);
+  });
+
+  it('rejects unknown detail fields', () => {
+    expect(GetProductDetailsArgsSchema.safeParse({ details: ['colorways'] }).success).toBe(false);
+  });
+
+  it('exposes the exact set of supported detail fields', () => {
+    expect(ProductDetailFieldSchema.options).toEqual([
+      'price',
+      'images',
+      'description',
+      'variants',
+      'stock',
+      'category',
+    ]);
   });
 });

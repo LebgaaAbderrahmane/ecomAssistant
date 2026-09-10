@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev"
   },
   "dependencies": {

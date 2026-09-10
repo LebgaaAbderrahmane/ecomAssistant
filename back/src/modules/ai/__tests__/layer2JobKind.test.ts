@@ -10,6 +10,7 @@ const item = (intent: IntentItem['intent'], entities: IntentItem['entities'] = {
   status: 'resolved',
   candidates: null,
   unresolvedReason: null,
+  details: [],
 });
 
 describe('decideLayer2JobKind', () => {

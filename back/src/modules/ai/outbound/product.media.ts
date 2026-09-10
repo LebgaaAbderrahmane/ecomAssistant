@@ -71,11 +71,15 @@ export function collectProductCards(toolResults: ToolResultEntry[]): ProductCard
     const data = tr.result?.data;
     if (!data) continue;
 
-    // Single-product details: productImages is an array of URL strings.
+    // Single-product details: productImages is an array of URL strings. The
+    // price may be absent when the customer asked only for a photo, so the
+    // card falls back to a safe 0 rather than an invalid NaN.
     if (Array.isArray(data.productImages)) {
       for (const img of data.productImages as unknown[]) {
         if (typeof img === 'string' && img) {
-          pushImage(data.productId, data.productName, data.price, data.currency, img);
+          const priceNum =
+            typeof data.price === 'number' && Number.isFinite(data.price) ? data.price : 0;
+          pushImage(data.productId, data.productName, priceNum, data.currency, img);
         }
       }
     }

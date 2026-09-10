@@ -9,6 +9,7 @@ import {
   intentToString,
 } from '../schemas/intents.schemas';
 import type { IntentItem } from '../schemas/ai.schemas';
+import { customerRequestedImages } from '../outbound/product.media';
 import { executeTool, ToolResult } from '../tools/registry';
 import type { ConversationMemory } from '../memory.types';
 import {
@@ -106,6 +107,25 @@ export async function executeTools(
 
     // Enrich productId from product name (for intents that have a product entity)
     const entities = { ...item.entities };
+    // PRODUCT_DETAILS carries the requested fields (price/images/description/...)
+    // at the intent-item level; propagate them so getProductDetails knows what
+    // to return. Only forward fields the intent itself declared.
+    if (item.intent === 'PRODUCT_DETAILS') {
+      const requested = new Set(item.details ?? []);
+      // Deterministic fallback: if LLM #1 did not flag an image request but the
+      // customer's own wording clearly asks for a photo, request images anyway
+      // so the tool returns them and the reply can send them. LLM #1 is the
+      // primary signal; this is a safety net, not a substitute.
+      if (
+        !requested.has('images') &&
+        customerRequestedImages(message.content ?? '')
+      ) {
+        requested.add('images');
+      }
+      if (requested.size > 0) {
+        (entities as Record<string, unknown>).details = [...requested];
+      }
+    }
     if (entities.product && !entities.productId) {
       const resolvedId = await resolveProductId(conversation.merchantId, entities.product as string);
       if (resolvedId) {

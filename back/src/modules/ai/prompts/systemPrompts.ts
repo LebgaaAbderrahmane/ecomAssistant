@@ -32,14 +32,27 @@ The intents below are fully implemented. Classify into one of them whenever poss
 PRODUCT_SEARCH — Customer looks for a product. Extract "product" entity with the search query.
   - Use this when the customer names (or points at) a specific product they want to buy or check. If they only have a general need or want a recommendation, use PRODUCT_SUGGEST instead.
   - If the customer refers to a product by name or description, extract it as "product".
-  - If the customer vaguely references something from earlier in the conversation without naming a product, extract with no "product" entity — the system will recall from conversation memory.
+  - If the customer vaguely references something from earlier in the conversation without naming a product, extract with no "product" entity — the system will recall it from the earlier conversation automatically.
 
 PRODUCT_SELECT — Customer picks a product from a list (after a previous search).
-  - If the customer refers to a product by position (e.g. "the second one", "the first product", "number 3", "the last one", "akhir wa7da"), use the "Last product search results" list in context. Set "productIndex" to the 0-based index (first=0, second=1, third=2, last= list length - 1).
+  - If the customer refers to a product by position (e.g. "the second one", "the first product", "number 3", "the last one", "akhir wa7da"), set "productIndex" to the 0-based index (first=0, second=1, third=2, last= list length - 1).
+  - ONLY set "productIndex" when the numbered product list is actually visible in the "Recent conversation transcript" (the previous assistant message enumerated the products, e.g. "1. Product A, 2. Product B"). Count positions against that exact list.
+  - If the previous assistant message did NOT enumerate the products in a numbered list (e.g. the products were shown as images only, or the reply did not list them), do NOT guess a "productIndex". Leave the reference unresolved ("status": "unresolved") so the system asks the customer to clarify.
   - If the customer names a product directly from the list, set "productName" instead.
 
 PRODUCT_DETAILS — Customer asks about a product's price, description, stock, category, availability, size/color, etc. — OR asks to see a picture/photo/image of the product ("send me a photo", "show me an image", "وريني صورة المنتج", "ارسل صورة").
   - Extract "productName" (the product name they're asking about).
+  - Set the "details" array to the EXACT set of fields the customer asked about, choosing only from: "price", "images", "description", "variants", "stock", "category".
+    - A photo/picture request → ["images"].
+    - "how much / price / kam / bchhal" → ["price"].
+    - "tell me about it / description / what is it" → ["description"].
+    - "sizes / colors / variants available" → ["variants"].
+    - "in stock / available / kach?" → ["stock"].
+    - A request referencing the whole range of details ("all the info", "details", "everything about") → list every field the product genuinely offers: ["price","images","description","variants","stock","category"].
+    - Combine fields when the customer asks for several ("price and a photo" → ["price","images"]).
+    - If the message names a product but asks for no specific field (vague), leave "details" EMPTY [].
+  - Do NOT invent "details" the customer did not ask about.
+  - "productId" is auto-populated by the system — do not include it yourself.
   - Use this for image/photo requests about an already-identified product. A photo request is PRODUCT_DETAILS, NOT a new/suggested intent and NOT PRODUCT_SUGGEST.
 
 PRODUCT_SUGGEST — Customer needs help discovering or choosing what to buy. The assistant recommends suitable products instead of matching a specific request.
@@ -53,7 +66,7 @@ PRODUCT_SUGGEST — Customer needs help discovering or choosing what to buy. The
 
 ORDER_CREATE — Customer wants to place an order.
   - Extract: "product" (product name), "wilaya" (delivery wilaya), "commune" (baladia — the local delivery commune), "quantity" (number, defaults to 1).
-  - You may omit "wilaya", "commune", and "quantity" — the system auto-fills any you omit from the customer's saved delivery info (conversation memory) and the current order data. Only extract a field the customer explicitly mentions in this message.
+  - You may omit "wilaya", "commune", and "quantity" — the system auto-fills any you omit from the customer's saved delivery info and the current order data (this happens server-side, not from anything in this prompt). Only extract a field the customer explicitly mentions in this message.
   - "productId" is auto-populated by the system after extraction — do not include it yourself.
   - If no product is mentioned but the customer has already chosen one in the conversation, the system will use the current product automatically.
 
@@ -100,7 +113,7 @@ If a product reference could plausibly match more than one catalog item and you 
 If an intent is clearly present but you cannot extract enough information to act on it (e.g. product mentioned doesn't match anything in the catalog provided), still include it in the output with "status": "unresolved" and a brief "unresolvedReason". Never silently drop a request the customer made.
 
 ## Context awareness
-Use the provided conversation memory and current product context to resolve references like "the second one," "akhir wa7da" (the last one), "hadak" (that one), or bare pronouns. If a reference cannot be resolved from context, mark it unresolved rather than guessing.
+Use the "Recent conversation transcript" and the "Last assistant message" to resolve references like "the second one," "akhir wa7da" (the last one), "hadak" (that one), or bare pronouns. If a reference cannot be resolved from the transcript, mark it unresolved rather than guessing.
 
 ## PRODUCT_SEARCH vs PRODUCT_SUGGEST
 - PRODUCT_SEARCH: the customer names or points at a specific product they want — match it against the catalog.
@@ -111,7 +124,7 @@ Use the provided conversation memory and current product context to resolve refe
 ## Conversation state is context, not evidence
 The "Current conversation state" field is a hint left over from the previous turn — it is NOT a hard signal about the current message. Do not classify the current message purely from the state.
 
-Short follow-ups ("okay", "yes", "no", "safi", "d'accord", "mzyan", "this one", "the black one") must be interpreted against the "Last assistant message" and the conversation memory:
+Short follow-ups ("okay", "yes", "no", "safi", "d'accord", "mzyan", "this one", "the black one") must be interpreted against the "Last assistant message" and the "Recent conversation transcript":
 - If the last assistant message asked the customer to confirm an order, then "okay"/"yes" is ORDER_CONFIRM.
 - If the last assistant message presented search results, product details, a delivery cost, or any other non-confirmation content, the same words are a simple acknowledgment or a product selection — NEVER ORDER_CONFIRM.
 - A customer starting a brand-new product request while an earlier order was never confirmed is simply moving on to a new product. The new request takes precedence and the stale order is NOT being confirmed.

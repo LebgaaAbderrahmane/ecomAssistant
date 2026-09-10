@@ -20,8 +20,6 @@ function stripInternalIds(obj: unknown): unknown {
 export interface AgentContext {
   state: string;
   allowedIntents: string[];
-  allowedTools: string[];
-  memory: ConversationMemory;
   knownSuggestedIntents?: Array<{ name: string; description: string | null }>;
   lastAssistantMessage?: string | null;
   recentMessages?: RecentConversationMessage[];
@@ -38,11 +36,10 @@ export function buildIntentPrompt(ctx: AgentContext): string {
     INTENT_EXTRACTION_RULES,
     '',
     // Conversation state is context, not a decision. Short follow-ups are
-    // interpreted against the last assistant message (below) and the memory,
-    // never against the raw state alone.
+    // interpreted against the last assistant message (below) and the recent
+    // transcript, never against the raw state alone.
     `Current conversation state (context only, not a decision): ${ctx.state}`,
     `Allowed intents right now: ${ctx.allowedIntents.join(', ')}`,
-    `Allowed tools right now: ${ctx.allowedTools.length ? ctx.allowedTools.join(', ') : 'none'}`,
   ];
 
   if (ctx.lastAssistantMessage) {
@@ -65,32 +62,6 @@ export function buildIntentPrompt(ctx: AgentContext): string {
       .map(s => `  ${s.name} (suggested) — ${s.description ?? ''}`)
       .join('\n');
     sections.push('', 'Previously suggested intents (reuse these names if they match):', list);
-  }
-
-  sections.push('', 'Context (memory):', JSON.stringify(ctx.memory, null, 2));
-
-  // Prefer product results from the active flow; fall back to legacy flat memory.
-  const activeFlow = ctx.memory.activeFlow
-    ? ctx.memory.flows.find((f) => f.flowId === ctx.memory.activeFlow)
-    : undefined;
-
-  let names: string[] | undefined;
-  if (activeFlow && activeFlow.state !== 'IDLE') {
-    names = activeFlow.productDiscovery.toolResults.map((p) => p.productName);
-  } else {
-    const legacy = (ctx.memory as unknown as { lastProductResults?: Array<{ name: string }> });
-    names = legacy.lastProductResults?.map((p) => p.name);
-  }
-
-  if (names?.length) {
-    const list = names
-      .map((name, i) => `  ${i}: ${name}`)
-      .join('\n');
-    sections.push(
-      '',
-      'Last product search results (index : product name):',
-      list,
-    );
   }
 
   return sections.join('\n');

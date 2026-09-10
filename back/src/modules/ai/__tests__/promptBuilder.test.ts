@@ -2,29 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { buildIntentPrompt, buildReplyPrompt, type ReplyContext } from '../prompts/promptBuilder';
 import type { Flow } from '../memory.types';
 
-const activeFlow: Flow = {
-  flowId: 'f1',
-  state: 'PRODUCT_DISCOVERY',
-  createdAt: '2025-01-01T00:00:00.000Z',
-  updatedAt: '2025-01-01T00:00:00.000Z',
-  productDiscovery: {
-    input: { productName: 'shoes', filters: {} },
-    toolResults: [
-      { productId: 'p1', productName: 'Nike Air', price: 5000, variants: [] },
-      { productId: 'p2', productName: 'Adidas Boost', price: 6000, variants: [] },
-    ],
-  },
-};
-
 const BASE_CTX = {
   state: 'PRODUCT_DISCOVERY',
   allowedIntents: ['PRODUCT_SEARCH', 'ORDER_CONFIRM'],
-  allowedTools: ['searchProducts'],
-  memory: {
-    version: 1 as const,
-    globalInformation: {},
-    flows: [] as Flow[],
-  },
 };
 
 describe('buildIntentPrompt', () => {
@@ -68,7 +48,7 @@ describe('buildIntentPrompt', () => {
         { direction: 'out', sender: 'assistant', text: 'Parfait !' },
       ],
     });
-    expect(prompt).toMatch(/Recent conversation transcript/);
+    expect(prompt).toMatch(/Recent conversation transcript \(oldest → newest\):/);
     expect(prompt).toMatch(/\[assistant\] Voici nos chaussures/);
     expect(prompt).toMatch(/\[customer\] Je prends la première/);
     expect(prompt).toMatch(/\[assistant\] Parfait !/);
@@ -90,44 +70,24 @@ describe('buildIntentPrompt', () => {
 
   it('omits the transcript section when there are no recent messages', () => {
     const prompt = buildIntentPrompt({ ...BASE_CTX, recentMessages: [] });
-    expect(prompt).not.toMatch(/Recent conversation transcript/);
+    expect(prompt).not.toMatch(/Recent conversation transcript \(oldest → newest\):/);
   });
 
-  it('reads product results from activeFlow when available', () => {
-    const prompt = buildIntentPrompt({
-      ...BASE_CTX,
-      memory: { ...BASE_CTX.memory, flows: [activeFlow], activeFlow: 'f1' },
-    });
-    expect(prompt).toMatch(/Nike Air/);
-    expect(prompt).toMatch(/Adidas Boost/);
-    expect(prompt).toMatch(/Last product search results/);
+  it('does not include the allowed tools section', () => {
+    const prompt = buildIntentPrompt({ ...BASE_CTX });
+    expect(prompt).not.toMatch(/Allowed tools right now/);
   });
 
-  it('falls back to memory.lastProductResults when no activeFlow', () => {
-    const prompt = buildIntentPrompt({
-      ...BASE_CTX,
-      memory: {
-        ...BASE_CTX.memory,
-        lastProductResults: [{ id: 'p1', name: 'Fallback Product' }],
-      } as never,
-    });
-    expect(prompt).toMatch(/Fallback Product/);
+  it('keeps the allowed intents section', () => {
+    const prompt = buildIntentPrompt({ ...BASE_CTX });
+    expect(prompt).toMatch(/Allowed intents right now: PRODUCT_SEARCH, ORDER_CONFIRM/);
   });
 
-  it('prefers activeFlow over memory.lastProductResults', () => {
-    const prompt = buildIntentPrompt({
-      ...BASE_CTX,
-      memory: {
-        ...BASE_CTX.memory,
-        flows: [activeFlow],
-        activeFlow: 'f1',
-        lastProductResults: [{ id: 'p99', name: 'Old Memory Product' }],
-      } as never,
-    });
-    expect(prompt).toMatch(/Nike Air/);
-    const resultsSection = prompt.substring(prompt.indexOf('Last product search results (index'));
-    expect(resultsSection).not.toMatch(/Old Memory Product/);
-    expect(resultsSection).toMatch(/Nike Air/);
+  it('instructs LLM #1 to only set productIndex when the list is visible in the transcript', () => {
+    const prompt = buildIntentPrompt(BASE_CTX);
+    expect(prompt).toMatch(/productIndex/);
+    expect(prompt).toMatch(/Recent conversation transcript/);
+    expect(prompt).toMatch(/did NOT enumerate/i);
   });
 });
 
