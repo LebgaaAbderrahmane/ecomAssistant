@@ -10,3 +10,4 @@ langsmith
 grpcio==1.66.2
 grpcio-tools==1.66.2
 protobuf==5.28.3
+psycopg[binary]==3.3.5

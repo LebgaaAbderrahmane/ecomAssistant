@@ -4,6 +4,7 @@ from concurrent import futures
 
 import grpc
 
+from db import get_message
 from grpc_gen.agent.v1 import agent_pb2, agent_pb2_grpc
 
 logging.basicConfig(
@@ -42,9 +43,19 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             request.merchant_id,
             request.customer_id,
         )
+        message = get_message(request.message_id)
+        if message is not None:
+            log.info(
+                "loaded message role=%s text=%r (conversation=%s)",
+                message["role"],
+                message["text"],
+                message["conversationId"],
+            )
+        else:
+            log.warning("message %s not found in Postgres", request.message_id)
         return agent_pb2.ProcessMessageResponse(
             decision=agent_pb2.ProcessMessageResponse.DECISION_REPLY,
-            text="[placeholder] message received by agent",
+            text="Bonjour, comment puis-je vous aider ?",
         )
 
 
