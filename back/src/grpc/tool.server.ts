@@ -1,21 +1,8 @@
-import { loadSync, type Options } from '@grpc/proto-loader';
+import { loadSync } from '@grpc/proto-loader';
 import * as grpc from '@grpc/grpc-js';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { config } from '../config/index.js';
-
-const require = createRequire(import.meta.url);
-const contractsRoot = dirname(require.resolve('@ecomassistant/contracts/package.json'));
-const PROTO_ROOT = join(contractsRoot, 'proto');
-
-const loaderOptions: Options = {
-  includeDirs: [PROTO_ROOT],
-  keepCase: false,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-};
+import { loaderOptions, PROTO_ROOT } from './proto.js';
 
 export interface HealthRequest {}
 
