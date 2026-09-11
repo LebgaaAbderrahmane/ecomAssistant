@@ -18,6 +18,8 @@
     "@ecomassistant/contracts": "workspace:*",
     "@ecomassistant/shared": "workspace:*",
     "@google/genai": "^2.10.0",
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
     "@prisma/client": "^5.22.0",
     "@sendgrid/mail": "^8.1.6",
     "@shopify/shopify-api": "^13.0.0",

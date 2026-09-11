@@ -21,6 +21,8 @@ export const config = {
   openwaWebhookSecret: env('OPENWA_WEBHOOK_SECRET', 'whsec_dev'),
   appUrl: env('APP_URL', 'http://localhost:3000').trim(),
   internalUrl: env('INTERNAL_URL', 'http://back:3000'),
+  toolsGrpcAddr: env('TOOLS_GRPC_ADDR', '0.0.0.0:50051'),
+  toolsGrpcEnabled: env('TOOLS_GRPC_ENABLED', 'true') !== 'false',
   chargily: {
     baseUrl: env('CHARGILY_BASE_URL'),
     publicKey: env('CHARGILY_PUBLIC_KEY'),
