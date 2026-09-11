@@ -12,7 +12,8 @@
     "test": "tsx --test src/modules/ai/__tests__/*.test.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "grpc:check": "tsx scripts/grpc-check.ts"
   },
   "dependencies": {
     "@ecomassistant/contracts": "workspace:*",
