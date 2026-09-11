@@ -10,6 +10,9 @@ importers:
 
   back:
     dependencies:
+      '@ecomassistant/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@ecomassistant/shared':
         specifier: workspace:*
         version: link:../shared
