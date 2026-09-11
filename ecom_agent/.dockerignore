@@ -1,0 +1,19 @@
+# Secrets — never baked into the image
+.env
+
+# VCS / local tooling
+.git
+.gitignore
+.venv
+__pycache__/
+
+# Python artifacts
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Docs / generated assets not needed at runtime
+graph.mmd
+graph.png
+*.md

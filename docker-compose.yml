@@ -48,6 +48,31 @@ services:
       redis:
         condition: service_healthy
 
+  agent:
+    build:
+      context: ./ecom_agent
+    restart: unless-stopped
+    # Internal only — no host port. The backend reaches it as `agent:50052`
+    # over the default Compose network (see AGENT_GRPC_ADDR / TOOLS_GRPC_ADDR).
+    env_file: .env
+    environment:
+      AGENT_GRPC_ADDR: 0.0.0.0:50052
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_started
+    healthcheck:
+      # M1: process-alive placeholder. Task 4 replaces this with a real
+      # AgentService.Health gRPC probe.
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   front:
     build:
       context: .
