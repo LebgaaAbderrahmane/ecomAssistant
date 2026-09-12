@@ -48,8 +48,9 @@ async function persistAndSendReply(
 /**
  * gRPC message destination (MESSAGE_HANDLER=grpc): load the inbound message,
  * forward it to the Python agent's AgentService.ProcessMessage, then persist
- * + send the agent's reply. Falls back to the legacy local pipeline when the
- * agent is unreachable or signals DECISION_UNAVAILABLE.
+ * + send the agent's reply. If the agent call fails the error is rethrown so
+ * the job fails and BullMQ retries it. Falls back to the legacy local pipeline
+ * only on DECISION_UNAVAILABLE.
  */
 export const handleMessageViaAgent = async (messageId: string): Promise<void> => {
   const message = await prisma.message.findUniqueOrThrow({
@@ -63,6 +64,7 @@ export const handleMessageViaAgent = async (messageId: string): Promise<void> =>
 
   const client = createAgentClient();
   try {
+    console.log(`[message] ${messageId} -> agent`);
     const response = await agentProcessMessage(client, {
       messageId,
       conversationId: conversation.id,
@@ -72,7 +74,7 @@ export const handleMessageViaAgent = async (messageId: string): Promise<void> =>
 
     if (response.decision === 'DECISION_REPLY' && response.text.trim()) {
       await persistAndSendReply(conversation, customer, [response.text]);
-      console.log(`[agentBridge] ${messageId} -> agent reply: "${response.text}"`);
+      console.log(`[message] ${messageId} -> agent reply: "${response.text}"`);
       return;
     }
 
@@ -94,16 +96,16 @@ export const handleMessageViaAgent = async (messageId: string): Promise<void> =>
       } catch (err) {
         console.error('[agentBridge] Failed to create escalation notification:', err);
       }
-      console.log(`[agentBridge] ${messageId} -> agent escalated conversation`);
+      console.log(`[message] ${messageId} -> agent escalated conversation`);
       return;
     }
 
     console.log(
-      `[agentBridge] ${messageId} -> agent produced no reply (${response.decision}), falling back to legacy handler`
+      `[message] ${messageId} -> agent unavailable (${response.decision}), falling back to legacy handler`
     );
   } catch (err) {
-    console.error(`[agentBridge] agent call failed (${messageId}):`, err);
-    console.log(`[agentBridge] falling back to legacy handler`);
+    console.error(`[message] ${messageId} -> agent call failed:`, err);
+    throw err;
   } finally {
     closeAgentClient(client);
   }
