@@ -9,7 +9,7 @@ import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
 import type { IntentItem } from './schemas/ai.schemas';
 import { INTENT_RESPONSE_SCHEMA, REPLY_RESPONSE_SCHEMA } from './schemas/gemini.schemas';
-import { openwaService } from '../whatsapp/whatsapp.service';
+import { deliverAssistantReply } from '../whatsapp/reply.service';
 import { enqueueLayer2Job } from '../../queues/layer2.queue';
 import { decideLayer2JobKind } from './layer2JobKind';
 import type { ImageCategory } from './media/imageCaption.service';
@@ -439,9 +439,6 @@ async function generateResponse(
   });
   const { conversation } = message;
   const effectiveText = buildEffectiveText(message);
-  const customer = await prisma.customer.findUniqueOrThrow({
-    where: { id: conversation.customerId },
-  });
 
   // ─── LLM #2: reply generation (single call for all intents) ─────────
   const replyContext: ReplyContext = {
@@ -474,42 +471,8 @@ async function generateResponse(
     throw err;
   }
 
-  // Persist each reply message as a separate DB row
-  for (const text of replyParsed.messages) {
-    await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        direction: 'OUT',
-        sender: 'AI',
-        content: text,
-        text,
-        role: 'assistant',
-      },
-    });
-  }
-
-  // ─── Send reply via WhatsApp (sequential with typing indicators) ─────
-  try {
-    const waSession = await prisma.whatsAppSession.findUnique({
-      where: { merchantId: conversation.merchantId },
-    });
-    if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
-      if (customer?.phone) {
-        await openwaService.sendMessagesSequentially(
-          waSession.sessionId,
-          customer.phone,
-          replyParsed.messages,
-        );
-        console.log(`[agent] Reply sent via WhatsApp to ${customer.phone} (${replyParsed.messages.length} messages)`);
-      } else {
-        console.log(`[agent] No phone found for customer ${conversation.customerId}, reply not sent`);
-      }
-    } else {
-      console.log(`[agent] WhatsApp not connected for merchant ${conversation.merchantId}, reply not sent`);
-    }
-  } catch (err) {
-    console.error(`[agent] Failed to send reply via WhatsApp:`, err);
-  }
+  // ─── Persist + deliver assistant reply (via reply.service) ───────────
+  await deliverAssistantReply(conversation.id, replyParsed.messages);
 
   // ─── Update conversation memory ─────────────────────────────────────
   await persistMemory(conversation.id, replyMemory, sortedIntents, primaryIntent, conversationAct, finalLastProductResults, rejectedToRecord);
@@ -573,27 +536,7 @@ export const processMessage = async (messageId: string) => {
     }
 
     const fallbackReply = "Désolé, je n'ai pas bien compris votre message. Pouvez-vous réessayer par texte ou me l'envoyer à nouveau ?";
-    await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        direction: 'OUT',
-        sender: 'AI',
-        content: fallbackReply,
-        text: fallbackReply,
-        role: 'assistant',
-      },
-    });
-
-    const waSession = await prisma.whatsAppSession.findUnique({
-      where: { merchantId: conversation.merchantId },
-    });
-    if (waSession && (waSession.status === 'connected' || waSession.status === 'ready') && customer?.phone) {
-      try {
-        await openwaService.sendText(waSession.sessionId, customer.phone, fallbackReply);
-      } catch (err) {
-        console.error(`[agent] Failed to send fallback reply for ${messageId}:`, err);
-      }
-    }
+    await deliverAssistantReply(conversation.id, fallbackReply);
 
     const updatedMemory: ConversationMemory = {
       ...memory,
