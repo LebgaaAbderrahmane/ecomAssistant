@@ -10,7 +10,10 @@ import { startToolServer } from './grpc/tool.server.js';
 
 const PORT = process.env.PORT ?? 3000;
 
+
+
 app.listen(PORT, () => {
+
   console.log(`[Server] Running on port ${PORT}`);
   console.log(`[EmailWorker] Listening for email jobs`);
 });

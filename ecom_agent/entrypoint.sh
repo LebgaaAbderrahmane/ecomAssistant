@@ -20,9 +20,6 @@ echo "[ecom_agent] REDIS_URL=${REDIS_URL:-redis://redis:6379}"
 echo "[ecom_agent] OPENWA_URL=${OPENWA_URL:-http://openwa:2785}"
 echo "[ecom_agent] GROQ_API_KEY=${GROQ_API_KEY:+<set>} GOOGLE_API_KEY=${GOOGLE_API_KEY:+<set>} LANGSMITH_API_KEY=${LANGSMITH_API_KEY:+<set>}"
 
-# M1 placeholder: keep the container healthy until Task 4 boots the
-# AgentService gRPC server.
-#
 # Task 4: boot the AgentService gRPC server (Health + ProcessMessage).
 echo "[ecom_agent] starting AgentService gRPC server"
 exec python -m server
