@@ -3,7 +3,7 @@ import * as grpc from '@grpc/grpc-js';
 import { join } from 'node:path';
 import { config } from '../src/config/index.js';
 import { loaderOptions, PROTO_ROOT } from '../src/grpc/proto.js';
-import { agentHealth, closeAgentClient, createAgentClient } from '../src/grpc/agent.client.js';
+import { agentHealth, agentProcessMessage, closeAgentClient, createAgentClient } from '../src/grpc/agent.client.js';
 
 interface ToolHealthResponse {
   status: string;
@@ -27,6 +27,27 @@ async function checkBackToAgent(): Promise<boolean> {
   try {
     const health = await withTimeout(agentHealth(client), 5000, 'back -> agent');
     return health.status === 'STATUS_SERVING';
+  } finally {
+    closeAgentClient(client);
+  }
+}
+
+const FALLBACK_REPLY = 'Bonjour, comment puis-je vous aider ?';
+
+async function checkProcessMessageRoundTrip(): Promise<boolean> {
+  const client = createAgentClient();
+  try {
+    const response = await withTimeout(
+      agentProcessMessage(client, {
+        messageId: 'grpc-check-no-such-message',
+        conversationId: 'grpc-check',
+        merchantId: 'grpc-check',
+        customerId: 'grpc-check',
+      }),
+      5000,
+      'back -> agent ProcessMessage'
+    );
+    return response.decision === 'DECISION_REPLY' && response.text === FALLBACK_REPLY;
   } finally {
     closeAgentClient(client);
   }
@@ -57,7 +78,8 @@ async function checkToolService(): Promise<boolean> {
 }
 
 const checks: Array<[string, () => Promise<boolean>]> = [
-  ['back -> agent  (AgentService.Health @ ' + config.agentGrpcAddr + ')', checkBackToAgent],
+  ['back -> agent  (AgentService.Health        @ ' + config.agentGrpcAddr + ')', checkBackToAgent],
+  ['back -> agent  (AgentService.ProcessMessage round trip       @ ' + config.agentGrpcAddr + ')', checkProcessMessageRoundTrip],
   ['agent -> back (ToolService.Health  @ ' + config.toolsGrpcAddr + ')', checkToolService],
 ];
 
