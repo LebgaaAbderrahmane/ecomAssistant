@@ -36,6 +36,10 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             context.set_code(grpc.StatusCode.UNAUTHENTICATED)
             context.set_details("missing or invalid INTERNAL_API_KEY")
             return agent_pb2.ProcessMessageResponse()
+        if not request.message_id:
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_details("message_id is empty")
+            return agent_pb2.ProcessMessageResponse()
         log.info(
             "ProcessMessage message=%s conversation=%s merchant=%s customer=%s",
             request.message_id,
