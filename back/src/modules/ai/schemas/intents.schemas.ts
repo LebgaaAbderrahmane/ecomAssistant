@@ -96,6 +96,14 @@ export type WriteToolName = z.infer<typeof WriteToolNameSchema>;
 export const ToolNameSchema = z.union([ReadToolNameSchema, WriteToolNameSchema]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
 
+// Internal/legacy tools: registered and executable by the backend (fallback /
+// product-recall paths) but NOT part of the agent-facing contract catalog
+// (contracts TOOL_NAMES / generated tools.json). The agent never sees or calls
+// them. The contract test enforces: TOOL_NAMES == (registry − legacy) and no
+// overlap.
+export const LEGACY_ONLY_TOOL_NAMES = ['recallPreviousProducts'] as const;
+export type LegacyOnlyToolName = (typeof LEGACY_ONLY_TOOL_NAMES)[number];
+
 /** Type guard: whether a tool is classified as READ (no business side-effects). */
 export function isReadTool(name: ToolName): name is ReadToolName {
   return ReadToolNameSchema.safeParse(name).success;

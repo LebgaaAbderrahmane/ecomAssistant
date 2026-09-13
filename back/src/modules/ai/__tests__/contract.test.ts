@@ -9,7 +9,12 @@ import {
   type ToolDescriptor,
   type ToolName,
 } from '@ecomassistant/contracts';
-import { ReadToolNameSchema, WriteToolNameSchema, toolSchemas } from '../schemas/intents.schemas';
+import {
+  ReadToolNameSchema,
+  WriteToolNameSchema,
+  toolSchemas,
+  LEGACY_ONLY_TOOL_NAMES,
+} from '../schemas/intents.schemas';
 import { TOOL_META, INJECTED_ARG_NAMES } from '../tools/toolMeta';
 
 const INJECTED = new Set<string>(INJECTED_ARG_NAMES);
@@ -73,10 +78,23 @@ function objectSchemaKeys(name: ToolName): string[] {
 // ─── Tests ────────────────────────────────────────────────────────────────
 
 describe('contracts package vs backend registry', () => {
-  it('every registry tool is declared in contracts (registry surface ≡ contracts)', () => {
-    const registered = [...ReadToolNameSchema.options, ...WriteToolNameSchema.options];
-    assert.deepEqual([...TOOL_NAMES].sort(), [...registered].sort(), 'registry names and contracts TOOL_NAMES must agree');
-    assert.deepEqual(Object.keys(toolSchemas).sort(), [...TOOL_NAMES].sort(), 'toolSchemas keys and contracts TOOL_NAMES must agree');
+  it('contracts surface ≡ registry minus legacy-only tools', () => {
+    const contracted: string[] = [...TOOL_NAMES];
+    const legacy: string[] = [...LEGACY_ONLY_TOOL_NAMES];
+
+    // No legacy tool may masquerade as agent-facing.
+    const overlap = contracted.filter((t) => legacy.includes(t));
+    assert.deepEqual(overlap, [], 'legacy-only tools must not appear in contracts TOOL_NAMES');
+
+    const registered: string[] = [...ReadToolNameSchema.options, ...WriteToolNameSchema.options];
+    // Every contracted tool is registered...
+    const missingFromRegistry = contracted.filter((t) => !registered.includes(t));
+    assert.deepEqual(missingFromRegistry, [], 'contracts tools missing from the backend registry');
+    // ...and every registered tool is either contracted or explicitly legacy-only.
+    const unclassified = registered.filter((t) => !contracted.includes(t) && !legacy.includes(t));
+    assert.deepEqual(unclassified, [], 'registered tools must be contracted or legacy-only, not both/neither');
+
+    assert.deepEqual(Object.keys(toolSchemas).sort(), registered.sort(), 'toolSchemas keys must match the registry enums');
   });
 
   it('generated tools.json covers TOOL_NAMES exactly, in canonical order', () => {

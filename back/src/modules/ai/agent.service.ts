@@ -3,8 +3,9 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField, type ToolName } from './schemas/intents.schemas';
+import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField, type ToolName, type ReadToolName } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
+import { READ_TOOL_TRANSITIONS } from './conversationState';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
 import type { IntentItem } from './schemas/ai.schemas';
@@ -307,6 +308,27 @@ async function resolveBareProductReference(
   return {};
 }
 
+// READ tools are pure: the transport owns their conversation navigation. After
+// a successful READ-tool run the transport applies the tool's transition
+// (search/recall/suggest -> PRODUCT_DISCOVERY; chooseProduct/getProductDetails
+// -> PRODUCT_SELECTED + currentProductId from the result) — handlers never
+// touch the conversation row.
+async function applyReadToolState(
+  conversationId: string,
+  toolName: ToolName,
+  result: ToolResult,
+): Promise<void> {
+  if (!result.success) return;
+  const transition = READ_TOOL_TRANSITIONS[toolName as ReadToolName];
+  if (!transition) return;
+  const data: Prisma.ConversationUpdateInput = { state: transition };
+  const productId = result.data?.productId;
+  if (typeof productId === 'string') {
+    data.currentProductId = productId;
+  }
+  await prisma.conversation.update({ where: { id: conversationId }, data });
+}
+
 async function executeTools(
   messageId: string,
   sortedIntents: IntentItem[],
@@ -442,6 +464,11 @@ async function executeTools(
     }
     toolResultCache.set(toolKey, result);
 
+    // READ tools are pure — the transport applies their navigation state after
+    // a successful run (transition + currentProductId when the tool tracked a
+    // product).
+    await applyReadToolState(conversation.id, toolName, result);
+
     // A product search that came back empty or too vague must not leave stale
     // results behind — and must not trigger any further search for the same item.
     if (
@@ -519,6 +546,7 @@ async function executeTools(
         result = { success: false, error: 'Tool execution failed' };
       }
       toolResultCache.set(toolKey, result);
+      await applyReadToolState(conversation.id, 'suggestProducts', result);
     }
 
     toolResults.push({ intent: intentToString(item.intent), result });

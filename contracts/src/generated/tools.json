@@ -21,24 +21,6 @@
       ]
     },
     {
-      "name": "recallPreviousProducts",
-      "description": "Recall products discussed earlier in the conversation when the customer refers to a product without naming it",
-      "args": [
-        {
-          "name": "limit",
-          "type": "integer",
-          "required": false,
-          "description": "Maximum number of products to recall"
-        },
-        {
-          "name": "productId",
-          "type": "string",
-          "required": false,
-          "description": "Id of the currently selected product to fall back on"
-        }
-      ]
-    },
-    {
       "name": "chooseProduct",
       "description": "Select a product the customer picked, by name or by its index in the last search results, and make it the active product",
       "args": [

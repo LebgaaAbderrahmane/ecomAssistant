@@ -2,7 +2,6 @@ import generatedTools from './generated/tools.json';
 
 export const TOOL_NAMES = [
   'searchProducts',
-  'recallPreviousProducts',
   'chooseProduct',
   'getProductDetails',
   'suggestProducts',

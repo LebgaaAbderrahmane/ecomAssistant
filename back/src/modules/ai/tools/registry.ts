@@ -138,10 +138,6 @@ const searchProducts: ToolHandler = async (entities) => {
   }
 
   if (resolved.outcome === 'SUCCESS') {
-    await prisma.conversation.update({
-      where: { id: parsedArgs.data.conversationId },
-      data: { state: TOOL_STATE_TRANSITIONS.searchProducts! },
-    });
     return { success: true, data: { products: formatProducts(resolved.products) } };
   }
 
@@ -440,11 +436,6 @@ const recallPreviousProducts: ToolHandler = async (entities) => {
     .map((name) => products.find((p: Product) => p.name.toLowerCase() === name.toLowerCase()))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
-  await prisma.conversation.update({
-    where: { id: parsedArgs.data.conversationId },
-    data: { state: TOOL_STATE_TRANSITIONS.recallPreviousProducts! },
-  });
-
   return {
     success: true,
     data: {
@@ -492,14 +483,10 @@ const chooseProduct: ToolHandler = async (entities) => {
     return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
   }
 
-  await prisma.conversation.update({
-    where: { id: parsedArgs.data.conversationId },
-    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.chooseProduct! },
-  });
-
   return {
     success: true,
     data: {
+      productId: product.id,
       productName: product.name,
       price: product.price,
       currency: product.currency,
@@ -535,14 +522,10 @@ const getProductDetails: ToolHandler = async (entities) => {
     return { success: false, outcome: 'NOT_FOUND', error: 'Product not found' };
   }
 
-  await prisma.conversation.update({
-    where: { id: parsedArgs.data.conversationId },
-    data: { currentProductId: product.id, state: TOOL_STATE_TRANSITIONS.getProductDetails! },
-  });
-
   return {
     success: true,
     data: {
+      productId: product.id,
       productName: product.name,
       description: product.description,
       price: product.price,
@@ -610,11 +593,6 @@ const suggestProducts: ToolHandler = async (entities) => {
       error: 'No products available to recommend right now.',
     };
   }
-
-  await prisma.conversation.update({
-    where: { id: parsedArgs.data.conversationId },
-    data: { state: TOOL_STATE_TRANSITIONS.suggestProducts! },
-  });
 
   return {
     success: true,
