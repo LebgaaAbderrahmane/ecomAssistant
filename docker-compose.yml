@@ -57,6 +57,7 @@ services:
     env_file: .env
     environment:
       AGENT_GRPC_ADDR: 0.0.0.0:50052
+      BACK_TOOLS_GRPC_ADDR: back:50051
     depends_on:
       postgres:
         condition: service_healthy

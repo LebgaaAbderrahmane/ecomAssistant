@@ -199,9 +199,9 @@ type Layer2ReplyState = {
 //   + bare product references resolved from conversation memory before
 //     searchProducts, so a tool never reads memory/state or the customer
 //     record itself.
-type InjectedToolEntities = Record<string, string | number | boolean | null>;
+export type InjectedToolEntities = Record<string, string | number | boolean | null>;
 
-interface ToolSourceContext {
+export interface ToolSourceContext {
   conversation: {
     id: string;
     merchantId: string;
@@ -220,7 +220,7 @@ interface ToolSourceContext {
 // native keys the tools read — no `currentOrderId`/`currentProductId`/
 // `customerWilaya` context keys are passed (the confirmOrder implicit-
 // confirmation gate is the one exception, via `currentOrderId`).
-function buildToolEntities(
+export function buildToolEntities(
   toolName: ToolName,
   entities: InjectedToolEntities,
   source: ToolSourceContext,
@@ -313,7 +313,7 @@ async function resolveBareProductReference(
 // (search/recall/suggest -> PRODUCT_DISCOVERY; chooseProduct/getProductDetails
 // -> PRODUCT_SELECTED + currentProductId from the result) — handlers never
 // touch the conversation row.
-async function applyReadToolState(
+export async function applyReadToolState(
   conversationId: string,
   toolName: ToolName,
   result: ToolResult,
