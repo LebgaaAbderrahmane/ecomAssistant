@@ -1,4 +1,5 @@
 import type { Product } from '@prisma/client';
+import type { z } from 'zod';
 import type { ReadToolName, WriteToolName, ToolName } from '../schemas/intents.schemas';
 import prisma from '../../../config/db.config';
 import {
@@ -912,12 +913,35 @@ export const toolRegistry: Record<ToolName, ToolHandler> = {
   ...writeToolRegistry,
 };
 
+// Central validation map. executeTool validates `entities` against the tool's
+// schema — the single authoritative check — before dispatch. Handlers receive
+// ONLY explicit params: no context, no memory/state reads.
+export const toolSchemas: Record<ToolName, z.ZodType<unknown>> = {
+  searchProducts: SearchProductsArgsSchema,
+  recallPreviousProducts: RecallPreviousProductsArgsSchema,
+  chooseProduct: ChooseProductArgsSchema,
+  getProductDetails: GetProductDetailsArgsSchema,
+  suggestProducts: SuggestProductsArgsSchema,
+  createOrder: CreateOrderArgsSchema,
+  confirmOrder: ConfirmOrderArgsSchema,
+  modifyOrder: ModifyOrderArgsSchema,
+  cancelOrder: CancelOrderArgsSchema,
+  calculateShipping: CalculateShippingArgsSchema,
+  getOrderStatus: GetOrderStatusArgsSchema,
+  escalateConversation: EscalateConversationArgsSchema,
+};
+
 export const executeTool = async (
   toolName: ToolName,
   entities: ToolEntities,
 ): Promise<ToolResult> => {
+  const parsed = toolSchemas[toolName].safeParse(entities);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { success: false, error: issue?.message ?? 'Invalid tool arguments' };
+  }
   try {
-    return await toolRegistry[toolName](entities);
+    return await toolRegistry[toolName](parsed.data as ToolEntities);
   } catch (err) {
     console.error(`[tools] "${toolName}" threw an unexpected error`, err);
     return { success: false, error: 'Tool execution failed unexpectedly' };
