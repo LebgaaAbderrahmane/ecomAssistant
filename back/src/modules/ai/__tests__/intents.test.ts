@@ -69,6 +69,8 @@ describe('tool execution policies (read / write)', () => {
 describe('SuggestProductsArgsSchema', () => {
   it('accepts preference entities', () => {
     const parsed = SuggestProductsArgsSchema.safeParse({
+      merchantId: 'm1',
+      conversationId: 'c1',
       category: 'sneakers',
       color: 'black',
       size: '42',
@@ -83,11 +85,27 @@ describe('SuggestProductsArgsSchema', () => {
     }
   });
 
-  it('accepts an empty object (recommend with no prior context)', () => {
-    assert.equal(SuggestProductsArgsSchema.safeParse({}).success, true);
+  it('recommend with no prior context once identity is injected', () => {
+    const parsed = SuggestProductsArgsSchema.safeParse({
+      merchantId: 'm1',
+      conversationId: 'c1',
+    });
+    assert.equal(parsed.success, true);
+  });
+
+  it('rejects a bare object without the injected identity', () => {
+    assert.equal(SuggestProductsArgsSchema.safeParse({}).success, false);
+    assert.equal(SuggestProductsArgsSchema.safeParse({ merchantId: 'm1' }).success, false);
+    assert.equal(
+      SuggestProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1' }).success,
+      true,
+    );
   });
 
   it('rejects negative prices', () => {
-    assert.equal(SuggestProductsArgsSchema.safeParse({ maxPrice: -5 }).success, false);
+    assert.equal(
+      SuggestProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', maxPrice: -5 }).success,
+      false,
+    );
   });
 });

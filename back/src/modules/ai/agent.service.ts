@@ -189,6 +189,40 @@ type Layer2ReplyState = {
 // plus the memory state the reply needs. `opts.only` restricts which tools run:
 // during human takeover, write tools execute immediately while read tools are
 // deferred and handled separately.
+//
+// Tools receive ONLY explicit params. Identity (merchantId/customerId/
+// conversationId) and previously-contextual values (current order/product,
+// customer address, conversation state, memory) are INJECTED here — the legacy
+// transport — and merged into the LLM-derived entities before each call, so a
+// tool never reads memory/state itself.
+type InjectedToolEntities = Record<string, string | number | boolean | null>;
+
+function buildInjectedToolEntities(
+  conversation: {
+    id: string;
+    merchantId: string;
+    customerId: string;
+    currentOrderId: string | null;
+    currentProductId: string | null;
+    state: string;
+  },
+  customer: { wilaya: string | null; commune: string | null },
+  memory: ConversationMemory,
+): InjectedToolEntities {
+  return {
+    merchantId: conversation.merchantId,
+    customerId: conversation.customerId,
+    conversationId: conversation.id,
+    currentOrderId: conversation.currentOrderId,
+    currentProductId: conversation.currentProductId ?? null,
+    customerWilaya: customer.wilaya,
+    customerCommune: customer.commune,
+    conversationState: conversation.state,
+    memory: JSON.stringify(memory),
+    lastProductResults: JSON.stringify(memory.lastProductResults ?? []),
+  };
+}
+
 async function executeTools(
   messageId: string,
   sortedIntents: IntentItem[],
@@ -205,16 +239,7 @@ async function executeTools(
     where: { id: conversation.customerId },
   });
 
-  const executionContext = {
-    merchantId: conversation.merchantId,
-    customerId: conversation.customerId,
-    conversationId: conversation.id,
-    currentOrderId: conversation.currentOrderId,
-    currentProductId: conversation.currentProductId ?? null,
-    lastProductResults: memory.lastProductResults,
-    customerWilaya: customer.wilaya,
-    customerCommune: customer.commune,
-  };
+  const injectedEntities = buildInjectedToolEntities(conversation, customer, memory);
 
   const intents = opts.only
     ? sortedIntents.filter((item) => {
@@ -300,9 +325,19 @@ async function executeTools(
     }
 
     // Execute tool with per-intent error handling
+    let toolEntities: InjectedToolEntities = { ...entities, ...injectedEntities };
+    // confirmOrder gates implicit confirmation on the LIVE conversation state —
+    // inject it freshly rather than the turn-start snapshot for exact parity.
+    if (toolName === 'confirmOrder') {
+      const freshState = await prisma.conversation.findUnique({
+        where: { id: conversation.id },
+        select: { state: true },
+      });
+      toolEntities = { ...toolEntities, conversationState: freshState?.state ?? null };
+    }
     let result: ToolResult;
     try {
-      result = await executeTool(toolName, entities, executionContext);
+      result = await executeTool(toolName, toolEntities);
       console.log(`[agent] tool "${toolName}" (intent=${intentToString(item.intent)}) ->`, result);
     } catch (err) {
       console.error(`[agent] tool "${toolName}" failed for intent ${intentToString(item.intent)}`, err);
@@ -343,7 +378,7 @@ async function executeTools(
       });
 
       lastProductResults = productsList;
-      executionContext.lastProductResults = productsList;
+      injectedEntities.lastProductResults = JSON.stringify(productsList);
       searchSucceededThisMessage = true;
       resultsStoredThisMessage = true;
       console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
@@ -364,8 +399,20 @@ async function executeTools(
     if (toolResultCache.has(toolKey)) {
       result = toolResultCache.get(toolKey) as ToolResult;
     } else {
+      // suggestProducts historically read the conversation memory + current
+      // product fresh at execution time — inject the fresh values for parity.
+      const freshConversation = await prisma.conversation.findUnique({
+        where: { id: conversation.id },
+        select: { memory: true, currentProductId: true },
+      });
+      const suggestionEntities = {
+        ...injectedEntities,
+        memory: JSON.stringify((freshConversation?.memory as ConversationMemory | null) ?? {}),
+        currentProductId:
+          freshConversation?.currentProductId ?? injectedEntities.currentProductId,
+      };
       try {
-        result = await executeTool('suggestProducts', entities, executionContext);
+        result = await executeTool('suggestProducts', { ...entities, ...suggestionEntities });
         console.log(`[agent] tool "suggestProducts" (intent=${intentToString(item.intent)}) ->`, result);
       } catch (err) {
         console.error(`[agent] tool "suggestProducts" failed for intent ${intentToString(item.intent)}`, err);
@@ -392,7 +439,7 @@ async function executeTools(
       });
 
       lastProductResults = productsList;
-      executionContext.lastProductResults = productsList;
+      injectedEntities.lastProductResults = JSON.stringify(productsList);
       resultsStoredThisMessage = true;
       console.log(`[agent] ${messageId} -> stored ${productsList.length} suggested products in message entities + memory`);
     }
@@ -515,10 +562,6 @@ export const processMessage = async (messageId: string) => {
   const escalationThreshold = agentConfig?.escalationThreshold ?? 3;
 
   // --- LLM #1: intent extraction ---
-  // Fetch customer record for delivery info and WhatsApp sending
-  const customer = await prisma.customer.findUniqueOrThrow({
-    where: { id: conversation.customerId },
-  });
 
   // ─── Image category routing ─────────────────────────────────────────
   // If the message is an image, route by category before LLM #1 sees it.
@@ -616,17 +659,6 @@ export const processMessage = async (messageId: string) => {
     },
   });
 
-  const executionContext = {
-    merchantId: conversation.merchantId,
-    customerId: conversation.customerId,
-    conversationId: conversation.id,
-    currentOrderId: conversation.currentOrderId,
-    currentProductId: conversation.currentProductId ?? null,
-    lastProductResults: memory.lastProductResults,
-    customerWilaya: customer.wilaya,
-    customerCommune: customer.commune,
-  };
-
   // ─── Suggested intents: record + escalate ───────────────────────────
   // When the LLM proposes a new intent, we persist it (count +1) and hand the
   // conversation over to a human. The AI then stops: no tools, no reply.
@@ -649,7 +681,11 @@ export const processMessage = async (messageId: string) => {
     }
 
     if (!takenOver) {
-      const result = await executeTool('escalateConversation', {}, executionContext);
+      const result = await executeTool('escalateConversation', {
+        merchantId: conversation.merchantId,
+        customerId: conversation.customerId,
+        conversationId: conversation.id,
+      });
       console.log(`[agent] ${messageId} -> escalated conversation (suggested intent), tool ->`, result);
       takenOver = true;
     }

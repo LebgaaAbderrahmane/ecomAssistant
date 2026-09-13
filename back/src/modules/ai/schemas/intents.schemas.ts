@@ -135,24 +135,69 @@ export function resolveTool(intent: IntentField, entities: Record<string, unknow
 }
 
 // ─── Tool argument schemas ──────────────────────────────────────────────
+// Each tool consumes ONLY explicit params. Identity (merchantId/customerId/
+// conversationId) and previously-stateful values (currentOrderId,
+// currentProductId, customer address, conversation state, memory) are INJECTED
+// by the transport (the legacy pipeline today, the gRPC ToolService later), not
+// read by the tool from a context object. The tool never looks at memory/state
+// or the customer record itself.
+//
+// Injected identity keys — required wherever a tool needs the scope:
+//   merchantId      — every tool (merchant-scoped reads/writes).
+//   customerId      — order/customer-scoped tools.
+//   conversationId  — tools that read or write the conversation row
+//                     (all write tools; navigation read tools).
+// Injected state keys — optional, transport-supplied:
+//   currentOrderId / currentProductId — previously ctx.currentOrderId/…ProductId.
+//   customerWilaya / customerCommune   — previously ctx.customerWilaya/…Commune.
+//   conversationState                  — previously a live conversation.state read.
+//   memory / lastProductResults        — previously a conversation.memory read
+//                     (JSON-encoded: params are scalar-only).
+
+const InjectedMerchantId = { merchantId: z.string().min(1) };
+const InjectedCustomerId = { customerId: z.string().min(1) };
+const InjectedConversationId = { conversationId: z.string().min(1) };
+const InjectedCurrentOrderId = { currentOrderId: z.string().nullable().optional() };
+const InjectedCurrentProductId = { currentProductId: z.string().nullable().optional() };
+const InjectedCustomerAddress = {
+  customerWilaya: z.string().nullable().optional(),
+  customerCommune: z.string().nullable().optional(),
+};
+const InjectedConversationState = { conversationState: z.string().nullable().optional() };
+const InjectedMemory = { memory: z.string().optional() };
+const InjectedLastProductResults = { lastProductResults: z.string().optional() };
 
 export const SearchProductsArgsSchema = z.object({
   product: z.string().min(1),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedLastProductResults,
+  ...InjectedCurrentProductId,
 });
 
 export const RecallPreviousProductsArgsSchema = z.object({
   limit: z.number().int().positive().max(10).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedLastProductResults,
+  ...InjectedCurrentProductId,
 });
 
 export const ChooseProductArgsSchema = z.object({
   productName: z.string().min(1).optional(),
   productIndex: z.number().int().min(0).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedLastProductResults,
 }).refine(data => data.productName || data.productIndex !== undefined, {
   message: 'Either productName or productIndex is required',
 });
 
 export const GetProductDetailsArgsSchema = z.object({
   productName: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedCurrentProductId,
 });
 
 export const SuggestProductsArgsSchema = z.object({
@@ -162,6 +207,10 @@ export const SuggestProductsArgsSchema = z.object({
   minPrice: z.number().min(0).optional(),
   maxPrice: z.number().min(0).optional(),
   preferences: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedMemory,
+  ...InjectedCurrentProductId,
 });
 
 export const CreateOrderArgsSchema = z.object({
@@ -170,6 +219,11 @@ export const CreateOrderArgsSchema = z.object({
   wilaya: z.string().min(1).optional(),
   commune: z.string().min(1),
   quantity: z.number().int().positive().default(1),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
+  ...InjectedCustomerAddress,
+  ...InjectedCurrentProductId,
 }).refine(data => data.productId || data.product, {
   message: 'Either productId or product name is required',
 });
@@ -177,12 +231,20 @@ export const CreateOrderArgsSchema = z.object({
 export const ConfirmOrderArgsSchema = z.object({
   orderId: z.string().min(1).optional(),
   productName: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
+  ...InjectedCurrentOrderId,
+  ...InjectedConversationState,
 });
 
 export const ModifyOrderArgsSchema = z.object({
   wilaya: z.string().min(1).optional(),
   commune: z.string().min(1).optional(),
   quantity: z.number().int().positive().optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedCurrentOrderId,
 }).refine(
   data => data.wilaya !== undefined || data.commune !== undefined || data.quantity !== undefined,
   { message: 'At least one of wilaya, commune, or quantity must be provided' },
@@ -191,12 +253,26 @@ export const ModifyOrderArgsSchema = z.object({
 export const CancelOrderArgsSchema = z.object({
   orderId: z.string().optional(),
   productName: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
+  ...InjectedCurrentOrderId,
 });
 
 export const CalculateShippingArgsSchema = z.object({
   wilaya: z.string().min(1),
+  ...InjectedMerchantId,
 });
 
 export const GetOrderStatusArgsSchema = z.object({
   orderId: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedCurrentOrderId,
+});
+
+export const EscalateConversationArgsSchema = z.object({
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
 });
