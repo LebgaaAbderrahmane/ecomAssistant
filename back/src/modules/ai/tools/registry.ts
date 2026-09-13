@@ -115,19 +115,27 @@ const searchProducts: ToolHandler = async (entities) => {
   }
   const query = parsedArgs.data.product;
 
-  // Resolve against explicitly injected conversation context first, then the
-  // catalog. The result distinguishes a resolved product (from injected memory
-  // or the current product) from a concrete query that is authoritatively
-  // absent (NOT_FOUND) and a bare reference that no context can resolve
-  // (AMBIGUOUS — ask the customer, don't guess). Context arrives via injected
-  // params — the tool never reads memory/state itself.
+  // The transport resolves bare references from memory and injects an explicit
+  // productId; a product name here is a concrete catalog query. The result
+  // distinguishes a resolved product (from injected memory/productId) from a
+  // concrete query that is authoritatively absent (NOT_FOUND) and a bare
+  // reference that no context can resolve (AMBIGUOUS — ask the customer, don't
+  // guess). Context arrives via injected params — the tool never reads
+  // memory/state itself.
   const context: ProductContext = {
     lastProductResults: parseOptionalJson<Array<{ id: string; name: string }>>(
       parsedArgs.data.lastProductResults,
     ),
-    currentProductId: parsedArgs.data.currentProductId,
   };
-  const resolved = await resolveProductRequest(query, context, parsedArgs.data.merchantId);
+  let resolved;
+  if (parsedArgs.data.productId) {
+    const products = await fetchProductsByIds(parsedArgs.data.merchantId, [parsedArgs.data.productId]);
+    resolved = products.length
+      ? { outcome: 'SUCCESS' as const, products, source: 'memory' as const }
+      : { outcome: 'NOT_FOUND' as const, query: parsedArgs.data.product ?? '' };
+  } else {
+    resolved = await resolveProductRequest(query, context, parsedArgs.data.merchantId);
+  }
 
   if (resolved.outcome === 'SUCCESS') {
     await prisma.conversation.update({
@@ -159,7 +167,7 @@ const getOrderStatus: ToolHandler = async (entities) => {
   if (!parsedArgs.success) {
     return { success: false, error: 'No order provided to check status for' };
   }
-  const orderId = parsedArgs.data.currentOrderId ?? parsedArgs.data.orderId;
+  const orderId = parsedArgs.data.orderId;
 
   if (!orderId) {
     return { success: false, error: 'No order in context to check status for' };
@@ -288,10 +296,7 @@ const cancelOrder: ToolHandler = async (entities) => {
     return { success: false, error: 'Missing order cancellation parameters' };
   }
 
-  let orderId = parsedArgs.data.currentOrderId ?? undefined;
-  if (!orderId && parsedArgs.data.orderId) {
-    orderId = parsedArgs.data.orderId;
-  }
+  let orderId = parsedArgs.data.orderId ?? undefined;
   if (!orderId && parsedArgs.data.productName) {
     const order = await prisma.order.findFirst({
       where: {
@@ -372,12 +377,13 @@ const recallPreviousProducts: ToolHandler = async (entities) => {
 
   // The customer references a product without naming it ("the black one",
   // "hadak"). Resolve from injected conversation context (lastProductResults or
-  // currentProductId) first.
+  // the injected productId — the transport materializes the current product)
+  // first.
   const context: ProductContext = {
     lastProductResults: parseOptionalJson<Array<{ id: string; name: string }>>(
       parsedArgs.data.lastProductResults,
     ),
-    currentProductId: parsedArgs.data.currentProductId,
+    currentProductId: parsedArgs.data.productId,
   };
   const fromContext = await resolveProductRequest(undefined, context, parsedArgs.data.merchantId);
   if (fromContext.outcome === 'SUCCESS') {
@@ -519,9 +525,9 @@ const getProductDetails: ToolHandler = async (entities) => {
         name: { contains: productName, mode: 'insensitive' },
       },
     });
-  } else if (parsedArgs.data.currentProductId) {
+  } else if (parsedArgs.data.productId) {
     product = await prisma.product.findFirst({
-      where: { id: parsedArgs.data.currentProductId, merchantId: parsedArgs.data.merchantId },
+      where: { id: parsedArgs.data.productId, merchantId: parsedArgs.data.merchantId },
     });
   }
 
@@ -560,7 +566,7 @@ const suggestProducts: ToolHandler = async (entities) => {
     parseOptionalJson<ConversationMemory>(parsedArgs.data.memory) ?? ({} as ConversationMemory);
 
   const prefs = consolidatePreferences(messagePrefs as never as PreferenceEntities, memory);
-  const excludeIds = computeExclusionIds(memory, parsedArgs.data.currentProductId);
+  const excludeIds = computeExclusionIds(memory, parsedArgs.data.productId);
 
   const hasPreferences =
     prefs.terms.length > 0 ||
@@ -623,10 +629,7 @@ const createOrder: ToolHandler = async (entities) => {
     return { success: false, error: `Missing required fields: ${missing}` };
   }
 
-  const { productId, product: productName, quantity } = parsedArgs.data;
-
-  // Auto-fill wilaya from the injected saved customer delivery info if not provided
-  const wilaya = parsedArgs.data.wilaya ?? parsedArgs.data.customerWilaya ?? undefined;
+  const { productId, product: productName, quantity, wilaya } = parsedArgs.data;
   const communeInput = parsedArgs.data.commune;
 
   if (!wilaya) {
@@ -659,11 +662,6 @@ const createOrder: ToolHandler = async (entities) => {
   if (!product && productName) {
     product = await prisma.product.findFirst({
       where: { merchantId: parsedArgs.data.merchantId, name: { contains: productName, mode: 'insensitive' } },
-    });
-  }
-  if (!product && parsedArgs.data.currentProductId) {
-    product = await prisma.product.findFirst({
-      where: { id: parsedArgs.data.currentProductId, merchantId: parsedArgs.data.merchantId },
     });
   }
   if (!product) {
@@ -734,13 +732,13 @@ const modifyOrder: ToolHandler = async (entities) => {
     return { success: false, error: 'No fields provided to modify' };
   }
 
-  if (!parsedArgs.data.currentOrderId) {
+  if (!parsedArgs.data.orderId) {
     return { success: false, error: 'No pending order in context to update' };
   }
 
   const order = await prisma.order.findFirst({
     where: {
-      id: parsedArgs.data.currentOrderId,
+      id: parsedArgs.data.orderId,
       merchantId: parsedArgs.data.merchantId,
       customerId: parsedArgs.data.customerId,
       status: 'PENDING',

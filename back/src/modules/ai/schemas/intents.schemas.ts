@@ -136,43 +136,47 @@ export function resolveTool(intent: IntentField, entities: Record<string, unknow
 
 // ─── Tool argument schemas ──────────────────────────────────────────────
 // Each tool consumes ONLY explicit params. Identity (merchantId/customerId/
-// conversationId) and previously-stateful values (currentOrderId,
-// currentProductId, customer address, conversation state, memory) are INJECTED
-// by the transport (the legacy pipeline today, the gRPC ToolService later), not
-// read by the tool from a context object. The tool never looks at memory/state
-// or the customer record itself.
+// conversationId) and previously-stateful context (current order/product,
+// customer address, conversation memory/state) are MATERIALIZED into explicit
+// native keys by the transport (the legacy pipeline today, the gRPC ToolService
+// later), not read by the tool from a context object. The tool never looks at
+// memory/state or the customer record itself.
 //
 // Injected identity keys — required wherever a tool needs the scope:
 //   merchantId      — every tool (merchant-scoped reads/writes).
 //   customerId      — order/customer-scoped tools.
 //   conversationId  — tools that read or write the conversation row
 //                     (all write tools; navigation read tools).
-// Injected state keys — optional, transport-supplied:
-//   currentOrderId / currentProductId — previously ctx.currentOrderId/…ProductId.
-//   customerWilaya / customerCommune   — previously ctx.customerWilaya/…Commune.
-//   conversationState                  — previously a live conversation.state read.
-//   memory / lastProductResults        — previously a conversation.memory read
-//                     (JSON-encoded: params are scalar-only).
+// Injected state keys — optional, transport-supplied; the transport (legacy
+// pipeline today, gRPC ToolService later) MATERIALIZES previously-implicit
+// context into explicit native params:
+//   orderId   — from conversation.currentOrderId (order tools).
+//   productId — from conversation.currentProductId and/or resolved bare
+//               references from conversation memory (product tools).
+//   wilaya / commune — from the customer record's saved delivery info.
+//   conversationState — a live conversation.state read (confirmOrder only).
+//   memory / lastProductResults — a conversation.memory read (JSON-encoded:
+//                     params are scalar-only; used by suggestProducts and the
+//                     product-navigation tools).
 
 const InjectedMerchantId = { merchantId: z.string().min(1) };
 const InjectedCustomerId = { customerId: z.string().min(1) };
 const InjectedConversationId = { conversationId: z.string().min(1) };
 const InjectedCurrentOrderId = { currentOrderId: z.string().nullable().optional() };
-const InjectedCurrentProductId = { currentProductId: z.string().nullable().optional() };
-const InjectedCustomerAddress = {
-  customerWilaya: z.string().nullable().optional(),
-  customerCommune: z.string().nullable().optional(),
-};
+const InjectedProductId = { productId: z.string().optional() };
+const InjectedOrderId = { orderId: z.string().optional() };
 const InjectedConversationState = { conversationState: z.string().nullable().optional() };
 const InjectedMemory = { memory: z.string().optional() };
 const InjectedLastProductResults = { lastProductResults: z.string().optional() };
 
 export const SearchProductsArgsSchema = z.object({
-  product: z.string().min(1),
+  product: z.string().min(1).optional(),
   ...InjectedMerchantId,
   ...InjectedConversationId,
   ...InjectedLastProductResults,
-  ...InjectedCurrentProductId,
+  ...InjectedProductId,
+}).refine(data => data.product !== undefined || data.productId !== undefined, {
+  message: 'Either a product name (product) or an explicit productId is required',
 });
 
 export const RecallPreviousProductsArgsSchema = z.object({
@@ -180,7 +184,7 @@ export const RecallPreviousProductsArgsSchema = z.object({
   ...InjectedMerchantId,
   ...InjectedConversationId,
   ...InjectedLastProductResults,
-  ...InjectedCurrentProductId,
+  ...InjectedProductId,
 });
 
 export const ChooseProductArgsSchema = z.object({
@@ -197,7 +201,7 @@ export const GetProductDetailsArgsSchema = z.object({
   productName: z.string().min(1).optional(),
   ...InjectedMerchantId,
   ...InjectedConversationId,
-  ...InjectedCurrentProductId,
+  ...InjectedProductId,
 });
 
 export const SuggestProductsArgsSchema = z.object({
@@ -210,7 +214,7 @@ export const SuggestProductsArgsSchema = z.object({
   ...InjectedMerchantId,
   ...InjectedConversationId,
   ...InjectedMemory,
-  ...InjectedCurrentProductId,
+  ...InjectedProductId,
 });
 
 export const CreateOrderArgsSchema = z.object({
@@ -222,8 +226,6 @@ export const CreateOrderArgsSchema = z.object({
   ...InjectedMerchantId,
   ...InjectedCustomerId,
   ...InjectedConversationId,
-  ...InjectedCustomerAddress,
-  ...InjectedCurrentProductId,
 }).refine(data => data.productId || data.product, {
   message: 'Either productId or product name is required',
 });
@@ -244,7 +246,7 @@ export const ModifyOrderArgsSchema = z.object({
   quantity: z.number().int().positive().optional(),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
-  ...InjectedCurrentOrderId,
+  ...InjectedOrderId,
 }).refine(
   data => data.wilaya !== undefined || data.commune !== undefined || data.quantity !== undefined,
   { message: 'At least one of wilaya, commune, or quantity must be provided' },
@@ -256,7 +258,6 @@ export const CancelOrderArgsSchema = z.object({
   ...InjectedMerchantId,
   ...InjectedCustomerId,
   ...InjectedConversationId,
-  ...InjectedCurrentOrderId,
 });
 
 export const CalculateShippingArgsSchema = z.object({
@@ -268,7 +269,6 @@ export const GetOrderStatusArgsSchema = z.object({
   orderId: z.string().min(1).optional(),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
-  ...InjectedCurrentOrderId,
 });
 
 export const EscalateConversationArgsSchema = z.object({

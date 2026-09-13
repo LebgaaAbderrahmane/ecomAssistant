@@ -61,29 +61,27 @@ describe('tool schemas: injected identity contract (M6-1)', () => {
     }
   });
 
-  it('modifyOrder injects currentOrderId transport-style', () => {
+  it('modifyOrder receives the current order via orderId', () => {
     assert.ok(!(ModifyOrderArgsSchema.safeParse({ quantity: 2 }).success), 'must reject without identity');
     const injected = ModifyOrderArgsSchema.safeParse({
       merchantId: 'm1',
       customerId: 'c1',
       quantity: 2,
-      currentOrderId: 'ord_1',
+      orderId: 'ord_1',
     });
     assert.equal(injected.success, true);
+    assert.ok(injected.success && injected.data.orderId === 'ord_1');
   });
 
-  it('escalateConversation is purely transport-injected identity', () => {
-    const paths = failedPaths(EscalateConversationArgsSchema, {});
-    assert.deepEqual(new Set(paths), new Set(['merchantId', 'customerId', 'conversationId']));
-    const parsed = EscalateConversationArgsSchema.safeParse({
-      merchantId: 'm1',
-      customerId: 'c1',
-      conversationId: 'conv_1',
-    });
-    assert.equal(parsed.success, true);
+  it('searchProducts accepts either product name or injected productId', () => {
+    const byName = SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', product: 'iphone' });
+    const byId = SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', productId: 'prod_1' });
+    assert.equal(byName.success, true);
+    assert.equal(byId.success, true);
+    assert.equal(SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1' }).success, false);
   });
 
-  it('confirmOrder accepts injected currentOrderId + conversationState', () => {
+  it('confirmOrder keeps the implicit-confirmation keys (currentOrderId + conversationState)', () => {
     const parsed = ConfirmOrderArgsSchema.safeParse({
       merchantId: 'm1',
       customerId: 'c1',
@@ -98,12 +96,23 @@ describe('tool schemas: injected identity contract (M6-1)', () => {
     }
   });
 
-  it('suggestProducts accepts injected memory + currentProductId', () => {
+  it('escalateConversation is purely transport-injected identity', () => {
+    const paths = failedPaths(EscalateConversationArgsSchema, {});
+    assert.deepEqual(new Set(paths), new Set(['merchantId', 'customerId', 'conversationId']));
+    const parsed = EscalateConversationArgsSchema.safeParse({
+      merchantId: 'm1',
+      customerId: 'c1',
+      conversationId: 'conv_1',
+    });
+    assert.equal(parsed.success, true);
+  });
+
+  it('suggestProducts accepts injected memory + productId', () => {
     const parsed = SuggestProductsArgsSchema.safeParse({
       merchantId: 'm1',
       conversationId: 'conv_1',
       memory: JSON.stringify({ lastProductResults: [] }),
-      currentProductId: 'prod_1',
+      productId: 'prod_1',
     });
     assert.equal(parsed.success, true);
   });

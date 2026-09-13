@@ -3,7 +3,7 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField } from './schemas/intents.schemas';
+import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField, type ToolName } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
@@ -190,14 +190,17 @@ type Layer2ReplyState = {
 // during human takeover, write tools execute immediately while read tools are
 // deferred and handled separately.
 //
-// Tools receive ONLY explicit params. Identity (merchantId/customerId/
-// conversationId) and previously-contextual values (current order/product,
-// customer address, conversation state, memory) are INJECTED here — the legacy
-// transport — and merged into the LLM-derived entities before each call, so a
-// tool never reads memory/state itself.
+// Tools receive ONLY explicit params. The transport MATERIALIZES the
+// previously-implicit values into explicit entities before each call:
+//   orderId       ← conversation.currentOrderId   (order scoping tools)
+//   productId     ← conversation.currentProductId (product tools)
+//   wilaya/commune← customer.wilaya/commune       (delivery tools)
+//   + bare product references resolved from conversation memory before
+//     searchProducts, so a tool never reads memory/state or the customer
+//     record itself.
 type InjectedToolEntities = Record<string, string | number | boolean | null>;
 
-function buildInjectedToolEntities(
+interface ToolSourceContext {
   conversation: {
     id: string;
     merchantId: string;
@@ -205,22 +208,103 @@ function buildInjectedToolEntities(
     currentOrderId: string | null;
     currentProductId: string | null;
     state: string;
-  },
-  customer: { wilaya: string | null; commune: string | null },
-  memory: ConversationMemory,
+  };
+  customer: { wilaya: string | null; commune: string | null };
+  memory: ConversationMemory;
+}
+
+// Construct the explicit entities a tool consumes: LLM-derived entities +
+// injected identity + materialized legacy context (current order/product,
+// saved customer address). `orderId`/`productId`/`wilaya`/`commune` are the
+// native keys the tools read — no `currentOrderId`/`currentProductId`/
+// `customerWilaya` context keys are passed (the confirmOrder implicit-
+// confirmation gate is the one exception, via `currentOrderId`).
+function buildToolEntities(
+  toolName: ToolName,
+  entities: InjectedToolEntities,
+  source: ToolSourceContext,
+  opts: { lastProductResults?: ConversationMemory['lastProductResults'] } = {},
 ): InjectedToolEntities {
-  return {
+  const { conversation, customer } = source;
+  const toolEntities: InjectedToolEntities = {
+    ...entities,
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
     conversationId: conversation.id,
-    currentOrderId: conversation.currentOrderId,
-    currentProductId: conversation.currentProductId ?? null,
-    customerWilaya: customer.wilaya,
-    customerCommune: customer.commune,
+    memory: JSON.stringify(source.memory),
+    lastProductResults: JSON.stringify(opts.lastProductResults ?? source.memory.lastProductResults ?? []),
     conversationState: conversation.state,
-    memory: JSON.stringify(memory),
-    lastProductResults: JSON.stringify(memory.lastProductResults ?? []),
   };
+
+  switch (toolName) {
+    case 'confirmOrder':
+      // The implicit-confirmation gate distinguishes an order the customer
+      // names explicitly (orderId/productName, confirmable) from the current
+      // order (currentOrderId, confirmable only while WAITING_CONFIRMATION).
+      // The LIVE conversationState is injected right before dispatch.
+      if (conversation.currentOrderId) {
+        toolEntities.currentOrderId = conversation.currentOrderId;
+      }
+      break;
+
+    case 'cancelOrder':
+    case 'getOrderStatus':
+    case 'modifyOrder':
+      if (!toolEntities.orderId && conversation.currentOrderId) {
+        toolEntities.orderId = conversation.currentOrderId;
+      }
+      break;
+
+    case 'getProductDetails':
+    case 'recallPreviousProducts':
+    case 'suggestProducts':
+    case 'createOrder':
+      if (!toolEntities.productId && conversation.currentProductId) {
+        toolEntities.productId = conversation.currentProductId;
+      }
+      break;
+
+    default:
+      break;
+  }
+
+  if (toolName === 'createOrder' || toolName === 'calculateShipping' || toolName === 'modifyOrder') {
+    if (!toolEntities.wilaya && customer.wilaya) {
+      toolEntities.wilaya = customer.wilaya;
+    }
+    if (toolName === 'createOrder' && !toolEntities.commune && customer.commune) {
+      toolEntities.commune = customer.commune;
+    }
+  }
+
+  return toolEntities;
+}
+
+// Resolve a bare product reference ("the black one", "hadak", the sole product
+// from the previous search, the currently selected product) into an explicit
+// productId drawn from conversation memory — BEFORE searchProducts sees it. A
+// concrete product name with no memory counterpart is left untouched: the tool
+// resolves it against the catalog as before. Returns entities to merge.
+async function resolveBareProductReference(
+  entities: InjectedToolEntities,
+  source: ToolSourceContext,
+): Promise<InjectedToolEntities> {
+  const memoryProducts = source.memory.lastProductResults ?? [];
+
+  if (entities.productId) return { productId: entities.productId };
+
+  const name = typeof entities.product === 'string' ? entities.product.trim() : '';
+  if (name) {
+    const match = memoryProducts.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (match) return { productId: match.id, product: match.name };
+  }
+  if (memoryProducts.length === 1) {
+    return { productId: memoryProducts[0].id, product: memoryProducts[0].name };
+  }
+  if (source.conversation.currentProductId) {
+    return { productId: source.conversation.currentProductId };
+  }
+  return {};
 }
 
 async function executeTools(
@@ -239,7 +323,7 @@ async function executeTools(
     where: { id: conversation.customerId },
   });
 
-  const injectedEntities = buildInjectedToolEntities(conversation, customer, memory);
+  const source: ToolSourceContext = { conversation, customer, memory };
 
   const intents = opts.only
     ? sortedIntents.filter((item) => {
@@ -300,6 +384,16 @@ async function executeTools(
 
     // Enrich productId from product name (for intents that have a product entity)
     const entities = { ...item.entities };
+
+    // Resolve bare references ("hadak", "the black one", the sole previously
+    // offered product, the tracked current product) from conversation memory
+    // BEFORE searchProducts runs — the tool then receives an explicit productId
+    // instead of re-reading memory itself.
+    if (toolName === 'searchProducts') {
+      const bareRef = await resolveBareProductReference(entities, source);
+      Object.assign(entities, bareRef);
+    }
+
     if (entities.product && !entities.productId) {
       const resolvedId = await resolveProductId(conversation.merchantId, entities.product as string);
       if (resolvedId) {
@@ -324,8 +418,11 @@ async function executeTools(
       continue;
     }
 
-    // Execute tool with per-intent error handling
-    let toolEntities: InjectedToolEntities = { ...entities, ...injectedEntities };
+    // Build explicit tool entities (identity + materialized legacy context) and
+    // execute with per-intent error handling.
+    let toolEntities: InjectedToolEntities = buildToolEntities(toolName, entities, source, {
+      lastProductResults,
+    });
     // confirmOrder gates implicit confirmation on the LIVE conversation state —
     // inject it freshly rather than the turn-start snapshot for exact parity.
     if (toolName === 'confirmOrder') {
@@ -378,7 +475,6 @@ async function executeTools(
       });
 
       lastProductResults = productsList;
-      injectedEntities.lastProductResults = JSON.stringify(productsList);
       searchSucceededThisMessage = true;
       resultsStoredThisMessage = true;
       console.log(`[agent] ${messageId} -> stored ${productsList.length} products in message entities + memory`);
@@ -400,19 +496,23 @@ async function executeTools(
       result = toolResultCache.get(toolKey) as ToolResult;
     } else {
       // suggestProducts historically read the conversation memory + current
-      // product fresh at execution time — inject the fresh values for parity.
+      // product fresh at execution time — materialize the fresh values as
+      // explicit entities for parity.
       const freshConversation = await prisma.conversation.findUnique({
         where: { id: conversation.id },
         select: { memory: true, currentProductId: true },
       });
-      const suggestionEntities = {
-        ...injectedEntities,
-        memory: JSON.stringify((freshConversation?.memory as ConversationMemory | null) ?? {}),
-        currentProductId:
-          freshConversation?.currentProductId ?? injectedEntities.currentProductId,
+      const freshSource: ToolSourceContext = {
+        ...source,
+        memory: (freshConversation?.memory as ConversationMemory | null) ?? {},
+        conversation: {
+          ...source.conversation,
+          currentProductId: freshConversation?.currentProductId ?? null,
+        },
       };
+      const suggestionEntities = buildToolEntities('suggestProducts', entities, freshSource);
       try {
-        result = await executeTool('suggestProducts', { ...entities, ...suggestionEntities });
+        result = await executeTool('suggestProducts', suggestionEntities);
         console.log(`[agent] tool "suggestProducts" (intent=${intentToString(item.intent)}) ->`, result);
       } catch (err) {
         console.error(`[agent] tool "suggestProducts" failed for intent ${intentToString(item.intent)}`, err);
@@ -439,7 +539,6 @@ async function executeTools(
       });
 
       lastProductResults = productsList;
-      injectedEntities.lastProductResults = JSON.stringify(productsList);
       resultsStoredThisMessage = true;
       console.log(`[agent] ${messageId} -> stored ${productsList.length} suggested products in message entities + memory`);
     }
