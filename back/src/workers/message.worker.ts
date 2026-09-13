@@ -3,14 +3,14 @@ import { config, redisConnection } from '../config';
 import { MessageJobData } from '../queues/message.queue';
 import { dispatchInboundMessage } from '../modules/ai/messageDispatcher';
 import { handleMessageViaAgent } from '../modules/ai/agent.bridge';
-import { processMessage } from '../modules/ai/agent.service';
+import { processMessageWithFallback } from '../modules/ai/legacyWithFallback';
 
 export const messageWorker = new Worker<MessageJobData>(
   "message",
   async (job: Job<MessageJobData>) => {
     await dispatchInboundMessage(
       job.data.messageId,
-      { grpc: handleMessageViaAgent, legacy: processMessage },
+      { grpc: handleMessageViaAgent, legacy: processMessageWithFallback },
       config.messageHandler as 'grpc' | 'legacy',
     );
   },

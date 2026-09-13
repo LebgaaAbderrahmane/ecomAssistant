@@ -1,6 +1,11 @@
 import prisma from '../../config/db.config';
 import { deliverAssistantReply } from '../whatsapp/reply.service';
-import { agentProcessMessage, closeAgentClient, createAgentClient } from '../../grpc/agent.client.js';
+import {
+  agentProcessMessage,
+  closeAgentClient,
+  createAgentClient,
+} from '../../grpc/agent.client.js';
+import { runAgentBridge, type AgentBridgeDeps } from './agentBridgeCore';
 
 async function escalateConversation(
   conversation: { id: string; merchantId: string },
@@ -25,53 +30,40 @@ async function escalateConversation(
   }
 }
 
-/**
- * gRPC message destination (MESSAGE_HANDLER=grpc): load the inbound message
- * and forward it to the Python agent's AgentService.ProcessMessage. The agent's
- * reply is persisted + sent by the backend; DECISION_ESCALATE / unavailability
- * hand the conversation to a human. A human-owned conversation is never given
- * an auto-reply. If the agent call fails the error is rethrown so the job
- * fails and BullMQ retries it.
- */
-export const handleMessageViaAgent = async (messageId: string): Promise<void> => {
-  const message = await prisma.message.findUniqueOrThrow({
-    where: { id: messageId },
-    include: { conversation: true },
-  });
-  const { conversation } = message;
-  const customer = await prisma.customer.findUnique({
-    where: { id: conversation.customerId },
-  });
-
-  if (conversation.takenOverByHuman) {
-    console.log(`[message] ${messageId} -> human owns conversation, skipping agent, reply not auto-sent`);
-    return;
-  }
-
-  const client = createAgentClient();
-  try {
-    console.log(`[message] ${messageId} -> agent`);
-    const response = await agentProcessMessage(client, {
-      messageId,
-      conversationId: conversation.id,
-      merchantId: conversation.merchantId,
-      customerId: conversation.customerId,
+const defaultDeps: AgentBridgeDeps = {
+  findMessage: async (messageId) => {
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: true },
     });
-
-    if (response.decision === 'DECISION_REPLY' && response.text.trim()) {
-      await deliverAssistantReply(conversation.id, response.text);
-      console.log(`[message] ${messageId} -> agent reply: "${response.text}"`);
-      return;
+    if (!message) return null;
+    const { conversation } = message;
+    return {
+      id: message.id,
+      conversation: {
+        id: conversation.id,
+        merchantId: conversation.merchantId,
+        customerId: conversation.customerId,
+        takenOverByHuman: conversation.takenOverByHuman,
+      },
+    };
+  },
+  findCustomer: async (customerId) =>
+    prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true, name: true, phone: true },
+    }),
+  callAgent: async (request) => {
+    const client = createAgentClient();
+    try {
+      return await agentProcessMessage(client, request);
+    } finally {
+      closeAgentClient(client);
     }
-
-    console.log(`[message] ${messageId} -> agent decision ${response.decision}, escalating to human`);
-  } catch (err) {
-    console.error(`[message] ${messageId} -> agent call failed:`, err);
-    throw err;
-  } finally {
-    closeAgentClient(client);
-  }
-
-  await escalateConversation(conversation, customer);
-  console.log(`[message] ${messageId} -> conversation handed to human`);
+  },
+  deliverReply: (conversationId, text) => deliverAssistantReply(conversationId, text),
+  escalate: escalateConversation,
 };
+
+export const handleMessageViaAgent = (messageId: string): Promise<void> =>
+  runAgentBridge(messageId, defaultDeps);
