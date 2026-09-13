@@ -276,3 +276,22 @@ export const EscalateConversationArgsSchema = z.object({
   ...InjectedCustomerId,
   ...InjectedConversationId,
 });
+
+// Central validation map. executeTool validates `entities` against the tool's
+// schema — the single authoritative check — before dispatch. Handlers receive
+// ONLY explicit params: no context, no memory/state reads. The map base for the
+// generated tools.json contract (see back/scripts/export-contract.ts).
+export const toolSchemas: Record<ToolName, z.ZodType<unknown>> = {
+  searchProducts: SearchProductsArgsSchema,
+  recallPreviousProducts: RecallPreviousProductsArgsSchema,
+  chooseProduct: ChooseProductArgsSchema,
+  getProductDetails: GetProductDetailsArgsSchema,
+  suggestProducts: SuggestProductsArgsSchema,
+  calculateShipping: CalculateShippingArgsSchema,
+  getOrderStatus: GetOrderStatusArgsSchema,
+  createOrder: CreateOrderArgsSchema,
+  confirmOrder: ConfirmOrderArgsSchema,
+  modifyOrder: ModifyOrderArgsSchema,
+  cancelOrder: CancelOrderArgsSchema,
+  escalateConversation: EscalateConversationArgsSchema,
+};
