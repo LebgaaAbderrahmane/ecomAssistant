@@ -1,12 +1,18 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '../config';
+import { config, redisConnection } from '../config';
 import { MessageJobData } from '../queues/message.queue';
-import { processMessage } from '../modules/ai/agent.service';
+import { dispatchInboundMessage } from '../modules/ai/messageDispatcher';
+import { handleMessageViaAgent } from '../modules/ai/agent.bridge';
+import { processMessageWithFallback } from '../modules/ai/legacyWithFallback';
 
 export const messageWorker = new Worker<MessageJobData>(
   "message",
   async (job: Job<MessageJobData>) => {
-    await processMessage(job.data.messageId);
+    await dispatchInboundMessage(
+      job.data.messageId,
+      { grpc: handleMessageViaAgent, legacy: processMessageWithFallback },
+      config.messageHandler as 'grpc' | 'legacy',
+    );
   },
   { connection: redisConnection, concurrency: 5 }
 );

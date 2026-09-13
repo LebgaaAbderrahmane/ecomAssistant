@@ -36,6 +36,10 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             context.set_code(grpc.StatusCode.UNAUTHENTICATED)
             context.set_details("missing or invalid INTERNAL_API_KEY")
             return agent_pb2.ProcessMessageResponse()
+        if not request.message_id:
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_details("message_id is empty")
+            return agent_pb2.ProcessMessageResponse()
         log.info(
             "ProcessMessage message=%s conversation=%s merchant=%s customer=%s",
             request.message_id,
@@ -53,9 +57,26 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             )
         else:
             log.warning("message %s not found in Postgres", request.message_id)
+
+        role = message["role"] if message else "unknown"
+        text = (message["text"] or "").strip() if message else ""
+        agent_context = {
+            "message_id": request.message_id,
+            "conversation_id": request.conversation_id,
+            "merchant_id": request.merchant_id,
+            "customer_id": request.customer_id,
+            "role": role,
+            "text": text,
+        }
+        log.info("agent context: %s", agent_context)
+
+        if text:
+            reply = f"Bonjour, vous avez écrit : « {text[:80]} ». Comment puis-je vous aider ?"
+        else:
+            reply = "Bonjour, comment puis-je vous aider ?"
         return agent_pb2.ProcessMessageResponse(
             decision=agent_pb2.ProcessMessageResponse.DECISION_REPLY,
-            text="Bonjour, comment puis-je vous aider ?",
+            text=reply,
         )
 
 

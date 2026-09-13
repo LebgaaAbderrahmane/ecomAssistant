@@ -96,6 +96,14 @@ export type WriteToolName = z.infer<typeof WriteToolNameSchema>;
 export const ToolNameSchema = z.union([ReadToolNameSchema, WriteToolNameSchema]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
 
+// Internal/legacy tools: registered and executable by the backend (fallback /
+// product-recall paths) but NOT part of the agent-facing contract catalog
+// (contracts TOOL_NAMES / generated tools.json). The agent never sees or calls
+// them. The contract test enforces: TOOL_NAMES == (registry − legacy) and no
+// overlap.
+export const LEGACY_ONLY_TOOL_NAMES = ['recallPreviousProducts'] as const;
+export type LegacyOnlyToolName = (typeof LEGACY_ONLY_TOOL_NAMES)[number];
+
 /** Type guard: whether a tool is classified as READ (no business side-effects). */
 export function isReadTool(name: ToolName): name is ReadToolName {
   return ReadToolNameSchema.safeParse(name).success;
@@ -135,24 +143,73 @@ export function resolveTool(intent: IntentField, entities: Record<string, unknow
 }
 
 // ─── Tool argument schemas ──────────────────────────────────────────────
+// Each tool consumes ONLY explicit params. Identity (merchantId/customerId/
+// conversationId) and previously-stateful context (current order/product,
+// customer address, conversation memory/state) are MATERIALIZED into explicit
+// native keys by the transport (the legacy pipeline today, the gRPC ToolService
+// later), not read by the tool from a context object. The tool never looks at
+// memory/state or the customer record itself.
+//
+// Injected identity keys — required wherever a tool needs the scope:
+//   merchantId      — every tool (merchant-scoped reads/writes).
+//   customerId      — order/customer-scoped tools.
+//   conversationId  — tools that read or write the conversation row
+//                     (all write tools; navigation read tools).
+// Injected state keys — optional, transport-supplied; the transport (legacy
+// pipeline today, gRPC ToolService later) MATERIALIZES previously-implicit
+// context into explicit native params:
+//   orderId   — from conversation.currentOrderId (order tools).
+//   productId — from conversation.currentProductId and/or resolved bare
+//               references from conversation memory (product tools).
+//   wilaya / commune — from the customer record's saved delivery info.
+//   conversationState — a live conversation.state read (confirmOrder only).
+//   memory / lastProductResults — a conversation.memory read (JSON-encoded:
+//                     params are scalar-only; used by suggestProducts and the
+//                     product-navigation tools).
+
+const InjectedMerchantId = { merchantId: z.string().min(1) };
+const InjectedCustomerId = { customerId: z.string().min(1) };
+const InjectedConversationId = { conversationId: z.string().min(1) };
+const InjectedCurrentOrderId = { currentOrderId: z.string().nullable().optional() };
+const InjectedProductId = { productId: z.string().optional() };
+const InjectedOrderId = { orderId: z.string().optional() };
+const InjectedConversationState = { conversationState: z.string().nullable().optional() };
+const InjectedMemory = { memory: z.string().optional() };
+const InjectedLastProductResults = { lastProductResults: z.string().optional() };
 
 export const SearchProductsArgsSchema = z.object({
-  product: z.string().min(1),
+  product: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedLastProductResults,
+  ...InjectedProductId,
+}).refine(data => data.product !== undefined || data.productId !== undefined, {
+  message: 'Either a product name (product) or an explicit productId is required',
 });
 
 export const RecallPreviousProductsArgsSchema = z.object({
   limit: z.number().int().positive().max(10).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedLastProductResults,
+  ...InjectedProductId,
 });
 
 export const ChooseProductArgsSchema = z.object({
   productName: z.string().min(1).optional(),
   productIndex: z.number().int().min(0).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedLastProductResults,
 }).refine(data => data.productName || data.productIndex !== undefined, {
   message: 'Either productName or productIndex is required',
 });
 
 export const GetProductDetailsArgsSchema = z.object({
   productName: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedProductId,
 });
 
 export const SuggestProductsArgsSchema = z.object({
@@ -162,6 +219,10 @@ export const SuggestProductsArgsSchema = z.object({
   minPrice: z.number().min(0).optional(),
   maxPrice: z.number().min(0).optional(),
   preferences: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedConversationId,
+  ...InjectedMemory,
+  ...InjectedProductId,
 });
 
 export const CreateOrderArgsSchema = z.object({
@@ -170,6 +231,9 @@ export const CreateOrderArgsSchema = z.object({
   wilaya: z.string().min(1).optional(),
   commune: z.string().min(1),
   quantity: z.number().int().positive().default(1),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
 }).refine(data => data.productId || data.product, {
   message: 'Either productId or product name is required',
 });
@@ -177,12 +241,20 @@ export const CreateOrderArgsSchema = z.object({
 export const ConfirmOrderArgsSchema = z.object({
   orderId: z.string().min(1).optional(),
   productName: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
+  ...InjectedCurrentOrderId,
+  ...InjectedConversationState,
 });
 
 export const ModifyOrderArgsSchema = z.object({
   wilaya: z.string().min(1).optional(),
   commune: z.string().min(1).optional(),
   quantity: z.number().int().positive().optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedOrderId,
 }).refine(
   data => data.wilaya !== undefined || data.commune !== undefined || data.quantity !== undefined,
   { message: 'At least one of wilaya, commune, or quantity must be provided' },
@@ -191,12 +263,43 @@ export const ModifyOrderArgsSchema = z.object({
 export const CancelOrderArgsSchema = z.object({
   orderId: z.string().optional(),
   productName: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
 });
 
 export const CalculateShippingArgsSchema = z.object({
   wilaya: z.string().min(1),
+  ...InjectedMerchantId,
 });
 
 export const GetOrderStatusArgsSchema = z.object({
   orderId: z.string().min(1).optional(),
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
 });
+
+export const EscalateConversationArgsSchema = z.object({
+  ...InjectedMerchantId,
+  ...InjectedCustomerId,
+  ...InjectedConversationId,
+});
+
+// Central validation map. executeTool validates `entities` against the tool's
+// schema — the single authoritative check — before dispatch. Handlers receive
+// ONLY explicit params: no context, no memory/state reads. The map base for the
+// generated tools.json contract (see back/scripts/export-contract.ts).
+export const toolSchemas: Record<ToolName, z.ZodType<unknown>> = {
+  searchProducts: SearchProductsArgsSchema,
+  recallPreviousProducts: RecallPreviousProductsArgsSchema,
+  chooseProduct: ChooseProductArgsSchema,
+  getProductDetails: GetProductDetailsArgsSchema,
+  suggestProducts: SuggestProductsArgsSchema,
+  calculateShipping: CalculateShippingArgsSchema,
+  getOrderStatus: GetOrderStatusArgsSchema,
+  createOrder: CreateOrderArgsSchema,
+  confirmOrder: ConfirmOrderArgsSchema,
+  modifyOrder: ModifyOrderArgsSchema,
+  cancelOrder: CancelOrderArgsSchema,
+  escalateConversation: EscalateConversationArgsSchema,
+};

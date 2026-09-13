@@ -65,6 +65,22 @@ Output: `ecom_agent/grpc_gen/` — committed. After any `.proto` change:
 3. commit `.proto` **and** `grpc_gen/` together, bumping `version` per the
    rules above.
 
+### Tool description contract (`src/generated/tools.json`)
+
+The agent-facing tool catalog (names, arg names/types/requiredness, wording)
+is generated from the backend registry — never edit it by hand:
+
+```bash
+docker compose exec -T back sh -c \
+  'cd /app/back && ./node_modules/.bin/tsx scripts/export-contract.ts'
+```
+
+Sources: `back/src/modules/ai/schemas/intents.schemas.ts` (arg shapes) +
+`back/src/modules/ai/tools/toolMeta.ts` (descriptions, injected-arg exclusions).
+After any tool schema or description change: rerun and commit the JSON.
+`back/src/modules/ai/__tests__/contract.test.ts` fails if the committed file
+drifts from the registry/schemas.
+
 ## Drift protection
 
 `back/src/modules/ai/__tests__/contract.test.ts` asserts that every tool

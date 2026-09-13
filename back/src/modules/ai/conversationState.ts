@@ -1,4 +1,4 @@
-import type { ToolName } from './schemas/intents.schemas';
+import type { ReadToolName, ToolName } from './schemas/intents.schemas';
 
 // Canonical conversation states. Must match the ConversationState enum in
 // prisma/schema.prisma.
@@ -21,6 +21,12 @@ export type ConversationState =
 // confirming their order. Tools that keep the conversation where it is
 // (status checks, shipping quotes, escalation) intentionally map to no state
 // change.
+//
+// Ownership: READ-tool transitions (READ_TOOL_TRANSITIONS) are applied by the
+// TRANSPORT (agent.service) after a successful run — tool handlers are pure
+// functions of their explicit params and never write conversation state.
+// WRITE-tool transitions (createOrder / confirmOrder / cancelOrder) are written
+// by the handlers themselves, alongside the business mutation they belong to.
 export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>> = {
   searchProducts: 'PRODUCT_DISCOVERY',
   recallPreviousProducts: 'PRODUCT_DISCOVERY',
@@ -30,6 +36,17 @@ export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>
   createOrder: 'WAITING_CONFIRMATION',
   confirmOrder: 'CONFIRMED',
   cancelOrder: 'CANCELLED',
+};
+
+// READ-tool transitions the transport applies after a successful run; the
+// handlers never touch the conversation row. chooseProduct / getProductDetails
+// additionally set currentProductId from the tool result's productId.
+export const READ_TOOL_TRANSITIONS: Partial<Record<ReadToolName, ConversationState>> = {
+  searchProducts: TOOL_STATE_TRANSITIONS.searchProducts,
+  recallPreviousProducts: TOOL_STATE_TRANSITIONS.recallPreviousProducts,
+  suggestProducts: TOOL_STATE_TRANSITIONS.suggestProducts,
+  chooseProduct: TOOL_STATE_TRANSITIONS.chooseProduct,
+  getProductDetails: TOOL_STATE_TRANSITIONS.getProductDetails,
 };
 
 /**

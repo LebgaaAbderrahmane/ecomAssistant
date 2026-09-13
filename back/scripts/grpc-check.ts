@@ -34,20 +34,64 @@ async function checkBackToAgent(): Promise<boolean> {
 
 const FALLBACK_REPLY = 'Bonjour, comment puis-je vous aider ?';
 
+const PROCESS_MSG_REQUEST = {
+  messageId: 'grpc-check-no-such-message',
+  conversationId: 'grpc-check',
+  merchantId: 'grpc-check',
+  customerId: 'grpc-check',
+};
+
+function authInterceptor(authorization: string): grpc.Interceptor {
+  const metadata = new grpc.Metadata();
+  metadata.set('authorization', authorization);
+  return (options, nextCall) => {
+    return new grpc.InterceptingCall(nextCall(options), {
+      start(metadataSource, listener, next) {
+        const merged = metadataSource ?? new grpc.Metadata();
+        merged.merge(metadata);
+        next(merged, listener);
+      },
+    });
+  };
+}
+
 async function checkProcessMessageRoundTrip(): Promise<boolean> {
   const client = createAgentClient();
   try {
     const response = await withTimeout(
-      agentProcessMessage(client, {
-        messageId: 'grpc-check-no-such-message',
-        conversationId: 'grpc-check',
-        merchantId: 'grpc-check',
-        customerId: 'grpc-check',
-      }),
+      agentProcessMessage(client, PROCESS_MSG_REQUEST),
       5000,
       'back -> agent ProcessMessage'
     );
     return response.decision === 'DECISION_REPLY' && response.text === FALLBACK_REPLY;
+  } finally {
+    closeAgentClient(client);
+  }
+}
+
+async function checkWrongKeyRejected(): Promise<boolean> {
+  const client = createAgentClient({ interceptors: [authInterceptor('Bearer wrong-key')] });
+  try {
+    await withTimeout(agentProcessMessage(client, PROCESS_MSG_REQUEST), 5000, 'wrong key');
+    return false;
+  } catch (err) {
+    return (err as grpc.ServiceError).code === grpc.status.UNAUTHENTICATED;
+  } finally {
+    closeAgentClient(client);
+  }
+}
+
+async function checkMalformedMessageId(): Promise<boolean> {
+  const client = createAgentClient();
+  try {
+    await withTimeout(
+      agentProcessMessage(client, { ...PROCESS_MSG_REQUEST, messageId: '' }),
+      5000,
+      'empty message_id'
+    );
+    return false;
+  } catch (err) {
+    return (err as grpc.ServiceError).code === grpc.status.NOT_FOUND;
   } finally {
     closeAgentClient(client);
   }
@@ -78,9 +122,11 @@ async function checkToolService(): Promise<boolean> {
 }
 
 const checks: Array<[string, () => Promise<boolean>]> = [
-  ['back -> agent  (AgentService.Health        @ ' + config.agentGrpcAddr + ')', checkBackToAgent],
-  ['back -> agent  (AgentService.ProcessMessage round trip       @ ' + config.agentGrpcAddr + ')', checkProcessMessageRoundTrip],
-  ['agent -> back (ToolService.Health  @ ' + config.toolsGrpcAddr + ')', checkToolService],
+  ['back -> agent  (AgentService.Health                @ ' + config.agentGrpcAddr + ')', checkBackToAgent],
+  ['back -> agent  (AgentService.ProcessMessage happy path   @ ' + config.agentGrpcAddr + ')', checkProcessMessageRoundTrip],
+  ['back -> agent  (AgentService.ProcessMessage wrong key    @ ' + config.agentGrpcAddr + ')', checkWrongKeyRejected],
+  ['back -> agent  (AgentService.ProcessMessage empty msg id @ ' + config.agentGrpcAddr + ')', checkMalformedMessageId],
+  ['agent -> back (ToolService.Health                @ ' + config.toolsGrpcAddr + ')', checkToolService],
 ];
 
 let failures = 0;
