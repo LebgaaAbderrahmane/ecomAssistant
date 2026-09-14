@@ -16,7 +16,7 @@ from utils import last_user_text, call_json, struct_schema_hint
 
 logger = logging.getLogger(__name__)
 
-PRODUCT_DISCOVERY_TOOLS = {"searchProducts", "recallPreviousProducts", "selectProduct", "getProductDetails", "suggestProducts"}
+PRODUCT_DISCOVERY_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "chooseProduct"}
 
 
 def active_flow(mem: ConversationMemory, resolved_flow_id: str | None) -> Flow | None:

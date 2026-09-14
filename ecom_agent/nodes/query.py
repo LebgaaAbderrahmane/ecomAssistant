@@ -9,7 +9,7 @@ from config import model
 from models.state import AgentState, ToolChoice
 from models.conversation import ConversationMemory
 from tools import (
-    TOOL_NAMES, TOOL_DESCRIPTIONS, tool_for, make_create_order_tool, TOOLS,
+    TOOL_NAMES, TOOL_DESCRIPTIONS, tool_for,
 )
 from utils import (
     _BUY_RE, _STOP_WORDS, last_user_text, recent_transcript, call_json, struct_schema_hint,

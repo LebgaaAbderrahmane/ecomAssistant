@@ -12,12 +12,12 @@ from models.state import AgentState
 from models.domain import (
     Product, ProductDiscoveryContext, ShippingContext,
 )
-from tools import TOOLS, tool_for, make_create_order_tool
+from tools import TOOLS, tool_for
 from utils import last_user_text
 
 logger = logging.getLogger(__name__)
 
-PRODUCT_RESULT_TOOLS = {"searchProducts", "getProductDetails", "recallPreviousProducts", "selectProduct", "suggestProducts"}
+PRODUCT_RESULT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "chooseProduct"}
 
 
 def _tool_result_products(content: str) -> list[Product] | None:
@@ -102,8 +102,7 @@ def calling_tool(state: AgentState) -> dict:
     else:
         user_text = last_user_text(state.messages)
         tool_context = state.tool_outputs[-1] if state.tool_outputs else "No tool selected."
-        order_tool = make_create_order_tool(flow)
-        tools = [order_tool] + [t for t in TOOLS if t.name != "createOrder"]
+        tools = TOOLS
         runtime_tool_node = ToolNode(tools)
         runtime_tool_model = model.bind_tools(tools)
 
@@ -130,12 +129,20 @@ def calling_tool(state: AgentState) -> dict:
                 flow.product_discovery = ProductDiscoveryContext()
             flow.product_discovery.tool_results = prods
             selected = prods[0]
-            if called_name == "selectProduct":
-                selector = str(call_args.get("selector") or "").strip()
-                selected = next(
-                    (p for p in prods if p.product_id == selector or p.product_name.lower() == selector.lower()),
-                    prods[0],
-                )
+            if called_name == "chooseProduct":
+                name_sel = str(call_args.get("productName") or "").strip()
+                idx = call_args.get("productIndex")
+                try:
+                    idx = int(idx)
+                except (TypeError, ValueError):
+                    idx = None
+                if idx is not None and 0 <= idx < len(prods):
+                    selected = prods[idx]
+                elif name_sel:
+                    selected = next(
+                        (p for p in prods if p.product_name.lower() == name_sel.lower() or p.product_id == name_sel),
+                        prods[0],
+                    )
             elif call_args.get("product_id"):
                 selected = next((p for p in prods if p.product_id == str(call_args.get("product_id"))), prods[0])
             flow.product_discovery.selected_product = selected
