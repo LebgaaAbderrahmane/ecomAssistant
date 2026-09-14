@@ -24,6 +24,8 @@ describe('suggestProducts intent routing', () => {
 
   it('does not route other intents to suggestProducts', () => {
     assert.equal(resolveTool('PRODUCT_SEARCH', { product: 'iphone 15' }), 'searchProducts');
+    // PRODUCT_SEARCH always routes to searchProducts — no memory-recall path.
+    assert.equal(resolveTool('PRODUCT_SEARCH', {}), 'searchProducts');
     assert.equal(resolveTool('PRODUCT_SELECT', { productName: 'iphone 15' }), 'selectProduct');
     assert.equal(resolveTool('PRODUCT_DETAILS', { productName: 'x' }), 'getProductDetails');
     assert.equal(resolveTool('ORDER_CREATE', {}), 'createOrder');
@@ -67,7 +69,7 @@ describe('tool execution policies (read / write)', () => {
   });
 
   it('classifies the navigation tools as READ', () => {
-    for (const tool of ['searchProducts', 'recallPreviousProducts', 'selectProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
+    for (const tool of ['searchProducts', 'selectProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
       assert.equal(isReadTool(tool), true, `${tool} should be READ`);
       assert.equal(isWriteTool(tool), false, `${tool} should not be WRITE`);
     }

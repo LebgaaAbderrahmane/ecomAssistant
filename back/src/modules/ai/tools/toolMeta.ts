@@ -3,14 +3,10 @@ import type { ToolName } from '../schemas/intents.schemas';
 // The transport-injected identity/state keys a tool schema accepts but a
 // CALLER (the LLM/agent) never provides — the transport materializes them:
 //   merchantId / customerId / conversationId — conversation scope.
-//   conversationState / currentOrderId        — confirmOrder's implicit-
-//                                               confirmation gate.
-//   memory / lastProductResults               — JSON-encoded conversation
-//                                               memory (legacy recall signal).
-//   excludedProductIds                        — abandoned/rejected product ids
-//                                               computed from conversation
-//                                               memory by the transport for
-//                                               suggestProducts.
+//   excludedProductIds                      — abandoned/rejected product ids
+//                                             computed from conversation memory
+//                                             by the transport for
+//                                             suggestProducts.
 // These keys are excluded from the agent-facing contract (contracts
 // src/generated/tools.json), whose args are exactly the public, caller-supplied
 // keys each tool schema exposes.
@@ -18,10 +14,6 @@ export const INJECTED_ARG_NAMES = [
   'merchantId',
   'customerId',
   'conversationId',
-  'conversationState',
-  'currentOrderId',
-  'memory',
-  'lastProductResults',
   'excludedProductIds',
 ] as const;
 
@@ -43,14 +35,6 @@ export const TOOL_META: Record<ToolName, ToolMeta> = {
       'Search the merchant catalog for a product by name and return the matching products (authoritative NOT_FOUND when absent)',
     args: {
       product: { description: 'Product name or query to search for' },
-    },
-  },
-  recallPreviousProducts: {
-    description:
-      'Recall products discussed earlier in the conversation when the customer refers to a product without naming it',
-    args: {
-      limit: { description: 'Maximum number of products to recall' },
-      productId: { description: 'Id of the currently selected product to fall back on' },
     },
   },
   selectProduct: {
@@ -86,47 +70,46 @@ export const TOOL_META: Record<ToolName, ToolMeta> = {
     },
   },
   getOrderStatus: {
-    description: 'Return the status and tracking number of an order by its id (the current order is injected when none is referenced)',
+    description: 'Return the status and tracking number of an order by its id',
     args: {
       orderId: { description: 'Order id to check the status of' },
     },
   },
   createOrder: {
     description:
-      'Create a new pending order (product, wilaya, commune, quantity), compute the total with delivery cost, and flag it as waiting for confirmation',
+      'Create a new pending order (explicit product id, delivery wilaya, commune, quantity), compute the total with delivery cost, and flag it as waiting for confirmation',
     args: {
       productId: { description: 'Product id to order' },
-      product: { description: 'Product name to order' },
       wilaya: { description: 'Delivery wilaya' },
       commune: { description: 'Delivery commune (baladia)' },
-      quantity: { description: 'Quantity to order (default 1)' },
+      quantity: { description: 'Quantity to order' },
     },
   },
   confirmOrder: {
-    description: 'Confirm the pending order waiting for confirmation, or a pending order the customer references explicitly',
+    description: 'Confirm an order by its id',
     args: {
       orderId: { description: 'Order id to confirm' },
-      productName: { description: 'Product name to confirm the order for' },
     },
   },
   modifyOrder: {
-    description: "Update a pending order's quantity, wilaya, or commune and recompute the total",
+    description: "Update an order's quantity, wilaya, or commune by its id and recompute the total",
     args: {
+      orderId: { description: 'Order id to update' },
       wilaya: { description: 'New delivery wilaya' },
       commune: { description: 'New delivery commune' },
       quantity: { description: 'New quantity' },
-      orderId: { description: 'Order id to update (defaults to the active pending order)' },
     },
   },
   cancelOrder: {
-    description: 'Cancel the active or referenced pending order',
+    description: 'Cancel an order by its id',
     args: {
       orderId: { description: 'Order id to cancel' },
-      productName: { description: 'Product name to cancel the order for' },
     },
   },
   escalateConversation: {
-    description: 'Hand the conversation to a human agent (idempotent)',
-    args: {},
+    description: 'Hand the conversation to a human agent with a reason (idempotent)',
+    args: {
+      reason: { description: 'Reason the customer needs a human agent' },
+    },
   },
 };

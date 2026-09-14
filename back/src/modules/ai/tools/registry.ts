@@ -13,16 +13,13 @@ import {
   GetProductDetailsArgsSchema,
   SuggestProductsArgsSchema,
   ModifyOrderArgsSchema,
-  RecallPreviousProductsArgsSchema,
   EscalateConversationArgsSchema,
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
 import {
   buildProductCatalog,
-  resolveProductRequest,
   fetchProductsByIds,
   matchProductsWithLLM,
-  type ProductContext,
 } from './searchHelpers';
 import { TOOL_STATE_TRANSITIONS } from '../conversationState';
 import {
@@ -209,51 +206,10 @@ const confirmOrder: ToolHandler = async (entities) => {
     return { success: false, error: 'Missing order confirmation parameters' };
   }
 
-  // An order resolved implicitly from the injected current order (the previous
-  // turn's currentOrderId) is only confirmable while the assistant is actually
-  // waiting for confirmation. A short acknowledgment like "okay" that the intent
-  // extractor misread as ORDER_CONFIRM must never confirm a stale order from an
-  // unrelated earlier exchange. An order the customer names explicitly in the
-  // message is a fresh request and stays confirmable.
-  const explicitlyReferenced =
-    (parsedArgs.data.orderId ?? parsedArgs.data.productName) !== undefined;
-
-  let orderId = parsedArgs.data.currentOrderId ?? undefined;
-  if (!orderId && parsedArgs.data.orderId) {
-    orderId = parsedArgs.data.orderId;
-  }
-  if (!orderId && parsedArgs.data.productName) {
-    const order = await prisma.order.findFirst({
-      where: {
-        merchantId: parsedArgs.data.merchantId,
-        customerId: parsedArgs.data.customerId,
-        productName: { equals: parsedArgs.data.productName, mode: 'insensitive' },
-        status: 'PENDING',
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (order) orderId = order.id;
-  }
-
-  if (!orderId) {
-    return {
-      success: false,
-      error: 'No order in context to confirm',
-    };
-  }
-
-  if (!explicitlyReferenced && parsedArgs.data.conversationState !== 'WAITING_CONFIRMATION') {
-    return {
-      success: false,
-      outcome: 'AMBIGUOUS',
-      error: 'No order is waiting for confirmation right now. If you want to place a new order, tell me the product and delivery details.',
-    };
-  }
-
   try {
     const order = await prisma.order.update({
       where: {
-        id: orderId,
+        id: parsedArgs.data.orderId,
         merchantId: parsedArgs.data.merchantId,
         customerId: parsedArgs.data.customerId,
       },
@@ -294,31 +250,10 @@ const cancelOrder: ToolHandler = async (entities) => {
     return { success: false, error: 'Missing order cancellation parameters' };
   }
 
-  let orderId = parsedArgs.data.orderId ?? undefined;
-  if (!orderId && parsedArgs.data.productName) {
-    const order = await prisma.order.findFirst({
-      where: {
-        merchantId: parsedArgs.data.merchantId,
-        customerId: parsedArgs.data.customerId,
-        productName: { equals: parsedArgs.data.productName, mode: 'insensitive' },
-        status: 'PENDING',
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (order) orderId = order.id;
-  }
-
-  if (!orderId) {
-    return {
-      success: false,
-      error: 'No order in context to cancel',
-    };
-  }
-
   try {
     const existing = await prisma.order.findFirst({
       where: {
-        id: orderId,
+        id: parsedArgs.data.orderId,
         merchantId: parsedArgs.data.merchantId,
         customerId: parsedArgs.data.customerId,
       },
@@ -334,7 +269,7 @@ const cancelOrder: ToolHandler = async (entities) => {
 
     const order = await prisma.order.update({
       where: {
-        id: orderId,
+        id: parsedArgs.data.orderId,
         merchantId: parsedArgs.data.merchantId,
         customerId: parsedArgs.data.customerId,
       },
@@ -366,84 +301,6 @@ const cancelOrder: ToolHandler = async (entities) => {
 
     throw err;
   }
-};
-const recallPreviousProducts: ToolHandler = async (entities) => {
-  const parsedArgs = RecallPreviousProductsArgsSchema.safeParse(entities);
-  if (!parsedArgs.success) {
-    return { success: false, error: 'Missing product recall context' };
-  }
-
-  // The customer references a product without naming it ("the black one",
-  // "hadak"). Resolve from injected conversation context (lastProductResults or
-  // the injected productId — the transport materializes the current product)
-  // first.
-  const context: ProductContext = {
-    lastProductResults: parseOptionalJson<Array<{ id: string; name: string }>>(
-      parsedArgs.data.lastProductResults,
-    ),
-    currentProductId: parsedArgs.data.productId,
-  };
-  const fromContext = await resolveProductRequest(undefined, context, parsedArgs.data.merchantId);
-  if (fromContext.outcome === 'SUCCESS') {
-    return { success: true, data: { products: formatProducts(fromContext.products) } };
-  }
-
-  // Deeper fallback: scan message history for product entities from earlier
-  // searches/details in this conversation.
-  const messages = await prisma.message.findMany({
-    where: {
-      conversationId: parsedArgs.data.conversationId,
-      intent: { in: ['PRODUCT_SEARCH', 'PRODUCT_DETAILS'] },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 30, // scan a window, not the whole history
-  });
-
-  console.log(`[recallPreviousProducts] found ${messages.length} messages in conversation ${parsedArgs.data.conversationId}`);
-
-  // Extract product names from entities (e.g. {"product":"iphone 15"}), most-recent-first, deduped
-  const seen = new Set<string>();
-  const productNames: string[] = [];
-
-  for (const msg of messages) {
-    let ents: Record<string, unknown> | null = null;
-    if (typeof msg.entities === 'string') {
-      try { ents = JSON.parse(msg.entities); } catch { /* skip */ }
-    } else if (msg.entities && typeof msg.entities === 'object') {
-      ents = msg.entities as Record<string, unknown>;
-    }
-    const name = ents?.product;
-    if (typeof name === 'string' && !seen.has(name)) {
-      seen.add(name);
-      productNames.push(name);
-    }
-  }
-
-  if (productNames.length === 0) {
-    // Nothing recalled and no product context — we need the customer to name
-    // the product rather than claiming it doesn't exist.
-    return {
-      success: false,
-      outcome: 'AMBIGUOUS',
-      error: 'No previously mentioned product found. Ask the customer which product (name, color, or model) they are asking about.',
-    };
-  }
-
-  const products = await prisma.product.findMany({
-    where: { name: { in: productNames, mode: 'insensitive' }, merchantId: parsedArgs.data.merchantId },
-  });
-
-  // preserve recency order
-  const ordered = productNames
-    .map((name) => products.find((p: Product) => p.name.toLowerCase() === name.toLowerCase()))
-    .filter((p): p is NonNullable<typeof p> => Boolean(p));
-
-  return {
-    success: true,
-    data: {
-      products: formatProducts(ordered),
-    },
-  };
 };
 
 const selectProduct: ToolHandler = async (entities) => {
@@ -593,12 +450,8 @@ const createOrder: ToolHandler = async (entities) => {
     return { success: false, error: `Missing required fields: ${missing}` };
   }
 
-  const { productId, product: productName, quantity, wilaya } = parsedArgs.data;
+  const { productId, quantity, wilaya } = parsedArgs.data;
   const communeInput = parsedArgs.data.commune;
-
-  if (!wilaya) {
-    return { success: false, error: 'Missing required field: wilaya' };
-  }
 
   // Validate commune exists
   const communeCheck = await validateCommune(communeInput, wilaya);
@@ -617,17 +470,9 @@ const createOrder: ToolHandler = async (entities) => {
   }
   const commune = communeCheck.commune!;
 
-  let product: Product | null = null;
-  if (productId) {
-    product = await prisma.product.findFirst({
-      where: { id: productId, merchantId: parsedArgs.data.merchantId },
-    });
-  }
-  if (!product && productName) {
-    product = await prisma.product.findFirst({
-      where: { merchantId: parsedArgs.data.merchantId, name: { contains: productName, mode: 'insensitive' } },
-    });
-  }
+  const product = await prisma.product.findFirst({
+    where: { id: productId, merchantId: parsedArgs.data.merchantId },
+  });
   if (!product) {
     return { success: false, error: `Product not found. Choose a product first.` };
   }
@@ -694,10 +539,6 @@ const modifyOrder: ToolHandler = async (entities) => {
   const parsedArgs = ModifyOrderArgsSchema.safeParse(entities);
   if (!parsedArgs.success) {
     return { success: false, error: 'No fields provided to modify' };
-  }
-
-  if (!parsedArgs.data.orderId) {
-    return { success: false, error: 'No pending order in context to update' };
   }
 
   const order = await prisma.order.findFirst({
@@ -804,7 +645,7 @@ const escalateConversation: ToolHandler = async (entities) => {
   if (!parsedArgs.success) {
     return { success: false, error: 'Missing escalation context' };
   }
-  const { merchantId, customerId, conversationId } = parsedArgs.data;
+  const { merchantId, customerId, conversationId, reason } = parsedArgs.data;
 
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
@@ -834,7 +675,7 @@ const escalateConversation: ToolHandler = async (entities) => {
         merchantId,
         type: 'escalation',
         title: 'Conversation escaladée',
-        message: `Le client ${customer?.name || customer?.phone || 'inconnu'} a été transféré à un humain.`,
+        message: `Le client ${customer?.name || customer?.phone || 'inconnu'} a besoin d'un agent: ${reason}`,
         link: '/dashboard/escalations',
       },
     });
@@ -842,7 +683,7 @@ const escalateConversation: ToolHandler = async (entities) => {
     console.error('[tools] Failed to create escalation notification:', err);
   }
 
-  return { success: true, data: { escalated: true } };
+  return { success: true, data: { escalated: true, reason } };
 };
 
 // Read tools have no business side-effects (orders/customer/takeover untouched;
@@ -850,7 +691,6 @@ const escalateConversation: ToolHandler = async (entities) => {
 // human owns the conversation.
 export const readToolRegistry: Record<ReadToolName, ToolHandler> = {
   searchProducts,
-  recallPreviousProducts,
   selectProduct,
   getProductDetails,
   suggestProducts,

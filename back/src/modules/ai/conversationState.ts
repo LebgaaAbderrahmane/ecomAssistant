@@ -15,7 +15,7 @@ export type ConversationState =
 
 // Tool -> conversation state applied on a successful run.
 //
-// Tools that start a fresh product workflow (search / recall) move the
+// Tools that start a fresh product workflow (search / suggest) move the
 // conversation back into discovery — this is what invalidates a stale
 // WAITING_CONFIRMATION when the customer pivots to a new product before
 // confirming their order. Tools that keep the conversation where it is
@@ -29,7 +29,6 @@ export type ConversationState =
 // by the handlers themselves, alongside the business mutation they belong to.
 export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>> = {
   searchProducts: 'PRODUCT_DISCOVERY',
-  recallPreviousProducts: 'PRODUCT_DISCOVERY',
   suggestProducts: 'PRODUCT_DISCOVERY',
   selectProduct: 'PRODUCT_SELECTED',
   getProductDetails: 'PRODUCT_SELECTED',
@@ -43,7 +42,6 @@ export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>
 // additionally set currentProductId from the tool result's productId.
 export const READ_TOOL_TRANSITIONS: Partial<Record<ReadToolName, ConversationState>> = {
   searchProducts: TOOL_STATE_TRANSITIONS.searchProducts,
-  recallPreviousProducts: TOOL_STATE_TRANSITIONS.recallPreviousProducts,
   suggestProducts: TOOL_STATE_TRANSITIONS.suggestProducts,
   selectProduct: TOOL_STATE_TRANSITIONS.selectProduct,
   getProductDetails: TOOL_STATE_TRANSITIONS.getProductDetails,

@@ -44,12 +44,12 @@ TOOL_DESCRIPTIONS = {
     "getProductDetails": "Return full details for a product by its id or name.",
     "suggestProducts": "Suggest products matching explicit criteria (category, color, size, min/maxPrice, preferences).",
     "calculateShipping": "Look up the delivery cost for a wilaya (name or number) for this merchant. Requires the wilaya the customer wants to send to.",
-    "getOrderStatus": "Get the status and tracking number of an existing order by its id. Requires the order id (use the active order when none is referenced).",
-    "createOrder": "Place an order for the product already selected in the active flow (provide quantity, and the shipping wilaya and commune).",
-    "confirmOrder": "Confirm a pending order.",
-    "modifyOrder": "Modify an existing order.",
-    "cancelOrder": "Cancel an existing order.",
-    "escalateConversation": "Only when the request truly cannot be handled by the other tools.",
+    "getOrderStatus": "Get the status and tracking number of an order by its id.",
+    "createOrder": "Place an order: provide an explicit productId, quantity, delivery wilaya, and commune (both are required).",
+    "confirmOrder": "Confirm an order by its id.",
+    "modifyOrder": "Modify an existing order by its id (change wilaya, commune, or quantity).",
+    "cancelOrder": "Cancel an order by its id.",
+    "escalateConversation": "Escalate to a human agent with a reason — use only when no other tool can handle the request.",
 }
 
 

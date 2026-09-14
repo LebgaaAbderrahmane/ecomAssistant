@@ -151,7 +151,8 @@ async function checkToolServiceMatrix(): Promise<boolean> {
   const client = createToolServiceClient(auth);
 
   const merchantEmail = `grpc-check-${Date.now()}@example.com`;
-  const ids = { merchantId: '', customerId: '', conversationId: '', productId: '', deliveryCostId: '', orderId: '' };
+  const ids = { merchantId: '', customerId: '', conversationId: '', productId: '', deliveryCostId: '', orderId: '', communeId: '' };
+  const createdOrderIds: string[] = [];
   const results: Array<[string, boolean]> = [];
 
   const authExec = (toolName: string, entitiesJson: string, identity: Record<string, string>) => ({
@@ -181,11 +182,13 @@ async function checkToolServiceMatrix(): Promise<boolean> {
     } catch (err) {
       results.push(['ExecuteTool unknown tool rejected', (err as grpc.ServiceError).code === grpc.status.INVALID_ARGUMENT]);
     }
+    // recallPreviousProducts is now fully removed from the tool surface —
+    // rejected as an unknown tool (not a ToolName anymore).
     try {
-      await toolCall(client, authExec('recallPreviousProducts', '{}', { conversationId: 'x' }), 5000, 'ExecuteTool legacy tool');
-      results.push(['ExecuteTool legacy-only tool rejected', false]);
+      await toolCall(client, authExec('recallPreviousProducts', '{}', { conversationId: 'x' }), 5000, 'ExecuteTool recall removed');
+      results.push(['ExecuteTool recallPreviousProducts rejected (removed)', false]);
     } catch (err) {
-      results.push(['ExecuteTool legacy-only tool rejected', (err as grpc.ServiceError).code === grpc.status.INVALID_ARGUMENT]);
+      results.push(['ExecuteTool recallPreviousProducts rejected (removed)', (err as grpc.ServiceError).code === grpc.status.INVALID_ARGUMENT]);
     }
     try {
       await toolCall(client, authExec('searchProducts', '{}', {}), 5000, 'ExecuteTool missing conversation id');
@@ -311,6 +314,12 @@ async function checkToolServiceMatrix(): Promise<boolean> {
     });
     ids.deliveryCostId = deliveryCost.id;
 
+    // Commune row the createOrder commune-validation looks up.
+    const commune = await prisma.commune.create({
+      data: { name: 'Bab Ezzouar', wilaya: 'Alger', wilayaCode: 16 },
+    });
+    ids.communeId = commune.id;
+
     // calculateShipping: explicit wilaya → SUCCESS with the configured cost.
     {
       const r = await toolCall<any>(
@@ -395,9 +404,213 @@ async function checkToolServiceMatrix(): Promise<boolean> {
         r?.success === false && r?.outcome === 'OUTCOME_NOT_FOUND' && r?.error !== '',
       ]);
     }
+
+    // ─── Order lifecycle (TASK 13) ────────────────────────────────────
+    // createOrder: explicit productId + quantity + wilaya + commune.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec(
+          'createOrder',
+          JSON.stringify({ productId: ids.productId, quantity: 2, wilaya: 'Alger', commune: 'Bab Ezzouar' }),
+          identity,
+        ),
+        8000,
+        'createOrder explicit'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'createOrder explicit -> SUCCESS(3600)',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          typeof data.orderId === 'string' &&
+          data.productName === 'GrpcCheckCamouflage' &&
+          data.quantity === 2 &&
+          data.deliveryCost === 600 &&
+          data.totalAmount === 3600,
+      ]);
+      if (typeof data.orderId === 'string') createdOrderIds.push(data.orderId);
+    }
+
+    // createOrder: product NAME only (no productId) is rejected — no fallback.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec(
+          'createOrder',
+          JSON.stringify({ product: 'GrpcCheckCamouflage', quantity: 1, wilaya: 'Alger', commune: 'Bab Ezzouar' }),
+          identity,
+        ),
+        8000,
+        'createOrder name-only rejected'
+      );
+      results.push([
+        'createOrder name-only -> rejected (productId required)',
+        r?.success === false && r?.error !== '',
+      ]);
+    }
+
+    // confirmOrder: explicit orderId -> CONFIRMED.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('confirmOrder', JSON.stringify({ orderId: createdOrderIds[0] }), identity),
+        8000,
+        'confirmOrder explicit'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'confirmOrder explicit -> CONFIRMED',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.orderId === createdOrderIds[0] &&
+          data.status === 'CONFIRMED',
+      ]);
+    }
+
+    // confirmOrder: no orderId (transport injects conversation.currentOrderId).
+    {
+      const created = await toolCall<any>(
+        client,
+        authExec(
+          'createOrder',
+          JSON.stringify({ productId: ids.productId, quantity: 1, wilaya: 'Alger', commune: 'Bab Ezzouar' }),
+          identity,
+        ),
+        8000,
+        'createOrder (#2) for injected confirm'
+      );
+      const createdData = parseDataJson(created?.dataJson);
+      if (typeof createdData.orderId === 'string') createdOrderIds.push(createdData.orderId);
+
+      const r = await toolCall<any>(
+        client,
+        authExec('confirmOrder', '{}', identity),
+        8000,
+        'confirmOrder injected (no orderId)'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'confirmOrder injected -> CONFIRMED',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          typeof data.orderId === 'string' &&
+          data.status === 'CONFIRMED',
+      ]);
+    }
+
+    // cancelOrder: explicit orderId -> CANCELLED.
+    {
+      const created = await toolCall<any>(
+        client,
+        authExec(
+          'createOrder',
+          JSON.stringify({ productId: ids.productId, quantity: 1, wilaya: 'Alger', commune: 'Bab Ezzouar' }),
+          identity,
+        ),
+        8000,
+        'createOrder (#3) for cancel'
+      );
+      const createdData = parseDataJson(created?.dataJson);
+      if (typeof createdData.orderId === 'string') createdOrderIds.push(createdData.orderId);
+
+      const r = await toolCall<any>(
+        client,
+        authExec('cancelOrder', JSON.stringify({ orderId: createdData.orderId }), identity),
+        8000,
+        'cancelOrder explicit'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'cancelOrder explicit -> CANCELLED',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.orderId === createdData.orderId &&
+          data.status === 'CANCELLED',
+      ]);
+    }
+
+    // modifyOrder: explicit orderId + quantity change -> SUCCESS.
+    {
+      const created = await toolCall<any>(
+        client,
+        authExec(
+          'createOrder',
+          JSON.stringify({ productId: ids.productId, quantity: 1, wilaya: 'Alger', commune: 'Bab Ezzouar' }),
+          identity,
+        ),
+        8000,
+        'createOrder (#4) for modify'
+      );
+      const createdData = parseDataJson(created?.dataJson);
+      if (typeof createdData.orderId === 'string') createdOrderIds.push(createdData.orderId);
+
+      const r = await toolCall<any>(
+        client,
+        authExec('modifyOrder', JSON.stringify({ orderId: createdData.orderId, quantity: 3 }), identity),
+        8000,
+        'modifyOrder explicit'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'modifyOrder explicit -> quantity 3',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.orderId === createdData.orderId &&
+          data.quantity === 3,
+      ]);
+    }
+
+    // escalateConversation: missing reason -> rejected (schema requires it).
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('escalateConversation', '{}', identity),
+        8000,
+        'escalateConversation without reason'
+      );
+      results.push([
+        'escalateConversation no reason -> rejected',
+        r?.success === false && r?.error !== '',
+      ]);
+    }
+
+    // escalateConversation: identity + reason -> SUCCESS (last — sets takeover).
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('escalateConversation', JSON.stringify({ reason: 'Conflit de livraison' }), identity),
+        8000,
+        'escalateConversation with reason'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'escalateConversation -> escalated',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.escalated === true &&
+          data.reason === 'Conflit de livraison',
+      ]);
+    }
   } finally {
+    // Tool-created orders hold conversation.currentOrderId (FK) — null it first
+    // so the order rows can be deleted before the product.
+    if (ids.conversationId) {
+      await prisma.conversation
+        .update({ where: { id: ids.conversationId }, data: { currentOrderId: null } })
+        .catch(() => undefined);
+    }
+    for (const oid of createdOrderIds) {
+      await prisma.order.delete({ where: { id: oid } }).catch(() => undefined);
+    }
     if (ids.orderId) await prisma.order.delete({ where: { id: ids.orderId } }).catch(() => undefined);
     if (ids.deliveryCostId) await prisma.wilayaDeliveryCost.delete({ where: { id: ids.deliveryCostId } }).catch(() => undefined);
+    if (ids.communeId) await prisma.commune.delete({ where: { id: ids.communeId } }).catch(() => undefined);
     if (ids.productId) await prisma.product.delete({ where: { id: ids.productId } }).catch(() => undefined);
     if (ids.conversationId) await prisma.conversation.delete({ where: { id: ids.conversationId } }).catch(() => undefined);
     if (ids.customerId || ids.merchantId) {

@@ -75,7 +75,6 @@ export function intentToString(intent: IntentField): string {
 // the two enums (enforced by the registry typing + a test).
 export const ReadToolNameSchema = z.enum([
   'searchProducts',
-  'recallPreviousProducts',
   'selectProduct',
   'getProductDetails',
   'suggestProducts',
@@ -96,12 +95,12 @@ export type WriteToolName = z.infer<typeof WriteToolNameSchema>;
 export const ToolNameSchema = z.union([ReadToolNameSchema, WriteToolNameSchema]);
 export type ToolName = z.infer<typeof ToolNameSchema>;
 
-// Internal/legacy tools: registered and executable by the backend (fallback /
-// product-recall paths) but NOT part of the agent-facing contract catalog
-// (contracts TOOL_NAMES / generated tools.json). The agent never sees or calls
-// them. The contract test enforces: TOOL_NAMES == (registry − legacy) and no
-// overlap.
-export const LEGACY_ONLY_TOOL_NAMES = ['recallPreviousProducts'] as const;
+// Internal/legacy tools: registered and executable by the backend (fallback
+// paths) but NOT part of the agent-facing contract catalog (contracts TOOL_NAMES
+// / generated tools.json). Currently none — the migration to explicit,
+// context-free tools is complete. The contract test enforces:
+// TOOL_NAMES == (registry − legacy) and no overlap.
+export const LEGACY_ONLY_TOOL_NAMES = [] as const;
 export type LegacyOnlyToolName = (typeof LEGACY_ONLY_TOOL_NAMES)[number];
 
 /** Type guard: whether a tool is classified as READ (no business side-effects). */
@@ -116,9 +115,7 @@ export function isWriteTool(name: ToolName): name is WriteToolName {
 
 // ─── Intent → Tool mapping ──────────────────────────────────────────────
 // Deterministic lookup — tool resolution is never guessed by the LLM.
-// PRODUCT_SEARCH uses resolveTool() because it routes to two different tools
-// based on whether a product entity is present (catalog search) or absent
-// (recall from conversation memory).
+// PRODUCT_SEARCH uses resolveTool() to stay consistent with the mapping below.
 const INTENT_TOOL_MAP: Partial<Record<Intent, ToolName>> = {
   PRODUCT_SELECT: 'selectProduct',
   PRODUCT_DETAILS: 'getProductDetails',
@@ -137,7 +134,7 @@ export function resolveTool(intent: IntentField, entities: Record<string, unknow
     return null;
   }
   if (intent === 'PRODUCT_SEARCH') {
-    return entities.product ? 'searchProducts' : 'recallPreviousProducts';
+    return 'searchProducts';
   }
   return INTENT_TOOL_MAP[intent] ?? null;
 }
@@ -158,43 +155,27 @@ export function resolveTool(intent: IntentField, entities: Record<string, unknow
 // Injected state keys — optional, transport-supplied; the transport (legacy
 // pipeline today, gRPC ToolService later) MATERIALIZES previously-implicit
 // context into explicit native params:
-//   orderId   — from conversation.currentOrderId (order tools).
-//   productId — from conversation.currentProductId (getProductDetails /
-//               selectProduct / createOrder). Product tools never resolve
-//               "bare" references from memory anymore — searchProducts is a
-//               pure catalog query, selectProduct takes the explicit id/name.
-//   wilaya / commune — from the customer record's saved delivery info.
-//   conversationState — a live conversation.state read (confirmOrder only).
+//   orderId   — from conversation.currentOrderId (confirmOrder / cancelOrder /
+//               modifyOrder / getOrderStatus when the caller omits it).
+//   productId — from conversation.currentProductId (getProductDetails).
+//               Product tools never resolve "bare" references from memory
+//               anymore — searchProducts is a pure catalog query, selectProduct
+//               takes the explicit id/name.
 //   excludedProductIds — abandoned/rejected product ids computed from
 //               conversation memory by the TRANSPORT and passed to
 //               suggestProducts as a JSON-encoded string; the tool itself
 //               never reads memory.
-//   memory / lastProductResults — a conversation.memory read (JSON-encoded:
-//               recallPreviousProducts, a legacy internal-only tool).
 
 const InjectedMerchantId = { merchantId: z.string().min(1) };
 const InjectedCustomerId = { customerId: z.string().min(1) };
 const InjectedConversationId = { conversationId: z.string().min(1) };
-const InjectedCurrentOrderId = { currentOrderId: z.string().nullable().optional() };
 const InjectedProductId = { productId: z.string().optional() };
-const InjectedOrderId = { orderId: z.string().optional() };
-const InjectedConversationState = { conversationState: z.string().nullable().optional() };
 const InjectedExcludedProductIds = { excludedProductIds: z.string().optional() };
-const InjectedMemory = { memory: z.string().optional() };
-const InjectedLastProductResults = { lastProductResults: z.string().optional() };
 
 export const SearchProductsArgsSchema = z.object({
   product: z.string().min(1),
   ...InjectedMerchantId,
   ...InjectedConversationId,
-});
-
-export const RecallPreviousProductsArgsSchema = z.object({
-  limit: z.number().int().positive().max(10).optional(),
-  ...InjectedMerchantId,
-  ...InjectedConversationId,
-  ...InjectedLastProductResults,
-  ...InjectedProductId,
 });
 
 export const SelectProductArgsSchema = z.object({
@@ -228,43 +209,36 @@ export const SuggestProductsArgsSchema = z.object({
 });
 
 export const CreateOrderArgsSchema = z.object({
-  productId: z.string().min(1).optional(),
-  product: z.string().min(1).optional(),
-  wilaya: z.string().min(1).optional(),
+  productId: z.string().min(1),
+  wilaya: z.string().min(1),
   commune: z.string().min(1),
-  quantity: z.number().int().positive().default(1),
+  quantity: z.number().int().positive(),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
   ...InjectedConversationId,
-}).refine(data => data.productId || data.product, {
-  message: 'Either productId or product name is required',
 });
 
 export const ConfirmOrderArgsSchema = z.object({
-  orderId: z.string().min(1).optional(),
-  productName: z.string().min(1).optional(),
+  orderId: z.string().min(1),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
   ...InjectedConversationId,
-  ...InjectedCurrentOrderId,
-  ...InjectedConversationState,
 });
 
 export const ModifyOrderArgsSchema = z.object({
+  orderId: z.string().min(1),
   wilaya: z.string().min(1).optional(),
   commune: z.string().min(1).optional(),
   quantity: z.number().int().positive().optional(),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
-  ...InjectedOrderId,
 }).refine(
   data => data.wilaya !== undefined || data.commune !== undefined || data.quantity !== undefined,
   { message: 'At least one of wilaya, commune, or quantity must be provided' },
 );
 
 export const CancelOrderArgsSchema = z.object({
-  orderId: z.string().optional(),
-  productName: z.string().min(1).optional(),
+  orderId: z.string().min(1),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
   ...InjectedConversationId,
@@ -282,6 +256,7 @@ export const GetOrderStatusArgsSchema = z.object({
 });
 
 export const EscalateConversationArgsSchema = z.object({
+  reason: z.string().min(1),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
   ...InjectedConversationId,
@@ -293,7 +268,6 @@ export const EscalateConversationArgsSchema = z.object({
 // generated tools.json contract (see back/scripts/export-contract.ts).
 export const toolSchemas: Record<ToolName, z.ZodType<unknown>> = {
   searchProducts: SearchProductsArgsSchema,
-  recallPreviousProducts: RecallPreviousProductsArgsSchema,
   selectProduct: SelectProductArgsSchema,
   getProductDetails: GetProductDetailsArgsSchema,
   suggestProducts: SuggestProductsArgsSchema,

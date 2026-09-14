@@ -3,7 +3,7 @@ import prisma from '../../config/db.config';
 import { callLLM } from './clients/llm.client';
 import { parseResponse, parseReplyResponse, LLMParseError } from './parser/response.parser';
 import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from './prompts/promptBuilder';
-import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField, type ToolName, type ReadToolName } from './schemas/intents.schemas';
+import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField, type ToolName, type ReadToolName, type SuggestedIntentField } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import { READ_TOOL_TRANSITIONS } from './conversationState';
 import { memoryExclusionIds } from './tools/suggestionHelpers';
@@ -194,12 +194,15 @@ type Layer2ReplyState = {
 //
 // Tools receive ONLY explicit params. The transport MATERIALIZES the
 // previously-implicit values into explicit entities before each call:
-//   orderId       ← conversation.currentOrderId   (order scoping tools)
-//   productId     ← conversation.currentProductId (product tools)
-//   wilaya/commune← customer.wilaya/commune       (delivery tools)
-//   + bare product references resolved from conversation memory before
-//     searchProducts, so a tool never reads memory/state or the customer
-//     record itself.
+//   orderId   ← conversation.currentOrderId   (confirmOrder / cancelOrder /
+//                                              modifyOrder / getOrderStatus,
+//                                              only when the caller omits it)
+//   productId ← conversation.currentProductId (getProductDetails, and
+//                                              selectProduct only when the
+//                                              caller gave neither id nor name)
+//   + bare product references (name → id) resolved from the customer's own
+//     message before createOrder/selectProduct, so a tool never reads
+//     memory/state or the customer record itself.
 export type InjectedToolEntities = Record<string, string | number | boolean | null>;
 
 export interface ToolSourceContext {
@@ -216,59 +219,37 @@ export interface ToolSourceContext {
 }
 
 // Construct the explicit entities a tool consumes: LLM-derived entities +
-// injected identity + materialized legacy context (current order/product,
-// saved customer address). `orderId`/`productId`/`wilaya`/`commune` are the
-// native keys the tools read — no `currentOrderId`/`currentProductId`/
-// `customerWilaya` context keys are passed (the confirmOrder implicit-
-// confirmation gate is the one exception, via `currentOrderId`).
+// injected identity + materialized legacy context (current order/product).
+// `orderId`/`productId` are the native keys the tools read — no
+// `currentOrderId`/`currentProductId`/`conversationState` context keys are
+// passed.
 //
 // Product tools are explicit-query only under M6/M7: searchProducts is a pure
 // catalog search, selectProduct/getProductDetails take the injected current
-// product id or the customer's explicit name, and suggestProducts receives the
-// memory-derived exclusions as `excludedProductIds` instead of reading memory.
+// product id or the customer's explicit name, createOrder requires an explicit
+// productId, and suggestProducts receives the memory-derived exclusions as
+// `excludedProductIds` instead of reading memory.
 export function buildToolEntities(
   toolName: ToolName,
   entities: InjectedToolEntities,
   source: ToolSourceContext,
   opts: { lastProductResults?: ConversationMemory['lastProductResults'] } = {},
 ): InjectedToolEntities {
-  const { conversation, customer } = source;
+  const { conversation } = source;
   const toolEntities: InjectedToolEntities = {
     ...entities,
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
     conversationId: conversation.id,
-    conversationState: conversation.state,
   };
 
   switch (toolName) {
-    case 'confirmOrder':
-      // The implicit-confirmation gate distinguishes an order the customer
-      // names explicitly (orderId/productName, confirmable) from the current
-      // order (currentOrderId, confirmable only while WAITING_CONFIRMATION).
-      // The LIVE conversationState is injected right before dispatch.
-      if (conversation.currentOrderId) {
-        toolEntities.currentOrderId = conversation.currentOrderId;
-      }
-      break;
-
     case 'cancelOrder':
     case 'getOrderStatus':
     case 'modifyOrder':
+    case 'confirmOrder':
       if (!toolEntities.orderId && conversation.currentOrderId) {
         toolEntities.orderId = conversation.currentOrderId;
-      }
-      break;
-
-    case 'recallPreviousProducts':
-      // Legacy internal-only tool: still memory-driven, so the transport
-      // materializes the conversation memory + last results for it.
-      toolEntities.memory = JSON.stringify(source.memory);
-      toolEntities.lastProductResults = JSON.stringify(
-        opts.lastProductResults ?? source.memory.lastProductResults ?? [],
-      );
-      if (!toolEntities.productId && conversation.currentProductId) {
-        toolEntities.productId = conversation.currentProductId;
       }
       break;
 
@@ -297,7 +278,6 @@ export function buildToolEntities(
       break;
 
     case 'getProductDetails':
-    case 'createOrder':
       if (!toolEntities.productId && conversation.currentProductId) {
         toolEntities.productId = conversation.currentProductId;
       }
@@ -307,21 +287,12 @@ export function buildToolEntities(
       break;
   }
 
-  if (toolName === 'createOrder' || toolName === 'calculateShipping' || toolName === 'modifyOrder') {
-    if (!toolEntities.wilaya && customer.wilaya) {
-      toolEntities.wilaya = customer.wilaya;
-    }
-    if (toolName === 'createOrder' && !toolEntities.commune && customer.commune) {
-      toolEntities.commune = customer.commune;
-    }
-  }
-
   return toolEntities;
 }
 
 // READ tools are pure: the transport owns their conversation navigation. After
 // a successful READ-tool run the transport applies the tool's transition
-// (search/recall/suggest -> PRODUCT_DISCOVERY; selectProduct/getProductDetails
+// (search/suggest -> PRODUCT_DISCOVERY; selectProduct/getProductDetails
 // -> PRODUCT_SELECTED + currentProductId from the result) — handlers never
 // touch the conversation row.
 export async function applyReadToolState(
@@ -378,7 +349,7 @@ async function executeTools(
   // miss-clear above: a suggestion that ran after a failed search must keep
   // its own results in memory for follow-up selection.
   let resultsStoredThisMessage = false;
-  // Whether an exact product request (search/recall) succeeded this message.
+  // Whether an exact product request (search) succeeded this message.
   // When true, paired suggestions are skipped — a search that matched what the
   // customer asked needs no recommendation on top.
   let searchSucceededThisMessage = false;
@@ -447,18 +418,9 @@ async function executeTools(
 
     // Build explicit tool entities (identity + materialized legacy context) and
     // execute with per-intent error handling.
-    let toolEntities: InjectedToolEntities = buildToolEntities(toolName, entities, source, {
+    const toolEntities: InjectedToolEntities = buildToolEntities(toolName, entities, source, {
       lastProductResults,
     });
-    // confirmOrder gates implicit confirmation on the LIVE conversation state —
-    // inject it freshly rather than the turn-start snapshot for exact parity.
-    if (toolName === 'confirmOrder') {
-      const freshState = await prisma.conversation.findUnique({
-        where: { id: conversation.id },
-        select: { state: true },
-      });
-      toolEntities = { ...toolEntities, conversationState: freshState?.state ?? null };
-    }
     let result: ToolResult;
     try {
       result = await executeTool(toolName, toolEntities);
@@ -477,7 +439,7 @@ async function executeTools(
     // A product search that came back empty or too vague must not leave stale
     // results behind — and must not trigger any further search for the same item.
     if (
-      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
+      toolName === 'searchProducts' &&
       (result.outcome === 'NOT_FOUND' || result.outcome === 'AMBIGUOUS')
     ) {
       productSearchMissed = true;
@@ -488,7 +450,7 @@ async function executeTools(
     // Post-processing: store search results in memory for follow-up selection
     // (PRODUCT_SELECT) and suggestions exclusions.
     if (
-      (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
+      toolName === 'searchProducts' &&
       result.success &&
       result.data?.products &&
       Array.isArray(result.data.products)
@@ -791,11 +753,13 @@ export const processMessage = async (messageId: string) => {
 
   if (suggestedItems.length > 0) {
     const seen = new Set<string>();
+    const uniqueSuggested: SuggestedIntentField[] = [];
     for (const item of suggestedItems) {
       if (!isSuggestedIntent(item.intent)) continue;
       const suggested = item.intent; // narrowed to SuggestedIntentField
       if (seen.has(suggested.name)) continue;
       seen.add(suggested.name);
+      uniqueSuggested.push(suggested);
       try {
         await recordSuggestion(suggested.name, suggested.description);
         console.log(`[agent] ${messageId} -> recorded suggested intent "${suggested.name}"`);
@@ -805,10 +769,14 @@ export const processMessage = async (messageId: string) => {
     }
 
     if (!takenOver) {
+      const firstSuggested = uniqueSuggested[0];
       const result = await executeTool('escalateConversation', {
         merchantId: conversation.merchantId,
         customerId: conversation.customerId,
         conversationId: conversation.id,
+        reason: firstSuggested
+          ? `Suggested intent: ${firstSuggested.name} — ${firstSuggested.description}`
+          : 'Unhandled request requires a human agent',
       });
       console.log(`[agent] ${messageId} -> escalated conversation (suggested intent), tool ->`, result);
       takenOver = true;

@@ -54,44 +54,38 @@ def getOrderStatus(orderId: str) -> str:
 
 
 @tool
-def createOrder(
-    productId: str = "",
-    product: str = "",
-    wilaya: str = "",
-    commune: str = "",
-    quantity: int = 1,
-) -> str:
-    """Create an order for the given product. The shipping wilaya and commune are required; ask the customer for them if unknown."""
+def createOrder(productId: str, quantity: int, wilaya: str, commune: str) -> str:
+    """Create a new order for the given product id with the delivery wilaya and commune (both are required — ask the customer for them if unknown)."""
     return call_tool(
         "createOrder",
-        _args(productId=productId, product=product, wilaya=wilaya, commune=commune, quantity=quantity),
+        _args(productId=productId, quantity=quantity, wilaya=wilaya, commune=commune),
     )
 
 
 @tool
-def confirmOrder(orderId: str | None = None, productName: str | None = None) -> str:
-    """Confirm a pending order."""
-    return call_tool("confirmOrder", _args(orderId=orderId, productName=productName))
+def confirmOrder(orderId: str) -> str:
+    """Confirm an existing order by its id."""
+    return call_tool("confirmOrder", {"orderId": orderId})
 
 
 @tool
 def modifyOrder(
-    orderId: str | None = None,
+    orderId: str,
     wilaya: str | None = None,
     commune: str | None = None,
     quantity: int | None = None,
 ) -> str:
-    """Modify an existing order's shipping address or quantity."""
+    """Modify an order (by its id) — change its shipping wilaya, commune, or quantity."""
     return call_tool("modifyOrder", _args(orderId=orderId, wilaya=wilaya, commune=commune, quantity=quantity))
 
 
 @tool
-def cancelOrder(orderId: str | None = None, productName: str | None = None) -> str:
-    """Cancel an existing order."""
-    return call_tool("cancelOrder", _args(orderId=orderId, productName=productName))
+def cancelOrder(orderId: str) -> str:
+    """Cancel an existing order by its id."""
+    return call_tool("cancelOrder", {"orderId": orderId})
 
 
 @tool
-def escalateConversation() -> str:
-    """Escalate the conversation to a human agent when nothing else can handle it."""
-    return call_tool("escalateConversation", {})
+def escalateConversation(reason: str) -> str:
+    """Escalate the conversation to a human agent with a reason when nothing else can handle it."""
+    return call_tool("escalateConversation", {"reason": reason})

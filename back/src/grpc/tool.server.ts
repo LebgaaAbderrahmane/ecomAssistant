@@ -121,9 +121,11 @@ async function executeToolHandler(
     }
     const typedToolName = toolName as ToolName;
 
-    // Legacy-only tools exist for the internal fallback path only — they are not
-    // part of the agent-facing contract (contracts TOOL_NAMES / tools.json) and
-    // are rejected here.
+    // Legacy-only tools (registered in the backend for internal fallback paths
+    // but excluded from the agent-facing contract TOOL_NAMES / tools.json) are
+    // rejected here. Currently the list is empty — the migration to explicit
+    // context-free tools removed the last one (recallPreviousProducts) — but the
+    // guard stays as a contract-parity safety net.
     if ((LEGACY_ONLY_TOOL_NAMES as readonly string[]).includes(typedToolName)) {
       callback(
         { code: grpc.status.INVALID_ARGUMENT, message: `Tool "${toolName}" is not part of the agent contract` },
@@ -195,8 +197,8 @@ async function executeToolHandler(
     }
 
     // Merge identity + materialize backend-owned context (current order/product,
-    // saved address, memory) into explicit entities — same transport the
-    // internal pipeline uses, so legacy behavior is preserved over gRPC.
+    // memory) into explicit entities — same transport the internal pipeline
+    // uses, so legacy behavior is preserved over gRPC.
     const source: ToolSourceContext = {
       conversation,
       customer,

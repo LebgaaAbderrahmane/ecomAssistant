@@ -68,14 +68,16 @@
         Agent: Shows product category if available.
 
         ----------------------------------------------------------
-        6. PRODUCT RECALL FROM PREVIOUS MESSAGES
+        6. PRODUCT REFERENCE FROM PREVIOUS MESSAGES
         ----------------------------------------------------------
         Customer: "ch3andkoum men Samsung?"
         Agent: [Returns Samsung products]
 
         Customer: "ach mn Galaxy Watch kount ghadi?"
-        Agent: Recalls previously discussed Galaxy Watch from
-        conversation memory and returns it.
+        Agent: Resolves the reference against conversation memory
+        and the current product context; asks the customer which
+        product they mean if it cannot be identified ("the black
+        one" with no prior context -> "lequel exactement?").
 
         ----------------------------------------------------------
         7. ORDER CREATION — New Customer (No Saved Info)

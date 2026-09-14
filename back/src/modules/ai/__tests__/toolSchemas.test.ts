@@ -2,7 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SearchProductsArgsSchema,
-  RecallPreviousProductsArgsSchema,
   SelectProductArgsSchema,
   GetProductDetailsArgsSchema,
   SuggestProductsArgsSchema,
@@ -18,7 +17,6 @@ import type { ToolName } from '../schemas/intents.schemas';
 
 const ALL_TOOL_SCHEMAS: Record<ToolName, unknown> = {
   searchProducts: SearchProductsArgsSchema,
-  recallPreviousProducts: RecallPreviousProductsArgsSchema,
   selectProduct: SelectProductArgsSchema,
   getProductDetails: GetProductDetailsArgsSchema,
   suggestProducts: SuggestProductsArgsSchema,
@@ -41,7 +39,7 @@ describe('tool schemas: injected identity contract (M6-1)', () => {
   const TOOL_NAMES: ToolName[] = Object.keys(ALL_TOOL_SCHEMAS) as ToolName[];
 
   it('every executable tool has an args schema', () => {
-    assert.equal(TOOL_NAMES.length, 12);
+    assert.equal(TOOL_NAMES.length, 11);
     for (const name of TOOL_NAMES) assert.ok(ALL_TOOL_SCHEMAS[name], `${name} must have a schema`);
   });
 
@@ -101,30 +99,88 @@ describe('tool schemas: injected identity contract (M6-1)', () => {
     assert.equal(GetProductDetailsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1' }).success, false);
   });
 
-  it('confirmOrder keeps the implicit-confirmation keys (currentOrderId + conversationState)', () => {
+  it('confirmOrder requires an explicit orderId plus identity — no state keys', () => {
     const parsed = ConfirmOrderArgsSchema.safeParse({
       merchantId: 'm1',
       customerId: 'c1',
       conversationId: 'conv_1',
-      currentOrderId: 'ord_1',
-      conversationState: 'WAITING_CONFIRMATION',
+      orderId: 'ord_1',
     });
     assert.equal(parsed.success, true);
     if (parsed.success) {
-      assert.equal(parsed.data.currentOrderId, 'ord_1');
-      assert.equal(parsed.data.conversationState, 'WAITING_CONFIRMATION');
+      assert.equal(parsed.data.orderId, 'ord_1');
+      // No implicit-confirmation gate keys — the tool is state-free.
+      assert.equal('conversationState' in parsed.data, false);
+      assert.equal('currentOrderId' in parsed.data, false);
+      assert.equal('productName' in parsed.data, false);
     }
+    // orderId is required; the transport materializes it from currentOrderId.
+    const missingOrder = ConfirmOrderArgsSchema.safeParse({ merchantId: 'm1', customerId: 'c1', conversationId: 'conv_1' });
+    assert.equal(missingOrder.success, false);
   });
 
-  it('escalateConversation is purely transport-injected identity', () => {
+  it('escalateConversation requires identity + an explicit reason', () => {
     const paths = failedPaths(EscalateConversationArgsSchema, {});
-    assert.deepEqual(new Set(paths), new Set(['merchantId', 'customerId', 'conversationId']));
+    assert.deepEqual(new Set(paths), new Set(['merchantId', 'customerId', 'conversationId', 'reason']));
     const parsed = EscalateConversationArgsSchema.safeParse({
       merchantId: 'm1',
       customerId: 'c1',
       conversationId: 'conv_1',
+      reason: 'Conflit de livraison',
     });
     assert.equal(parsed.success, true);
+    if (parsed.success) assert.equal(parsed.data.reason, 'Conflit de livraison');
+    assert.equal(
+      EscalateConversationArgsSchema.safeParse({ merchantId: 'm1', customerId: 'c1', conversationId: 'conv_1' }).success,
+      false,
+    );
+  });
+
+  it('createOrder requires productId, quantity, wilaya, commune plus identity', () => {
+    const parsed = CreateOrderArgsSchema.safeParse({
+      merchantId: 'm1',
+      customerId: 'c1',
+      conversationId: 'conv_1',
+      productId: 'prod_1',
+      quantity: 2,
+      wilaya: 'Alger',
+      commune: 'Bab Ezzouar',
+    });
+    assert.equal(parsed.success, true);
+    if (parsed.success) assert.equal(parsed.data.productId, 'prod_1');
+
+    // No product-id fallback: the product NAME is not accepted — order tools
+    // are context-free, productId must be explicit.
+    assert.equal(
+      CreateOrderArgsSchema.safeParse({ merchantId: 'm1', customerId: 'c1', conversationId: 'conv_1', product: 'iPhone', quantity: 1, wilaya: 'Alger', commune: 'Bab Ezzouar' }).success,
+      false,
+    );
+    // No wilaya/commune/quantity → rejected.
+    assert.equal(
+      CreateOrderArgsSchema.safeParse({ merchantId: 'm1', customerId: 'c1', conversationId: 'conv_1', productId: 'prod_1' }).success,
+      false,
+    );
+    // quantity has no default — must be explicit.
+    assert.equal(
+      CreateOrderArgsSchema.safeParse({ merchantId: 'm1', customerId: 'c1', conversationId: 'conv_1', productId: 'prod_1', wilaya: 'Alger', commune: 'Bab Ezzouar' }).success,
+      false,
+    );
+  });
+
+  it('cancelOrder requires an explicit orderId plus identity', () => {
+    const parsed = CancelOrderArgsSchema.safeParse({
+      merchantId: 'm1',
+      customerId: 'c1',
+      conversationId: 'conv_1',
+      orderId: 'ord_1',
+    });
+    assert.equal(parsed.success, true);
+    if (parsed.success) {
+      assert.equal(parsed.data.orderId, 'ord_1');
+      assert.equal('productName' in parsed.data, false);
+    }
+    const missingOrder = CancelOrderArgsSchema.safeParse({ merchantId: 'm1', customerId: 'c1', conversationId: 'conv_1' });
+    assert.equal(missingOrder.success, false);
   });
 
   it('suggestProducts no longer consumes memory — accepts injected excludedProductIds', () => {
