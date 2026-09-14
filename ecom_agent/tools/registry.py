@@ -1,31 +1,51 @@
 from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 
 from tools.grpc import call_tool
 
 
-def _args(**kwargs) -> dict:
-    return {k: v for k, v in kwargs.items() if v is not None and v != ""}
+class SearchProductsArgs(BaseModel):
+    product: str = Field(description="The product name or free-text query to search in the merchant catalog.")
 
 
-@tool
+@tool(args_schema=SearchProductsArgs)
 def searchProducts(product: str) -> str:
     """Search the merchant catalog for a product by name and return the matching products. The result is authoritative: no match means the product is not in the catalog."""
     return call_tool("searchProducts", {"product": product})
 
 
-@tool
+class SelectProductArgs(BaseModel):
+    productId: str | None = Field(default=None, description="The product id the customer picked.")
+    productName: str | None = Field(default=None, description="The name of the product the customer picked.")
+
+
+@tool(args_schema=SelectProductArgs)
 def selectProduct(productId: str | None = None, productName: str | None = None) -> str:
     """Select a product the customer picked (by its id or by its name) and make it the active product."""
-    return call_tool("selectProduct", _args(productId=productId, productName=productName))
+    return call_tool("selectProduct", _only(productId=productId, productName=productName))
 
 
-@tool
+class GetProductDetailsArgs(BaseModel):
+    productId: str | None = Field(default=None, description="The product id to fetch details for.")
+    productName: str | None = Field(default=None, description="The name of the product to fetch details for.")
+
+
+@tool(args_schema=GetProductDetailsArgs)
 def getProductDetails(productId: str | None = None, productName: str | None = None) -> str:
     """Return the full details (description, price, currency, stock status, category) for a product by its id or its name."""
-    return call_tool("getProductDetails", _args(productId=productId, productName=productName))
+    return call_tool("getProductDetails", _only(productId=productId, productName=productName))
 
 
-@tool
+class SuggestProductsArgs(BaseModel):
+    category: str | None = Field(default=None, description="The product category the customer asked for.")
+    color: str | None = Field(default=None, description="The color the customer asked for.")
+    size: str | None = Field(default=None, description="The size the customer asked for.")
+    minPrice: float | None = Field(default=None, description="Minimum price filter.")
+    maxPrice: float | None = Field(default=None, description="Maximum price filter.")
+    preferences: str | None = Field(default=None, description="Free-text preferences for the suggestion.")
+
+
+@tool(args_schema=SuggestProductsArgs)
 def suggestProducts(
     category: str | None = None,
     color: str | None = None,
@@ -37,38 +57,61 @@ def suggestProducts(
     """Suggest products matching the customer's explicit criteria (category, color, size, price range, or free-text preferences)."""
     return call_tool(
         "suggestProducts",
-        _args(category=category, color=color, size=size, minPrice=minPrice, maxPrice=maxPrice, preferences=preferences),
+        _only(category=category, color=color, size=size, minPrice=minPrice, maxPrice=maxPrice, preferences=preferences),
     )
 
 
-@tool
+class CalculateShippingArgs(BaseModel):
+    wilaya: str = Field(description="The wilaya (name or code number) to calculate delivery for.")
+
+
+@tool(args_schema=CalculateShippingArgs)
 def calculateShipping(wilaya: str) -> str:
     """Look up the delivery cost configured for a wilaya (name or number) for this merchant. Requires the wilaya the customer wants to send to."""
     return call_tool("calculateShipping", {"wilaya": wilaya})
 
 
-@tool
+class GetOrderStatusArgs(BaseModel):
+    orderId: str = Field(description="The id of the order to get the status and tracking number for.")
+
+
+@tool(args_schema=GetOrderStatusArgs)
 def getOrderStatus(orderId: str) -> str:
     """Get the status and tracking number of an existing order by its id. Required: the order id — reference the customer's order or use the active one."""
     return call_tool("getOrderStatus", {"orderId": orderId})
 
 
-@tool
+class CreateOrderArgs(BaseModel):
+    productId: str = Field(description="The product id to order — use the product the customer selected.")
+    quantity: int = Field(description="How many units to order (integer).")
+    wilaya: str = Field(description="The wilaya (province) the order ships to.")
+    commune: str = Field(description="The commune (city/town) the order ships to.")
+
+
+@tool(args_schema=CreateOrderArgs)
 def createOrder(productId: str, quantity: int, wilaya: str, commune: str) -> str:
     """Create a new order for the given product id with the delivery wilaya and commune (both are required — ask the customer for them if unknown)."""
-    return call_tool(
-        "createOrder",
-        _args(productId=productId, quantity=quantity, wilaya=wilaya, commune=commune),
-    )
+    return call_tool("createOrder", _only(productId=productId, quantity=quantity, wilaya=wilaya, commune=commune))
 
 
-@tool
+class ConfirmOrderArgs(BaseModel):
+    orderId: str = Field(description="The id of the order to confirm.")
+
+
+@tool(args_schema=ConfirmOrderArgs)
 def confirmOrder(orderId: str) -> str:
     """Confirm an existing order by its id."""
     return call_tool("confirmOrder", {"orderId": orderId})
 
 
-@tool
+class ModifyOrderArgs(BaseModel):
+    orderId: str = Field(description="The id of the order to modify.")
+    wilaya: str | None = Field(default=None, description="The new shipping wilaya (province).")
+    commune: str | None = Field(default=None, description="The new shipping commune (city/town).")
+    quantity: int | None = Field(default=None, description="The new order quantity (integer).")
+
+
+@tool(args_schema=ModifyOrderArgs)
 def modifyOrder(
     orderId: str,
     wilaya: str | None = None,
@@ -76,16 +119,28 @@ def modifyOrder(
     quantity: int | None = None,
 ) -> str:
     """Modify an order (by its id) — change its shipping wilaya, commune, or quantity."""
-    return call_tool("modifyOrder", _args(orderId=orderId, wilaya=wilaya, commune=commune, quantity=quantity))
+    return call_tool("modifyOrder", _only(orderId=orderId, wilaya=wilaya, commune=commune, quantity=quantity))
 
 
-@tool
+class CancelOrderArgs(BaseModel):
+    orderId: str = Field(description="The id of the order to cancel.")
+
+
+@tool(args_schema=CancelOrderArgs)
 def cancelOrder(orderId: str) -> str:
     """Cancel an existing order by its id."""
     return call_tool("cancelOrder", {"orderId": orderId})
 
 
-@tool
+class EscalateConversationArgs(BaseModel):
+    reason: str = Field(description="Human-readable reason why the conversation is escalated to a human agent.")
+
+
+@tool(args_schema=EscalateConversationArgs)
 def escalateConversation(reason: str) -> str:
     """Escalate the conversation to a human agent with a reason when nothing else can handle it."""
     return call_tool("escalateConversation", {"reason": reason})
+
+
+def _only(**kwargs) -> dict:
+    return {k: v for k, v in kwargs.items() if v is not None and v != ""}

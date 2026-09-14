@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langgraph.prebuilt import ToolNode
 
 from config import model
 from models.state import AgentState
@@ -26,7 +25,19 @@ def _tool_result_products(content: str) -> list[Product] | None:
     except (json.JSONDecodeError, TypeError):
         return None
     if isinstance(data, dict):
-        data = [data]
+        unwrapped = None
+        for key in ("products", "results"):
+            if isinstance(data.get(key), list):
+                unwrapped = data[key]
+                break
+        if unwrapped is not None:
+            data = unwrapped
+        elif data.get("price") is not None and (
+            data.get("product_id") or data.get("productId") or data.get("id")
+        ):
+            data = [data]
+        else:
+            return None
     if not isinstance(data, list):
         return None
     products = []
@@ -78,21 +89,23 @@ def calling_tool(state: AgentState) -> dict:
         t = tool_for(draft.tool_name, flow)
         if t is None:
             return {}
+        tool_call_id = "draft-" + uuid.uuid4().hex[:8]
         ai_msg = AIMessage(
             content="",
             tool_calls=[{
                 "name": t.name,
                 "args": dict(draft.args),
-                "id": "draft-" + uuid.uuid4().hex[:8],
+                "id": tool_call_id,
                 "type": "tool_call",
             }],
         )
         try:
-            tool_messages = ToolNode([t]).invoke([ai_msg])
+            content = t.invoke(dict(draft.args))
+            tool_messages = [ToolMessage(content=content, name=t.name, tool_call_id=tool_call_id)]
         except Exception as e:
             logger.warning("draft tool execution failed (%s)", e)
             tool_messages = [ToolMessage(
-                content=f"Tool execution failed: {e}", tool_call_id="draft-exec-error"
+                content=f"Tool execution failed: {e}", name=t.name, tool_call_id=tool_call_id
             )]
         called_name = t.name
         call_args = dict(draft.args)
@@ -103,18 +116,27 @@ def calling_tool(state: AgentState) -> dict:
         user_text = last_user_text(state.messages)
         tool_context = state.tool_outputs[-1] if state.tool_outputs else "No tool selected."
         tools = TOOLS
-        runtime_tool_node = ToolNode(tools)
-        runtime_tool_model = model.bind_tools(tools)
+        model_with_tools = model.bind_tools(tools)
 
         system = (
             "You are an e-commerce assistant. Call the requested tool to fulfill the user's request."
             f"\nResolved flow id: {state.resolved_flow_id or 'none'}. Tool context: {tool_context}"
         )
-        ai_msg = runtime_tool_model.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
+        ai_msg = model_with_tools.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
         if getattr(ai_msg, "tool_calls", None):
-            tool_messages = runtime_tool_node.invoke([ai_msg])
+            for tc in ai_msg.tool_calls:
+                name = tc.get("name", "")
+                args = tc.get("args") or {}
+                t = tool_for(name)
+                try:
+                    content = t.invoke(args) if t else f"Unknown tool: {name}"
+                except Exception as e:
+                    content = f"Tool execution failed: {e}"
+                tool_messages.append(
+                    ToolMessage(content=content, name=name, tool_call_id=tc.get("id", "tool_call"))
+                )
         else:
-            logger.warning("Tool model returned no tool call; skipping ToolNode")
+            logger.warning("Tool model returned no tool call; skipping tool execution")
             tool_messages = [
                 ToolMessage(content="No tool was called by the assistant.", tool_call_id="no_tool_call")
             ]
