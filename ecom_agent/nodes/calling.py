@@ -11,7 +11,7 @@ from models.state import AgentState
 from models.domain import (
     Product, ProductDiscoveryContext, ShippingContext,
 )
-from tools import TOOLS, tool_for
+from tools import TOOLS, tool_for, tool_node, TOOL_NODE_CONFIG
 from utils import last_user_text
 
 logger = logging.getLogger(__name__)
@@ -100,10 +100,9 @@ def calling_tool(state: AgentState) -> dict:
             }],
         )
         try:
-            content = t.invoke(dict(draft.args))
-            tool_messages = [ToolMessage(content=content, name=t.name, tool_call_id=tool_call_id)]
+            tool_messages = tool_node.invoke([ai_msg], config=TOOL_NODE_CONFIG)
         except Exception as e:
-            logger.warning("draft tool execution failed (%s)", e)
+            logger.warning("calling_tool delegate failed (%s)", e)
             tool_messages = [ToolMessage(
                 content=f"Tool execution failed: {e}", name=t.name, tool_call_id=tool_call_id
             )]
@@ -124,17 +123,13 @@ def calling_tool(state: AgentState) -> dict:
         )
         ai_msg = model_with_tools.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
         if getattr(ai_msg, "tool_calls", None):
-            for tc in ai_msg.tool_calls:
-                name = tc.get("name", "")
-                args = tc.get("args") or {}
-                t = tool_for(name)
-                try:
-                    content = t.invoke(args) if t else f"Unknown tool: {name}"
-                except Exception as e:
-                    content = f"Tool execution failed: {e}"
-                tool_messages.append(
-                    ToolMessage(content=content, name=name, tool_call_id=tc.get("id", "tool_call"))
-                )
+            try:
+                tool_messages = tool_node.invoke([ai_msg], config=TOOL_NODE_CONFIG)
+            except Exception as e:
+                logger.warning("calling_tool delegate failed (%s)", e)
+                tool_messages = [
+                    ToolMessage(content=f"Tool execution failed: {e}", tool_call_id="delegate-error")
+                ]
         else:
             logger.warning("Tool model returned no tool call; skipping tool execution")
             tool_messages = [
