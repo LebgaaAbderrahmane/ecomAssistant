@@ -11,17 +11,20 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 _model = None
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 
 
 def get_model():
+    """Build and cache the provider-aware LLM client.
+
+    Provider priority comes from the LLM_PROVIDER env var (comma-separated,
+    default "groq,gemini"). Each provider is lazily constructed and the client
+    fails over to the next provider when a call errors or is rate-limited.
+    """
     global _model
     if _model is None:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        _model = ChatGoogleGenerativeAI(
-            model=GEMINI_MODEL,
-            temperature=0,
-        )
+        from llm import build_client
+
+        _model = build_client()
     return _model
 
 

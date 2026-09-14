@@ -23,7 +23,7 @@ export type ConversationState =
 // change.
 //
 // Ownership: READ-tool transitions (READ_TOOL_TRANSITIONS) are applied by the
-// TRANSPORT (agent.service) after a successful run — tool handlers are pure
+// TRANSPORT (gRPC ToolService) after a successful run — tool handlers are pure
 // functions of their explicit params and never write conversation state.
 // WRITE-tool transitions (createOrder / confirmOrder / cancelOrder) are written
 // by the handlers themselves, alongside the business mutation they belong to.
@@ -46,16 +46,3 @@ export const READ_TOOL_TRANSITIONS: Partial<Record<ReadToolName, ConversationSta
   selectProduct: TOOL_STATE_TRANSITIONS.selectProduct,
   getProductDetails: TOOL_STATE_TRANSITIONS.getProductDetails,
 };
-
-/**
- * Pure state-transition helper. Returns the conversation state a tool success
- * should land on. Failures never advance the conversation.
- */
-export function nextConversationState(
-  currentState: string,
-  toolName: ToolName,
-  success: boolean,
-): string {
-  if (!success) return currentState;
-  return TOOL_STATE_TRANSITIONS[toolName] ?? currentState;
-}

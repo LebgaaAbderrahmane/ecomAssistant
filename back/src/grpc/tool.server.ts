@@ -16,7 +16,7 @@ import {
   applyReadToolState,
   type ToolSourceContext,
   type InjectedToolEntities,
-} from '../modules/ai/agent.service';
+} from '../modules/ai/toolContext';
 import type { ConversationMemory } from '../modules/ai/memory.types';
 
 export interface HealthRequest {}
@@ -182,7 +182,7 @@ async function executeToolHandler(
     }
 
     // Human takeover gate: read tools are suppressed while a human owns the
-    // conversation (write tools still run — mirror of agent.service).
+    // conversation (write tools still run).
     if (conversation.takenOverByHuman && isReadTool(typedToolName)) {
       callback(
         null,

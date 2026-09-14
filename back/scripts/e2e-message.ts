@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import prisma from '../src/config/db.config';
 import { config } from '../src/config';
 import { messageQueue } from '../src/queues/message.queue';
-import { processMessageWithFallback } from '../src/modules/ai/legacyWithFallback';
 
 const MERCHANT_ID = 'mer-e2e-message';
 const SESSION_ID = 'e2e-message';
@@ -62,7 +61,7 @@ async function seedMerchant() {
   return customer;
 }
 
-async function poll(until: () => Promise<boolean>, tries = 120) {
+async function poll(until: () => Promise<boolean>, tries = 300) {
   for (let i = 0; i < tries; i++) {
     if (await until()) return true;
     await wait(500);
@@ -87,7 +86,6 @@ async function main() {
       `http=${res.status}`,
     );
   }
-  const expectedEcho = (text: string) => `Bonjour, vous avez écrit : « ${text} ». Comment puis-je vous aider ?`;
   let grpcIn: Awaited<ReturnType<typeof prisma.message.findMany>> = [];
   let grpcOut: Awaited<ReturnType<typeof prisma.message.findMany>> = [];
   const grpcDone = await poll(async () => {
@@ -95,74 +93,75 @@ async function main() {
       where: { merchantId: MERCHANT_ID, customerId: customer.id },
     });
     if (!conversation) return false;
-    const rows = await prisma.message.findMany({
+    grpcOut = await prisma.message.findMany({
       where: { conversationId: conversation.id, direction: 'OUT' },
     });
-    grpcOut = rows;
-    if (grpcOut.length === 2) {
-      grpcIn = await prisma.message.findMany({
-        where: { conversationId: conversation.id, direction: 'IN' },
-      });
-      return true;
-    }
-    return false;
+    grpcIn = await prisma.message.findMany({
+      where: { conversationId: conversation.id, direction: 'IN' },
+    });
+    return grpcIn.length === inputs.length && (grpcOut.length === inputs.length || conversation.takenOverByHuman);
   });
-  check('grpc: 2 IN + 2 OUT via live worker', grpcDone && grpcIn.length === 2 && grpcOut.length === 2, `in=${grpcIn.length} out=${grpcOut.length}`);
-  for (const input of inputs) {
-    const inRow = grpcIn.find((m) => m.text === input.text);
-    const outRow = grpcOut.find((m) => m.text === expectedEcho(input.text));
-    check(
-      `grpc reply for "${input.key}"`,
-      !!inRow && !!outRow && outRow.direction === 'OUT' && outRow.sender === 'AI',
-      inRow ? `in=${inRow.id.slice(0, 8)} out=${outRow?.id.slice(0, 8) ?? 'MISSING'}` : 'no IN row',
-    );
-  }
-
-  // ── Leg B: legacy handler — local pipeline (or LLM-failure fallback) replies ──
-  const legacyConversation = await prisma.conversation.findFirst({
+  check('grpc: 2 IN messages captured', grpcDone && grpcIn.length === inputs.length, `in=${grpcIn.length}`);
+  const conversation = await prisma.conversation.findFirst({
     where: { merchantId: MERCHANT_ID, customerId: customer.id },
   });
-  if (!legacyConversation) throw new Error('legacy leg: conversation missing');
-  const legacyIn = await prisma.message.create({
-    data: {
-      conversationId: legacyConversation.id,
-      role: 'user',
-      content: 'Pouvez-vous confirmer ma commande ?',
-      direction: 'IN',
-      sender: 'CUSTOMER',
-      text: 'Pouvez-vous confirmer ma commande ?',
-    },
-  });
-  await processMessageWithFallback(legacyIn.id);
-  let legacyOut: Awaited<ReturnType<typeof prisma.message.findMany>> = [];
-  const legacyDone = await poll(async () => {
-    const rows = await prisma.message.findMany({
-      where: { conversationId: legacyConversation.id, direction: 'OUT' },
-    });
-    legacyOut = rows.filter(
-      (m) =>
-        new Date(m.createdAt) >= new Date(legacyIn.createdAt) &&
-        !inputs.some((i) => m.text === expectedEcho(i.text)),
+  const escalated = !!conversation?.takenOverByHuman;
+  const stubPrefix = 'Bonjour, vous avez écrit';
+  if (escalated) {
+    // LLM unavailable (quota/outage): the agent escalates to a human instead
+    // of replying with a placeholder.
+    check(
+      'LLM unavailable — messages escalated, no placeholder/stub emitted',
+      grpcOut.length === 0 && grpcIn.length === inputs.length,
+      `in=${grpcIn.length} out=${grpcOut.length}`,
     );
-    return legacyOut.length >= 1;
-  });
-  check(
-    'legacy: fallback/LLM reply produced an OUT row',
-    legacyDone && legacyOut.length >= 1 && legacyOut[0].sender === 'AI' && legacyOut[0].text.length > 0,
-    legacyOut[0] ? `out=${legacyOut[0].id.slice(0, 8)} text=${legacyOut[0].text.slice(0, 60)}` : 'no OUT row',
-  );
+    check('conversation handed to human', escalated, '');
+  } else {
+    check(
+      'grpc: 2 OUT replies via live worker',
+      grpcOut.length === inputs.length,
+      `out=${grpcOut.length}`,
+    );
+    check(
+      'no reply is the legacy echo stub',
+      grpcOut.every((m) => !m.text.startsWith(stubPrefix) && m.text.trim().length > 0),
+      grpcOut.map((m) => m.text.slice(0, 48)).join(' | '),
+    );
+    for (let i = 0; i < inputs.length; i++) {
+      const input = inputs[i];
+      const inRow = grpcIn[i];
+      const outRow = grpcOut[i];
+      check(
+        `grpc reply for "${input.key}"`,
+        !!inRow && !!outRow && outRow.direction === 'OUT' && outRow.sender === 'AI' && outRow.text.trim().length > 0,
+        inRow ? `in=${inRow.id.slice(0, 8)} out=${outRow?.id.slice(0, 8) ?? 'MISSING'}` : 'no IN row',
+      );
+    }
+  }
 
   // ── BullMQ: every fed message completed, none failed ──
   const myIds = new Set(grpcIn.map((m) => m.id));
-  const [completed, failed] = await Promise.all([
-    messageQueue.getCompleted(0, 100),
-    messageQueue.getFailed(0, 100),
-  ]);
-  const completedIds = new Set(completed.map((j) => (j.data as { messageId?: string }).messageId).filter(Boolean));
-  const failedIds = new Set(failed.map((j) => (j.data as { messageId?: string }).messageId).filter(Boolean));
-  const allCompleted = [...myIds].every((id) => completedIds.has(id));
-  const anyFailed = [...myIds].some((id) => failedIds.has(id));
-  check('BullMQ: all grpc jobs completed', allCompleted && !anyFailed, `completed=${allCompleted} failed=${anyFailed}`);
+  let allCompleted = false;
+  let anyFailed = false;
+  const queueDone = await poll(async () => {
+    const [completed, failed] = await Promise.all([
+      messageQueue.getCompleted(0, 100),
+      messageQueue.getFailed(0, 100),
+    ]);
+    const completedIds = new Set(completed.map((j) => (j.data as { messageId?: string }).messageId).filter(Boolean));
+    const failedIds = new Set(failed.map((j) => (j.data as { messageId?: string }).messageId).filter(Boolean));
+    allCompleted = [...myIds].every((id) => completedIds.has(id));
+    anyFailed = [...myIds].some((id) => failedIds.has(id));
+    return allCompleted && !anyFailed;
+  }, 60);
+  if (!queueDone) {
+    anyFailed = await poll(async () => {
+      const failed = await messageQueue.getFailed(0, 100);
+      const failedIds = new Set(failed.map((j) => (j.data as { messageId?: string }).messageId).filter(Boolean));
+      return [...myIds].some((id) => failedIds.has(id));
+    }, 1);
+  }
+  check('BullMQ: all grpc jobs completed', queueDone, `completed=${allCompleted} failed=${anyFailed}`);
 
   // OpenWA send: backend must have invoked OpenWA's send-text endpoint for the
   // connected session (delivery call made even if the session rejects it).

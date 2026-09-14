@@ -24,7 +24,7 @@ export interface AgentBridgeDeps {
 }
 
 /**
- * gRPC message destination (MESSAGE_HANDLER=grpc): load the inbound message
+ * gRPC message destination: load the inbound message
  * and forward it to the Python agent's AgentService.ProcessMessage. The agent's
  * reply is persisted + sent by the backend; DECISION_ESCALATE / unavailability
  * hand the conversation to a human. A human-owned conversation is never given

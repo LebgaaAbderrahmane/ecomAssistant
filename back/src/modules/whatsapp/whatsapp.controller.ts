@@ -10,7 +10,6 @@ import { conversationService } from "./conversation.service";
 import { notificationService } from "./notification.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import { enqueueMessageJob } from "../../queues/message.queue";
-import { cancelPendingLayer2Jobs } from "../../queues/layer2.queue";
 import { transcribeAudio } from "../ai/media/transcription.service";
 import { captionImage } from "../ai/media/imageCaption.service";
 
@@ -269,7 +268,7 @@ export async function handleWebhook(
             if (remote.phone && waSession?.phoneNumber !== remote.phone) {
               await prisma.whatsAppSession.updateMany({
                 where: { sessionId },
-                data: { phoneNumber: session.name },
+                data: { phoneNumber: remote.phone },
               });
             }
           } catch {
@@ -327,12 +326,8 @@ export async function handleWebhook(
         }
 
         // The merchant replied manually — whatever the AI had queued to say is
-        // now stale. Drop the deferred layer-2 job so the AI stays silent.
-        const cancelled = await cancelPendingLayer2Jobs(conversation.id);
-        if (cancelled > 0) {
-          console.log(`[WhatsApp] message.sent cancelled ${cancelled} pending layer-2 job(s) for conversation ${conversation.id}`);
-        }
-        return res.status(200).json({ status: "ok", cancelled });
+        // now stale. Nothing to cancel: the (legacy) deferred layer-2 queue is gone.
+        return res.status(200).json({ status: "ok" });
       }
 
       default:

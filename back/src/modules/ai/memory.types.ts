@@ -1,6 +1,6 @@
-// Shared shape for Conversation.memory (a Json column). Lives here, not in
-// agent.service.ts, so both agent.service.ts and prompts/promptBuilder.ts can
-// depend on it without depending on each other.
+// Shared shape for Conversation.memory (a Json column). Lives here so the tool
+// context builder (toolContext.ts) and tool helpers can depend on it without
+// creating a circular import.
 export interface ProductResult {
   id: string;
   name: string;
