@@ -30,6 +30,21 @@ describe('suggestProducts intent routing', () => {
   });
 });
 
+describe('shipping & status intent routing', () => {
+  it('maps SHIPPING_CHECK deterministically to calculateShipping', () => {
+    assert.equal(resolveTool('SHIPPING_CHECK', {}), 'calculateShipping');
+    assert.equal(resolveTool('SHIPPING_CHECK', { wilaya: 'Oran' }), 'calculateShipping');
+    // calculateShipping must never route product intents.
+    assert.notEqual(resolveTool('PRODUCT_SEARCH', { product: 'x' }), 'calculateShipping');
+  });
+
+  it('maps STATUS_CHECK deterministically to getOrderStatus', () => {
+    assert.equal(resolveTool('STATUS_CHECK', {}), 'getOrderStatus');
+    assert.equal(resolveTool('STATUS_CHECK', { orderId: 'ord_1' }), 'getOrderStatus');
+    assert.equal(resolveTool('STATUS_CHECK', { orderId: '' }), 'getOrderStatus');
+  });
+});
+
 describe('tool execution policies (read / write)', () => {
   const READ_TOOLS = ReadToolNameSchema.options;
   const WRITE_TOOLS = WriteToolNameSchema.options;

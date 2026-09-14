@@ -141,4 +141,35 @@ describe('tool schemas: injected identity contract (M6-1)', () => {
       assert.equal(parsed.data.excludedProductIds, '["p1"]');
     }
   });
+
+  it('calculateShipping requires an explicit wilaya plus the injected merchantId', () => {
+    const parsed = CalculateShippingArgsSchema.safeParse({ merchantId: 'm1', wilaya: 'Alger' });
+    assert.equal(parsed.success, true);
+    if (parsed.success) {
+      assert.equal(parsed.data.wilaya, 'Alger');
+      // Only public + injected identity keys — no commune/address leakage.
+      assert.equal('commune' in parsed.data, false);
+    }
+    // No wilaya → invalid even with identity.
+    assert.equal(CalculateShippingArgsSchema.safeParse({ merchantId: 'm1' }).success, false);
+    // No identity → invalid even with a wilaya.
+    assert.equal(CalculateShippingArgsSchema.safeParse({ wilaya: 'Alger' }).success, false);
+  });
+
+  it('getOrderStatus requires an explicit orderId plus identity', () => {
+    const parsed = GetOrderStatusArgsSchema.safeParse({
+      merchantId: 'm1',
+      customerId: 'c1',
+      orderId: 'ord_1',
+    });
+    assert.equal(parsed.success, true);
+    if (parsed.success) assert.equal(parsed.data.orderId, 'ord_1');
+
+    // orderId is required — no implicit-current-order fallback in the schema;
+    // the transport materializes it before dispatch.
+    const missingId = GetOrderStatusArgsSchema.safeParse({ merchantId: 'm1', customerId: 'c1' });
+    assert.equal(missingId.success, false);
+    const missingCustomer = GetOrderStatusArgsSchema.safeParse({ merchantId: 'm1', orderId: 'ord_1' });
+    assert.equal(missingCustomer.success, false);
+  });
 });

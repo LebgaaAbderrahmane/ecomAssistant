@@ -42,14 +42,14 @@ def suggestProducts(
 
 
 @tool
-def calculateShipping(wilaya: str, commune: str | None = None) -> str:
-    """Estimate the shipping cost for an order to a wilaya."""
-    return call_tool("calculateShipping", _args(wilaya=wilaya, commune=commune))
+def calculateShipping(wilaya: str) -> str:
+    """Look up the delivery cost configured for a wilaya (name or number) for this merchant. Requires the wilaya the customer wants to send to."""
+    return call_tool("calculateShipping", {"wilaya": wilaya})
 
 
 @tool
 def getOrderStatus(orderId: str) -> str:
-    """Get the status of an existing order by its id."""
+    """Get the status and tracking number of an existing order by its id. Required: the order id — reference the customer's order or use the active one."""
     return call_tool("getOrderStatus", {"orderId": orderId})
 
 

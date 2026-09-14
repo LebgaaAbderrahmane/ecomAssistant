@@ -151,7 +151,7 @@ async function checkToolServiceMatrix(): Promise<boolean> {
   const client = createToolServiceClient(auth);
 
   const merchantEmail = `grpc-check-${Date.now()}@example.com`;
-  const ids = { merchantId: '', customerId: '', conversationId: '', productId: '' };
+  const ids = { merchantId: '', customerId: '', conversationId: '', productId: '', deliveryCostId: '', orderId: '' };
   const results: Array<[string, boolean]> = [];
 
   const authExec = (toolName: string, entitiesJson: string, identity: Record<string, string>) => ({
@@ -305,10 +305,106 @@ async function checkToolServiceMatrix(): Promise<boolean> {
         r?.success === false && r?.outcome === 'OUTCOME_NOT_FOUND' && r?.error !== '',
       ]);
     }
+
+    const deliveryCost = await prisma.wilayaDeliveryCost.create({
+      data: { merchantId: merchant.id, wilaya: 'Alger', wilayaCode: 16, cost: 600 },
+    });
+    ids.deliveryCostId = deliveryCost.id;
+
+    // calculateShipping: explicit wilaya → SUCCESS with the configured cost.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('calculateShipping', JSON.stringify({ wilaya: 'alger' }), identity),
+        8000,
+        'calculateShipping fixture'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'calculateShipping -> fixture wilaya',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.cost === 600 &&
+          data.wilaya === 'Alger',
+      ]);
+    }
+
+    // calculateShipping: unknown wilaya → NOT_FOUND (no delivery cost configured).
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('calculateShipping', JSON.stringify({ wilaya: 'Mars' }), identity),
+        8000,
+        'calculateShipping unknown wilaya'
+      );
+      results.push([
+        'calculateShipping unknown wilaya -> NOT_FOUND',
+        r?.success === false && r?.outcome === 'OUTCOME_NOT_FOUND' && r?.error !== '',
+      ]);
+    }
+
+    // getOrderStatus: explicit order id → SUCCESS with status + tracking.
+    const order = await prisma.order.create({
+      data: {
+        merchantId: merchant.id,
+        customerId: customer.id,
+        platformOrderId: 'grpc-check-1',
+        wilaya: 'Alger',
+        commune: 'Alger Centre',
+        productId: product.id,
+        productName: 'GrpcCheckCamouflage',
+        quantity: 1,
+        totalAmount: 2100,
+        deliveryCost: 600,
+        status: 'SHIPPED',
+        trackingNumber: 'TRK-GRPC-1',
+      },
+    });
+    ids.orderId = order.id;
+
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('getOrderStatus', JSON.stringify({ orderId: order.id }), identity),
+        8000,
+        'getOrderStatus fixture'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'getOrderStatus -> fixture order',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.orderId === order.id &&
+          data.status === 'SHIPPED' &&
+          data.trackingNumber === 'TRK-GRPC-1',
+      ]);
+    }
+
+    // getOrderStatus: unknown order id → NOT_FOUND.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('getOrderStatus', JSON.stringify({ orderId: 'grpc-check-no-such-order' }), identity),
+        8000,
+        'getOrderStatus unknown order'
+      );
+      results.push([
+        'getOrderStatus unknown order -> NOT_FOUND',
+        r?.success === false && r?.outcome === 'OUTCOME_NOT_FOUND' && r?.error !== '',
+      ]);
+    }
   } finally {
+    if (ids.orderId) await prisma.order.delete({ where: { id: ids.orderId } }).catch(() => undefined);
+    if (ids.deliveryCostId) await prisma.wilayaDeliveryCost.delete({ where: { id: ids.deliveryCostId } }).catch(() => undefined);
     if (ids.productId) await prisma.product.delete({ where: { id: ids.productId } }).catch(() => undefined);
     if (ids.conversationId) await prisma.conversation.delete({ where: { id: ids.conversationId } }).catch(() => undefined);
-    if (ids.customerId) await prisma.customer.delete({ where: { id: ids.customerId } }).catch(() => undefined);
+    if (ids.customerId || ids.merchantId) {
+      // Customer rows are deleted via the merchant cascade only after other
+      // dependent rows (order, delivery cost) are gone.
+      if (ids.customerId) await prisma.customer.delete({ where: { id: ids.customerId } }).catch(() => undefined);
+    }
     if (ids.merchantId) await prisma.merchant.delete({ where: { id: ids.merchantId } }).catch(() => undefined);
     client.close();
   }

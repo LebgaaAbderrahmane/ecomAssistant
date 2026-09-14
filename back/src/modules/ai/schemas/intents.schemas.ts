@@ -276,7 +276,7 @@ export const CalculateShippingArgsSchema = z.object({
 });
 
 export const GetOrderStatusArgsSchema = z.object({
-  orderId: z.string().min(1).optional(),
+  orderId: z.string().min(1),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
 });

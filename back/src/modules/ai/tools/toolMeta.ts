@@ -80,15 +80,15 @@ export const TOOL_META: Record<ToolName, ToolMeta> = {
     },
   },
   calculateShipping: {
-    description: 'Look up the delivery cost for a wilaya for this merchant',
+    description: 'Look up the delivery cost configured for a wilaya for this merchant',
     args: {
       wilaya: { description: 'Wilaya (name or number) to calculate shipping for' },
     },
   },
   getOrderStatus: {
-    description: 'Return the status and tracking number of the active or referenced order',
+    description: 'Return the status and tracking number of an order by its id (the current order is injected when none is referenced)',
     args: {
-      orderId: { description: 'Order id to check' },
+      orderId: { description: 'Order id to check the status of' },
     },
   },
   createOrder: {

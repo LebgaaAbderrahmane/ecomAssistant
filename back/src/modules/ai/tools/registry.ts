@@ -167,16 +167,12 @@ const getOrderStatus: ToolHandler = async (entities) => {
   }
   const orderId = parsedArgs.data.orderId;
 
-  if (!orderId) {
-    return { success: false, error: 'No order in context to check status for' };
-  }
-
   const order = await prisma.order.findFirst({
     where: { id: orderId, merchantId: parsedArgs.data.merchantId, customerId: parsedArgs.data.customerId },
   });
 
   if (!order) {
-    return { success: false, error: 'Order not found' };
+    return { success: false, outcome: 'NOT_FOUND', error: 'Order not found' };
   }
 
   return {
@@ -196,7 +192,11 @@ const calculateShipping: ToolHandler = async (entities) => {
   });
 
   if (!cost) {
-    return { success: false, error: `No delivery cost configured for "${parsedArgs.data.wilaya}"` };
+    return {
+      success: false,
+      outcome: 'NOT_FOUND',
+      error: `No delivery cost configured for "${parsedArgs.data.wilaya}"`,
+    };
   }
 
   return { success: true, data: { wilaya: cost.wilaya, cost: cost.cost } };
