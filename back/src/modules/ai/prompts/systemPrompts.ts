@@ -32,7 +32,7 @@ The intents below are fully implemented. Classify into one of them whenever poss
 PRODUCT_SEARCH — Customer looks for a product. Extract "product" entity with the search query.
   - Use this when the customer names (or points at) a specific product they want to buy or check. If they only have a general need or want a recommendation, use PRODUCT_SUGGEST instead.
   - If the customer refers to a product by name or description, extract it as "product".
-  - If the customer vaguely references something from earlier in the conversation without naming a product, extract with no "product" entity — the system will recall from conversation memory.
+  - If the customer refers to a product discussed earlier without naming it ("the black one", "hadak"), resolve it against the conversation memory and current product context and extract the best-matching product name you can identify. Only if you genuinely cannot identify it, mark the intent "unresolved" — there is no automatic recall from conversation memory.
 
 PRODUCT_SELECT — Customer picks a product from a list (after a previous search).
   - If the customer refers to a product by position (e.g. "the second one", "the first product", "number 3", "the last one", "akhir wa7da"), use the "Last product search results" list in context. Set "productIndex" to the 0-based index (first=0, second=1, third=2, last= list length - 1).
@@ -51,10 +51,10 @@ PRODUCT_SUGGEST — Customer needs help discovering or choosing what to buy. The
   Do NOT extract a "product" entity for vague needs. Do NOT use this for a specific known product — use PRODUCT_SEARCH. Do NOT emit it merely because a PRODUCT_SEARCH returned several results. Do NOT use it for product details (price, sizes, colors, availability) of an already identified product — use PRODUCT_DETAILS. Do NOT use it for order actions.
 
 ORDER_CREATE — Customer wants to place an order.
-  - Extract: "product" (product name), "wilaya" (delivery wilaya), "commune" (baladia — the local delivery commune), "quantity" (number, defaults to 1).
-  - If the customer doesn't mention their wilaya, you may omit it — the system will auto-fill from their saved default if available.
+  - Extract: "product" (product name), "wilaya" (delivery wilaya), "commune" (baladia — the local delivery commune), "quantity" (number, defaults to 1 if the customer didn't say).
+  - The order requires an explicit delivery wilaya AND commune. If either is missing, mark the intent "unresolved" so the assistant asks for the delivery address — do not rely on saved defaults.
   - "productId" is auto-populated by the system after extraction — do not include it yourself.
-  - If no product is mentioned but the customer has already chosen one in the conversation, the system will use the current product automatically.
+  - If no product is mentioned, mark the intent "unresolved" — the system does not fall back to the current product automatically; you must identify which product the customer wants.
 
 ORDER_MODIFY — Customer wants to change something on their pending order.
   - Extract only the fields the customer wants to change: "wilaya", "commune", "quantity".
@@ -72,6 +72,7 @@ SHIPPING_CHECK — Customer asks about delivery cost or time to a wilaya.
 STATUS_CHECK — Customer asks about the status of an existing order.
 
 ESCALATION — Customer asks for a human, mentions refunds, legal action, or a delivered-but-missing order. Set this intent regardless of the current state.
+  - Extract "reason" — a short summary of why the customer needs a human agent.
 
 OUT_OF_SCOPE — The request is clearly outside the scope of this e-commerce assistant.
 

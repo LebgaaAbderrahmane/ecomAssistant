@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from ecoma_agent.models.domain import Flow
+from models.domain import Flow
 
 
 class GlobalInformation(BaseModel):

@@ -3,9 +3,9 @@ from typing import Annotated, Any, Literal
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from ecoma_agent.models.conversation import ConversationMemory
-from ecoma_agent.models.domain import Filter, ProductDiscoveryInput
-from ecoma_agent.tools import TOOL_NAMES
+from models.conversation import ConversationMemory
+from models.domain import Filter, ProductDiscoveryInput
+from tools import TOOL_NAMES
 
 
 def messages_reducer(left: list[Any], right: list[Any]) -> list[Any]:

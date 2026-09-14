@@ -9,9 +9,8 @@ import type { ToolName } from '../schemas/intents.schemas';
 describe('TOOL_STATE_TRANSITIONS', () => {
   it('maps every flow-moving tool to the right state', () => {
     assert.equal(TOOL_STATE_TRANSITIONS.searchProducts, 'PRODUCT_DISCOVERY');
-    assert.equal(TOOL_STATE_TRANSITIONS.recallPreviousProducts, 'PRODUCT_DISCOVERY');
     assert.equal(TOOL_STATE_TRANSITIONS.suggestProducts, 'PRODUCT_DISCOVERY');
-    assert.equal(TOOL_STATE_TRANSITIONS.chooseProduct, 'PRODUCT_SELECTED');
+    assert.equal(TOOL_STATE_TRANSITIONS.selectProduct, 'PRODUCT_SELECTED');
     assert.equal(TOOL_STATE_TRANSITIONS.getProductDetails, 'PRODUCT_SELECTED');
     assert.equal(TOOL_STATE_TRANSITIONS.createOrder, 'WAITING_CONFIRMATION');
     assert.equal(TOOL_STATE_TRANSITIONS.confirmOrder, 'CONFIRMED');
@@ -43,7 +42,7 @@ describe('nextConversationState', () => {
 
   it('(3) selecting a product after a search moves to PRODUCT_SELECTED', () => {
     assert.equal(
-      nextConversationState('PRODUCT_DISCOVERY', 'chooseProduct', true),
+      nextConversationState('PRODUCT_DISCOVERY', 'selectProduct', true),
       'PRODUCT_SELECTED',
     );
   });
@@ -51,16 +50,9 @@ describe('nextConversationState', () => {
   it('(4) switching from an order flow to a completely new product search invalidates the pending confirmation', () => {
     const afterSearch = nextConversationState('WAITING_CONFIRMATION', 'searchProducts', true);
     assert.equal(afterSearch, 'PRODUCT_DISCOVERY');
-
-    const afterRecall = nextConversationState('WAITING_CONFIRMATION', 'recallPreviousProducts', true);
-    assert.equal(afterRecall, 'PRODUCT_DISCOVERY');
   });
 
-  it('recall / details / cancel transitions too', () => {
-    assert.equal(
-      nextConversationState('WAITING_CONFIRMATION', 'recallPreviousProducts', true),
-      'PRODUCT_DISCOVERY',
-    );
+  it('details / cancel / create transitions too', () => {
     assert.equal(
       nextConversationState('PRODUCT_DISCOVERY', 'getProductDetails', true),
       'PRODUCT_SELECTED',

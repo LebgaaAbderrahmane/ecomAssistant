@@ -1,56 +1,53 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  consolidatePreferences,
-  computeExclusionIds,
+  buildSuggestionPreferences,
+  memoryExclusionIds,
   buildProductWhere,
 } from '../tools/suggestionHelpers';
 import type { ConversationMemory } from '../memory.types';
 
 const baseMemory: ConversationMemory = {
-  entities: { category: 'shoes', color: 'black', maxPrice: 8000 },
   lastProductResults: [{ id: 'p1', name: 'Nike A' }],
   rejectedProducts: [{ id: 'p2', name: 'Adidas B' }],
 };
 
-describe('consolidatePreferences', () => {
-  it('merges current-message entities with memory entities', () => {
-    const prefs = consolidatePreferences({ size: '42' }, baseMemory);
+describe('buildSuggestionPreferences', () => {
+  it('builds preferences from explicit message entities', () => {
+    const prefs = buildSuggestionPreferences({ category: 'shoes', color: 'black', size: '42', maxPrice: 8000 });
     assert.equal(prefs.category, 'shoes');
     assert.equal(prefs.color, 'black');
     assert.equal(prefs.size, '42');
     assert.equal(prefs.maxPrice, 8000);
   });
 
-  it('message values win over memory values', () => {
-    const prefs = consolidatePreferences({ color: 'blue', maxPrice: 5000 }, baseMemory);
+  it('message values stand alone — no memory fallback', () => {
+    const prefs = buildSuggestionPreferences({ color: 'blue', maxPrice: 5000 });
     assert.equal(prefs.color, 'blue');
     assert.equal(prefs.maxPrice, 5000);
+    assert.equal(prefs.category, undefined);
   });
 
   it('collects preference terms for ranking', () => {
-    const prefs = consolidatePreferences(
-      { product: 'sneakers', preferences: 'running' },
-      { entities: { category: 'shoes', color: 'black', size: '42' } },
-    );
-    assert.deepEqual(prefs.terms, ['shoes', 'black', '42', 'sneakers', 'running']);
+    const prefs = buildSuggestionPreferences({ category: 'shoes', color: 'black', size: '42', preferences: 'running' });
+    assert.deepEqual(prefs.terms, ['shoes', 'black', '42', 'running']);
   });
 
   it('parses string numbers for price bounds', () => {
-    const prefs = consolidatePreferences({ maxPrice: '8000' }, {});
+    const prefs = buildSuggestionPreferences({ maxPrice: '8000' });
     assert.equal(prefs.maxPrice, 8000);
   });
 
   it('returns empty preferences with no signals', () => {
-    const prefs = consolidatePreferences({}, {});
+    const prefs = buildSuggestionPreferences({});
     assert.deepEqual(prefs.terms, []);
     assert.equal(prefs.category, undefined);
   });
 });
 
-describe('computeExclusionIds', () => {
+describe('memoryExclusionIds', () => {
   it('dedupes lastProductResults + rejectedProducts + currentProductId', () => {
-    const ids = computeExclusionIds(
+    const ids = memoryExclusionIds(
       {
         lastProductResults: [{ id: 'p1', name: 'A' }, { id: 'p3', name: 'C' }],
         rejectedProducts: [{ id: 'p2', name: 'B' }],
@@ -61,7 +58,7 @@ describe('computeExclusionIds', () => {
   });
 
   it('handles empty memory', () => {
-    assert.deepEqual(computeExclusionIds({}), []);
+    assert.deepEqual(memoryExclusionIds({}), []);
   });
 });
 

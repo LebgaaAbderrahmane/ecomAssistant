@@ -4,37 +4,31 @@
   "tools": [
     {
       "name": "searchProducts",
-      "description": "Search the merchant catalog for a product and return the matching products",
+      "description": "Search the merchant catalog for a product by name and return the matching products (authoritative NOT_FOUND when absent)",
       "args": [
         {
           "name": "product",
           "type": "string",
-          "required": false,
+          "required": true,
           "description": "Product name or query to search for"
-        },
-        {
-          "name": "productId",
-          "type": "string",
-          "required": false,
-          "description": "Product id to fetch directly (pass either product or productId)"
         }
       ]
     },
     {
-      "name": "chooseProduct",
-      "description": "Select a product the customer picked, by name or by its index in the last search results, and make it the active product",
+      "name": "selectProduct",
+      "description": "Select a product the customer picked (by id or by name) and make it the active product",
       "args": [
+        {
+          "name": "productId",
+          "type": "string",
+          "required": false,
+          "description": "Product id to select"
+        },
         {
           "name": "productName",
           "type": "string",
           "required": false,
           "description": "Product name to select"
-        },
-        {
-          "name": "productIndex",
-          "type": "integer",
-          "required": false,
-          "description": "Index of the product in the last search results"
         }
       ]
     },
@@ -95,18 +89,12 @@
           "type": "string",
           "required": false,
           "description": "Free-text preference description"
-        },
-        {
-          "name": "productId",
-          "type": "string",
-          "required": false,
-          "description": "Id of the currently selected product to recommend alternatives to"
         }
       ]
     },
     {
       "name": "calculateShipping",
-      "description": "Look up the delivery cost for a wilaya for this merchant",
+      "description": "Look up the delivery cost configured for a wilaya for this merchant",
       "args": [
         {
           "name": "wilaya",
@@ -118,36 +106,30 @@
     },
     {
       "name": "getOrderStatus",
-      "description": "Return the status and tracking number of the active or referenced order",
+      "description": "Return the status and tracking number of an order by its id",
       "args": [
         {
           "name": "orderId",
           "type": "string",
-          "required": false,
-          "description": "Order id to check"
+          "required": true,
+          "description": "Order id to check the status of"
         }
       ]
     },
     {
       "name": "createOrder",
-      "description": "Create a new pending order (product, wilaya, commune, quantity), compute the total with delivery cost, and flag it as waiting for confirmation",
+      "description": "Create a new pending order (explicit product id, delivery wilaya, commune, quantity), compute the total with delivery cost, and flag it as waiting for confirmation",
       "args": [
         {
           "name": "productId",
           "type": "string",
-          "required": false,
+          "required": true,
           "description": "Product id to order"
-        },
-        {
-          "name": "product",
-          "type": "string",
-          "required": false,
-          "description": "Product name to order"
         },
         {
           "name": "wilaya",
           "type": "string",
-          "required": false,
+          "required": true,
           "description": "Delivery wilaya"
         },
         {
@@ -159,33 +141,33 @@
         {
           "name": "quantity",
           "type": "integer",
-          "required": false,
-          "description": "Quantity to order (default 1)"
+          "required": true,
+          "description": "Quantity to order"
         }
       ]
     },
     {
       "name": "confirmOrder",
-      "description": "Confirm the pending order waiting for confirmation, or a pending order the customer references explicitly",
+      "description": "Confirm an order by its id",
       "args": [
         {
           "name": "orderId",
           "type": "string",
-          "required": false,
+          "required": true,
           "description": "Order id to confirm"
-        },
-        {
-          "name": "productName",
-          "type": "string",
-          "required": false,
-          "description": "Product name to confirm the order for"
         }
       ]
     },
     {
       "name": "modifyOrder",
-      "description": "Update a pending order's quantity, wilaya, or commune and recompute the total",
+      "description": "Update an order's quantity, wilaya, or commune by its id and recompute the total",
       "args": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "Order id to update"
+        },
         {
           "name": "wilaya",
           "type": "string",
@@ -203,37 +185,32 @@
           "type": "integer",
           "required": false,
           "description": "New quantity"
-        },
-        {
-          "name": "orderId",
-          "type": "string",
-          "required": false,
-          "description": "Order id to update (defaults to the active pending order)"
         }
       ]
     },
     {
       "name": "cancelOrder",
-      "description": "Cancel the active or referenced pending order",
+      "description": "Cancel an order by its id",
       "args": [
         {
           "name": "orderId",
           "type": "string",
-          "required": false,
+          "required": true,
           "description": "Order id to cancel"
-        },
-        {
-          "name": "productName",
-          "type": "string",
-          "required": false,
-          "description": "Product name to cancel the order for"
         }
       ]
     },
     {
       "name": "escalateConversation",
-      "description": "Hand the conversation to a human agent (idempotent)",
-      "args": []
+      "description": "Hand the conversation to a human agent with a reason (idempotent)",
+      "args": [
+        {
+          "name": "reason",
+          "type": "string",
+          "required": true,
+          "description": "Reason the customer needs a human agent"
+        }
+      ]
     }
   ]
 }

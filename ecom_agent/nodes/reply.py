@@ -1,9 +1,12 @@
+import json
 import logging
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from config import model
 from models.state import AgentState
+from tools import escalateConversation
+from utils import last_user_text
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +40,18 @@ def reply(state: AgentState) -> dict:
 
 
 def escalate(state: AgentState) -> dict:
+    intent = state.proposed_intent or "unsupported"
+    user_text = last_user_text(state.messages)
+    reason = f"[{intent}] Customer request: {user_text[:200]}"
+    result = None
+    try:
+        result = escalateConversation.invoke({"reason": reason})
+    except Exception as e:
+        logger.warning("escalateConversation tool failed (%s)", e)
+        result = json.dumps({"escalated": False, "error": str(e)}, ensure_ascii=False)
     logger.warning(
-        "ESCALATION to human agent -> proposed_intent=%s",
+        "ESCALATION to human agent -> proposed_intent=%s tool_result=%s",
         state.proposed_intent,
+        result,
     )
-    return {"needs_tool": False, "reply": ""}
+    return {"needs_tool": False, "reply": "", "tool_outputs": [result] if result else []}

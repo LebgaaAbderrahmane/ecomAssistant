@@ -43,7 +43,7 @@ const INTENT_ITEM_SCHEMA = {
         commune: { type: 'string' as const },
         quantity: { type: 'string' as const },
         productIndex: { type: 'number' as const },
-        limit: { type: 'number' as const },
+        reason: { type: 'string' as const },
       },
       // nothing required — model omits keys that don't apply
     },

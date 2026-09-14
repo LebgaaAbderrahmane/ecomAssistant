@@ -24,9 +24,26 @@ describe('suggestProducts intent routing', () => {
 
   it('does not route other intents to suggestProducts', () => {
     assert.equal(resolveTool('PRODUCT_SEARCH', { product: 'iphone 15' }), 'searchProducts');
-    assert.equal(resolveTool('PRODUCT_SELECT', { productIndex: 1 }), 'chooseProduct');
+    // PRODUCT_SEARCH always routes to searchProducts — no memory-recall path.
+    assert.equal(resolveTool('PRODUCT_SEARCH', {}), 'searchProducts');
+    assert.equal(resolveTool('PRODUCT_SELECT', { productName: 'iphone 15' }), 'selectProduct');
     assert.equal(resolveTool('PRODUCT_DETAILS', { productName: 'x' }), 'getProductDetails');
     assert.equal(resolveTool('ORDER_CREATE', {}), 'createOrder');
+  });
+});
+
+describe('shipping & status intent routing', () => {
+  it('maps SHIPPING_CHECK deterministically to calculateShipping', () => {
+    assert.equal(resolveTool('SHIPPING_CHECK', {}), 'calculateShipping');
+    assert.equal(resolveTool('SHIPPING_CHECK', { wilaya: 'Oran' }), 'calculateShipping');
+    // calculateShipping must never route product intents.
+    assert.notEqual(resolveTool('PRODUCT_SEARCH', { product: 'x' }), 'calculateShipping');
+  });
+
+  it('maps STATUS_CHECK deterministically to getOrderStatus', () => {
+    assert.equal(resolveTool('STATUS_CHECK', {}), 'getOrderStatus');
+    assert.equal(resolveTool('STATUS_CHECK', { orderId: 'ord_1' }), 'getOrderStatus');
+    assert.equal(resolveTool('STATUS_CHECK', { orderId: '' }), 'getOrderStatus');
   });
 });
 
@@ -52,7 +69,7 @@ describe('tool execution policies (read / write)', () => {
   });
 
   it('classifies the navigation tools as READ', () => {
-    for (const tool of ['searchProducts', 'recallPreviousProducts', 'chooseProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
+    for (const tool of ['searchProducts', 'selectProduct', 'getProductDetails', 'suggestProducts', 'calculateShipping', 'getOrderStatus'] as const) {
       assert.equal(isReadTool(tool), true, `${tool} should be READ`);
       assert.equal(isWriteTool(tool), false, `${tool} should not be WRITE`);
     }
@@ -67,7 +84,7 @@ describe('tool execution policies (read / write)', () => {
 });
 
 describe('SuggestProductsArgsSchema', () => {
-  it('accepts preference entities', () => {
+  it('accepts explicit preference entities with the injected identity', () => {
     const parsed = SuggestProductsArgsSchema.safeParse({
       merchantId: 'm1',
       conversationId: 'c1',
@@ -85,7 +102,7 @@ describe('SuggestProductsArgsSchema', () => {
     }
   });
 
-  it('recommend with no prior context once identity is injected', () => {
+  it('recommend with no explicit context once the identity is injected', () => {
     const parsed = SuggestProductsArgsSchema.safeParse({
       merchantId: 'm1',
       conversationId: 'c1',
@@ -107,5 +124,14 @@ describe('SuggestProductsArgsSchema', () => {
       SuggestProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', maxPrice: -5 }).success,
       false,
     );
+  });
+
+  it('supports the transport-injected excludedProductIds key', () => {
+    const parsed = SuggestProductsArgsSchema.safeParse({
+      merchantId: 'm1',
+      conversationId: 'c1',
+      excludedProductIds: '["p1","p2"]',
+    });
+    assert.equal(parsed.success, true);
   });
 });
