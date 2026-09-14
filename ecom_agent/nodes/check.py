@@ -25,9 +25,14 @@ def check_llm(state: AgentState) -> dict:
         + struct_schema_hint(CheckResult)
     )
     messages = [SystemMessage(content=system), *state.messages]
+    # When the classifier cannot run/parse (e.g. the LLM is rate-limited or
+    # down), do not guess: escalate to a human rather than emitting a canned
+    # reply. needs_tool=true agents escalateConversation, which takes the
+    # conversation over for a live agent.
     fallback = CheckResult(
-        needs_tool=False,
-        reply="I couldn't process that request. Could you please rephrase?",
+        needs_tool=True,
+        tool_name="escalateConversation",
+        reply="",
     )
     result = call_json(model, CheckResult, fallback, messages)
     return {

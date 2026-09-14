@@ -46,16 +46,3 @@ export const READ_TOOL_TRANSITIONS: Partial<Record<ReadToolName, ConversationSta
   selectProduct: TOOL_STATE_TRANSITIONS.selectProduct,
   getProductDetails: TOOL_STATE_TRANSITIONS.getProductDetails,
 };
-
-/**
- * Pure state-transition helper. Returns the conversation state a tool success
- * should land on. Failures never advance the conversation.
- */
-export function nextConversationState(
-  currentState: string,
-  toolName: ToolName,
-  success: boolean,
-): string {
-  if (!success) return currentState;
-  return TOOL_STATE_TRANSITIONS[toolName] ?? currentState;
-}

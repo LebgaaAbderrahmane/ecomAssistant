@@ -58,6 +58,9 @@ services:
     environment:
       AGENT_GRPC_ADDR: 0.0.0.0:50052
       BACK_TOOLS_GRPC_ADDR: back:50051
+      LLM_PROVIDER: groq,gemini
+      GROQ_MODEL: openai/gpt-oss-120b
+      GEMINI_MODEL: gemini-2.5-flash
     depends_on:
       postgres:
         condition: service_healthy
