@@ -4,7 +4,6 @@ import { app } from './app.js'
 import "./workers/email.worker";
 import "./workers/message.worker";
 import "./workers/order.worker";
-import "./workers/layer2.worker";
 import { startToolServer } from './grpc/tool.server.js';
 
 

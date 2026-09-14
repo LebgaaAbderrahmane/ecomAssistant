@@ -8,7 +8,7 @@ import type { CatalogEntry } from './searchHelpers';
 // recommendation query.  The tool receives ONLY explicit params from the
 // LLM plus injected transport keys — it never reads conversation memory
 // itself.  Memory-derived exclusions are computed by the transport
-// (agent.service / grpc tool.server) and passed as `excludedProductIds`.
+// (toolContext / grpc ToolService) and passed as `excludedProductIds`.
 
 export interface SuggestionPreferences {
   category?: string;

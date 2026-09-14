@@ -25,7 +25,6 @@ export const config = {
   internalApiKey: env('INTERNAL_API_KEY', 'dev-internal-key'),
   toolsGrpcAddr: env('TOOLS_GRPC_ADDR', '0.0.0.0:50051'),
   toolsGrpcEnabled: env('TOOLS_GRPC_ENABLED', 'true') !== 'false',
-  messageHandler: env('MESSAGE_HANDLER', 'grpc'),
   chargily: {
     baseUrl: env('CHARGILY_BASE_URL'),
     publicKey: env('CHARGILY_PUBLIC_KEY'),

@@ -23,7 +23,7 @@ export type ConversationState =
 // change.
 //
 // Ownership: READ-tool transitions (READ_TOOL_TRANSITIONS) are applied by the
-// TRANSPORT (agent.service) after a successful run — tool handlers are pure
+// TRANSPORT (gRPC ToolService) after a successful run — tool handlers are pure
 // functions of their explicit params and never write conversation state.
 // WRITE-tool transitions (createOrder / confirmOrder / cancelOrder) are written
 // by the handlers themselves, alongside the business mutation they belong to.

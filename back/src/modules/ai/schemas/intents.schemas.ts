@@ -1,66 +1,5 @@
 import { z } from 'zod';
 
-// ─── Intent enum (12 values) ────────────────────────────────────────────
-// Multi-intent extraction: a single customer message may produce 1-4 intents.
-// See systemPrompts.ts INTENT_EXTRACTION_RULES for segmentation rules.
-export const IntentSchema = z.enum([
-  // Product
-  'PRODUCT_SEARCH',
-  'PRODUCT_SELECT',
-  'PRODUCT_DETAILS',
-  'PRODUCT_SUGGEST',
-  // Order lifecycle
-  'ORDER_CREATE',
-  'ORDER_CONFIRM',
-  'ORDER_MODIFY',
-  'ORDER_CANCEL',
-  // Shipping / status
-  'SHIPPING_CHECK',
-  'STATUS_CHECK',
-  // Support / fallback
-  'ESCALATION',
-  'OUT_OF_SCOPE',
-  'GOODBYE',
-]);
-export type Intent = z.infer<typeof IntentSchema>;
-
-// Conversation act — orthogonal to intent, shapes tone not routing.
-// Stays at the top level (one per message, not per intent).
-export const ConversationActSchema = z.enum([
-  'NORMAL',
-  'AFFIRM',
-  'NEGATE',
-  'DIDNT_UNDERSTAND',
-  'FRUSTRATED',
-  'CHANGE_TOPIC',
-]);
-export type ConversationAct = z.infer<typeof ConversationActSchema>;
-
-// ─── Suggested intent field ─────────────────────────────────────────────
-// When the LLM can't map a request to a covered intent, it may propose a new
-// one. It is flagged with `suggested: true` and carries a canonical name +
-// short description. These are persisted (with a count) in SuggestedIntent.
-export const SuggestedIntentFieldSchema = z.object({
-  suggested: z.literal(true),
-  name: z.string().min(1).max(60),
-  description: z.string().min(1).max(200),
-});
-export type SuggestedIntentField = z.infer<typeof SuggestedIntentFieldSchema>;
-
-// A single intent field is either a covered intent (enum) or a suggested one.
-export const IntentFieldSchema = z.union([IntentSchema, SuggestedIntentFieldSchema]);
-export type IntentField = z.infer<typeof IntentFieldSchema>;
-
-export function isSuggestedIntent(
-  intent: IntentField
-): intent is SuggestedIntentField {
-  return typeof intent !== 'string' && intent.suggested === true;
-}
-
-export function intentToString(intent: IntentField): string {
-  return isSuggestedIntent(intent) ? `SUGGESTED:${intent.name}` : intent;
-}
-
 // ─── Tool names ──────────────────────────────────────────────────────────
 // Must match the keys registered in tools/registry.ts exactly. Each tool has
 // an explicit execution policy:
@@ -113,48 +52,21 @@ export function isWriteTool(name: ToolName): name is WriteToolName {
   return WriteToolNameSchema.safeParse(name).success;
 }
 
-// ─── Intent → Tool mapping ──────────────────────────────────────────────
-// Deterministic lookup — tool resolution is never guessed by the LLM.
-// PRODUCT_SEARCH uses resolveTool() to stay consistent with the mapping below.
-const INTENT_TOOL_MAP: Partial<Record<Intent, ToolName>> = {
-  PRODUCT_SELECT: 'selectProduct',
-  PRODUCT_DETAILS: 'getProductDetails',
-  PRODUCT_SUGGEST: 'suggestProducts',
-  ORDER_CREATE: 'createOrder',
-  ORDER_CONFIRM: 'confirmOrder',
-  ORDER_MODIFY: 'modifyOrder',
-  ORDER_CANCEL: 'cancelOrder',
-  SHIPPING_CHECK: 'calculateShipping',
-  STATUS_CHECK: 'getOrderStatus',
-  ESCALATION: 'escalateConversation',
-};
-
-export function resolveTool(intent: IntentField, entities: Record<string, unknown>): ToolName | null {
-  if (isSuggestedIntent(intent)) {
-    return null;
-  }
-  if (intent === 'PRODUCT_SEARCH') {
-    return 'searchProducts';
-  }
-  return INTENT_TOOL_MAP[intent] ?? null;
-}
-
 // ─── Tool argument schemas ──────────────────────────────────────────────
 // Each tool consumes ONLY explicit params. Identity (merchantId/customerId/
 // conversationId) and previously-stateful context (current order/product,
 // customer address, conversation memory/state) are MATERIALIZED into explicit
-// native keys by the transport (the legacy pipeline today, the gRPC ToolService
-// later), not read by the tool from a context object. The tool never looks at
-// memory/state or the customer record itself.
+// native keys by the transport (the gRPC ToolService), not read by the tool
+// from a context object. The tool never looks at memory/state or the customer
+// record itself.
 //
 // Injected identity keys — required wherever a tool needs the scope:
 //   merchantId      — every tool (merchant-scoped reads/writes).
 //   customerId      — order/customer-scoped tools.
 //   conversationId  — tools that read or write the conversation row
 //                     (all write tools; navigation read tools).
-// Injected state keys — optional, transport-supplied; the transport (legacy
-// pipeline today, gRPC ToolService later) MATERIALIZES previously-implicit
-// context into explicit native params:
+// Injected state keys — optional, transport-supplied; the transport
+// MATERIALIZES previously-implicit context into explicit native params:
 //   orderId   — from conversation.currentOrderId (confirmOrder / cancelOrder /
 //               modifyOrder / getOrderStatus when the caller omits it).
 //   productId — from conversation.currentProductId (getProductDetails).
