@@ -31,7 +31,7 @@ export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>
   searchProducts: 'PRODUCT_DISCOVERY',
   recallPreviousProducts: 'PRODUCT_DISCOVERY',
   suggestProducts: 'PRODUCT_DISCOVERY',
-  chooseProduct: 'PRODUCT_SELECTED',
+  selectProduct: 'PRODUCT_SELECTED',
   getProductDetails: 'PRODUCT_SELECTED',
   createOrder: 'WAITING_CONFIRMATION',
   confirmOrder: 'CONFIRMED',
@@ -39,13 +39,13 @@ export const TOOL_STATE_TRANSITIONS: Partial<Record<ToolName, ConversationState>
 };
 
 // READ-tool transitions the transport applies after a successful run; the
-// handlers never touch the conversation row. chooseProduct / getProductDetails
+// handlers never touch the conversation row. selectProduct / getProductDetails
 // additionally set currentProductId from the tool result's productId.
 export const READ_TOOL_TRANSITIONS: Partial<Record<ReadToolName, ConversationState>> = {
   searchProducts: TOOL_STATE_TRANSITIONS.searchProducts,
   recallPreviousProducts: TOOL_STATE_TRANSITIONS.recallPreviousProducts,
   suggestProducts: TOOL_STATE_TRANSITIONS.suggestProducts,
-  chooseProduct: TOOL_STATE_TRANSITIONS.chooseProduct,
+  selectProduct: TOOL_STATE_TRANSITIONS.selectProduct,
   getProductDetails: TOOL_STATE_TRANSITIONS.getProductDetails,
 };
 

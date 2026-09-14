@@ -4,37 +4,31 @@
   "tools": [
     {
       "name": "searchProducts",
-      "description": "Search the merchant catalog for a product and return the matching products",
+      "description": "Search the merchant catalog for a product by name and return the matching products (authoritative NOT_FOUND when absent)",
       "args": [
         {
           "name": "product",
           "type": "string",
-          "required": false,
+          "required": true,
           "description": "Product name or query to search for"
-        },
-        {
-          "name": "productId",
-          "type": "string",
-          "required": false,
-          "description": "Product id to fetch directly (pass either product or productId)"
         }
       ]
     },
     {
-      "name": "chooseProduct",
-      "description": "Select a product the customer picked, by name or by its index in the last search results, and make it the active product",
+      "name": "selectProduct",
+      "description": "Select a product the customer picked (by id or by name) and make it the active product",
       "args": [
+        {
+          "name": "productId",
+          "type": "string",
+          "required": false,
+          "description": "Product id to select"
+        },
         {
           "name": "productName",
           "type": "string",
           "required": false,
           "description": "Product name to select"
-        },
-        {
-          "name": "productIndex",
-          "type": "integer",
-          "required": false,
-          "description": "Index of the product in the last search results"
         }
       ]
     },
@@ -95,12 +89,6 @@
           "type": "string",
           "required": false,
           "description": "Free-text preference description"
-        },
-        {
-          "name": "productId",
-          "type": "string",
-          "required": false,
-          "description": "Id of the currently selected product to recommend alternatives to"
         }
       ]
     },

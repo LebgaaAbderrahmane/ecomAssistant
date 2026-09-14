@@ -8,21 +8,21 @@ def _args(**kwargs) -> dict:
 
 
 @tool
-def searchProducts(query: str) -> str:
-    """Search the product catalog by name, description or category."""
-    return call_tool("searchProducts", {"product": query})
+def searchProducts(product: str) -> str:
+    """Search the merchant catalog for a product by name and return the matching products. The result is authoritative: no match means the product is not in the catalog."""
+    return call_tool("searchProducts", {"product": product})
 
 
 @tool
-def chooseProduct(productName: str | None = None, productIndex: int | None = None) -> str:
-    """Select one product from the current search results by name or index."""
-    return call_tool("chooseProduct", _args(productName=productName, productIndex=productIndex))
+def selectProduct(productId: str | None = None, productName: str | None = None) -> str:
+    """Select a product the customer picked (by its id or by its name) and make it the active product."""
+    return call_tool("selectProduct", _args(productId=productId, productName=productName))
 
 
 @tool
-def getProductDetails(productName: str | None = None) -> str:
-    """Return the full details for a specific product by its name."""
-    return call_tool("getProductDetails", _args(productName=productName))
+def getProductDetails(productId: str | None = None, productName: str | None = None) -> str:
+    """Return the full details (description, price, currency, stock status, category) for a product by its id or its name."""
+    return call_tool("getProductDetails", _args(productId=productId, productName=productName))
 
 
 @tool
@@ -34,7 +34,7 @@ def suggestProducts(
     maxPrice: float | None = None,
     preferences: str | None = None,
 ) -> str:
-    """Suggest products matching the customer's criteria."""
+    """Suggest products matching the customer's explicit criteria (category, color, size, price range, or free-text preferences)."""
     return call_tool(
         "suggestProducts",
         _args(category=category, color=color, size=size, minPrice=minPrice, maxPrice=maxPrice, preferences=preferences),

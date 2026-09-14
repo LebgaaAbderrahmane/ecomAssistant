@@ -9,7 +9,7 @@ import {
   ConfirmOrderArgsSchema,
   CancelOrderArgsSchema,
   CreateOrderArgsSchema,
-  ChooseProductArgsSchema,
+  SelectProductArgsSchema,
   GetProductDetailsArgsSchema,
   SuggestProductsArgsSchema,
   ModifyOrderArgsSchema,
@@ -17,16 +17,20 @@ import {
   EscalateConversationArgsSchema,
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
-import { resolveProductRequest, fetchProductsByIds, matchProductsWithLLM, type ProductContext } from './searchHelpers';
+import {
+  buildProductCatalog,
+  resolveProductRequest,
+  fetchProductsByIds,
+  matchProductsWithLLM,
+  type ProductContext,
+} from './searchHelpers';
 import { TOOL_STATE_TRANSITIONS } from '../conversationState';
 import {
-  consolidatePreferences,
-  computeExclusionIds,
+  buildSuggestionPreferences,
   buildSuggestionCatalog,
   recentProducts,
   type PreferenceEntities,
 } from './suggestionHelpers';
-import type { ConversationMemory } from '../memory.types';
 
 interface CommuneValidation {
   valid: boolean;
@@ -113,48 +117,46 @@ const searchProducts: ToolHandler = async (entities) => {
   if (!parsedArgs.success) {
     return { success: false, error: 'No product name provided to search for' };
   }
-  const query = parsedArgs.data.product;
-
-  // The transport resolves bare references from memory and injects an explicit
-  // productId; a product name here is a concrete catalog query. The result
-  // distinguishes a resolved product (from injected memory/productId) from a
-  // concrete query that is authoritatively absent (NOT_FOUND) and a bare
-  // reference that no context can resolve (AMBIGUOUS — ask the customer, don't
-  // guess). Context arrives via injected params — the tool never reads
-  // memory/state itself.
-  const context: ProductContext = {
-    lastProductResults: parseOptionalJson<Array<{ id: string; name: string }>>(
-      parsedArgs.data.lastProductResults,
-    ),
-  };
-  let resolved;
-  if (parsedArgs.data.productId) {
-    const products = await fetchProductsByIds(parsedArgs.data.merchantId, [parsedArgs.data.productId]);
-    resolved = products.length
-      ? { outcome: 'SUCCESS' as const, products, source: 'memory' as const }
-      : { outcome: 'NOT_FOUND' as const, query: parsedArgs.data.product ?? '' };
-  } else {
-    resolved = await resolveProductRequest(query, context, parsedArgs.data.merchantId);
+  const query = parsedArgs.data.product.trim();
+  if (!query) {
+    return { success: false, error: 'No product name provided to search for' };
   }
 
-  if (resolved.outcome === 'SUCCESS') {
-    return { success: true, data: { products: formatProducts(resolved.products) } };
+  // A pure explicit catalog query — no memory, no bare-reference resolution.
+  // A name that is not in the catalog is authoritatively NOT_FOUND: the reply
+  // must state that plainly instead of asking the customer which product they
+  // mean.
+  const fastResults = await prisma.product.findMany({
+    where: { merchantId: parsedArgs.data.merchantId, name: { contains: query, mode: 'insensitive' } },
+    take: 5,
+  });
+  if (fastResults.length) {
+    return { success: true, data: { products: formatProducts(fastResults) } };
   }
 
-  if (resolved.outcome === 'AMBIGUOUS') {
+  const catalog = await buildProductCatalog(parsedArgs.data.merchantId);
+  if (catalog.length === 0) {
     return {
       success: false,
-      outcome: 'AMBIGUOUS',
+      outcome: 'NOT_FOUND',
       data: { query },
-      error: resolved.reason,
+      error: `No product matching "${query}" exists in the store's catalog.`,
     };
+  }
+
+  const { ids } = await matchProductsWithLLM(catalog, query);
+  if (ids.length) {
+    const products = await fetchProductsByIds(parsedArgs.data.merchantId, ids);
+    if (products.length) {
+      return { success: true, data: { products: formatProducts(products.slice(0, 5)) } };
+    }
   }
 
   return {
     success: false,
     outcome: 'NOT_FOUND',
     data: { query },
-    error: `No product matching "${resolved.query}" exists in the store's catalog.`,
+    error: `No product matching "${query}" exists in the store's catalog.`,
   };
 };
 
@@ -444,33 +446,19 @@ const recallPreviousProducts: ToolHandler = async (entities) => {
   };
 };
 
-const chooseProduct: ToolHandler = async (entities) => {
-  const parsedArgs = ChooseProductArgsSchema.safeParse(entities);
+const selectProduct: ToolHandler = async (entities) => {
+  const parsedArgs = SelectProductArgsSchema.safeParse(entities);
   if (!parsedArgs.success) {
-    return { success: false, error: 'No product name or index provided to choose' };
+    return { success: false, error: 'No product name or product id provided to select' };
   }
 
   let product: Product | null = null;
 
-  // Resolve by index from the injected last-product list if productIndex is provided
-  if (parsedArgs.data.productIndex !== undefined) {
-    const lastResults =
-      parseOptionalJson<Array<{ id: string; name: string }>>(parsedArgs.data.lastProductResults) ?? [];
-    const entry = lastResults[parsedArgs.data.productIndex];
-    if (!entry) {
-      return {
-        success: false,
-        outcome: 'NOT_FOUND',
-        error: `No product at index ${parsedArgs.data.productIndex} (last search had ${lastResults.length} results)`,
-      };
-    }
+  if (parsedArgs.data.productId) {
     product = await prisma.product.findFirst({
-      where: { id: entry.id, merchantId: parsedArgs.data.merchantId },
+      where: { id: parsedArgs.data.productId, merchantId: parsedArgs.data.merchantId },
     });
-  }
-
-  // Fall back to name-based lookup
-  if (!product && parsedArgs.data.productName) {
+  } else if (parsedArgs.data.productName) {
     product = await prisma.product.findFirst({
       where: {
         merchantId: parsedArgs.data.merchantId,
@@ -541,15 +529,13 @@ const suggestProducts: ToolHandler = async (entities) => {
   if (!parsedArgs.success) {
     return { success: false, error: 'Missing suggestion context' };
   }
-  const messagePrefs = parsedArgs.data;
 
-  // Conversation memory (accumulated preferences + rejected products) is injected
-  // by the transport as JSON — the tool never reads the conversation record itself.
-  const memory =
-    parseOptionalJson<ConversationMemory>(parsedArgs.data.memory) ?? ({} as ConversationMemory);
-
-  const prefs = consolidatePreferences(messagePrefs as never as PreferenceEntities, memory);
-  const excludeIds = computeExclusionIds(memory, parsedArgs.data.productId);
+  // Explicit criteria only — abandoned/discussed product ids arrive as the
+  // injected excludedProductIds (JSON string, transport-computed from
+  // conversation memory). The tool never reads memory itself, so there is no
+  // memory consolidation step here.
+  const prefs = buildSuggestionPreferences(parsedArgs.data as unknown as PreferenceEntities);
+  const excludeIds = parseOptionalJson<string[]>(parsedArgs.data.excludedProductIds) ?? [];
 
   const hasPreferences =
     prefs.terms.length > 0 ||
@@ -561,7 +547,7 @@ const suggestProducts: ToolHandler = async (entities) => {
   let basedOn: 'preferences' | 'popular';
 
   if (!hasPreferences) {
-    // Bare "what do you recommend?" with no prior context → recent in-stock items.
+    // Bare "what do you recommend?" with no explicit signal → recent in-stock items.
     products = await recentProducts(parsedArgs.data.merchantId, excludeIds);
     basedOn = 'popular';
   } else {
@@ -865,7 +851,7 @@ const escalateConversation: ToolHandler = async (entities) => {
 export const readToolRegistry: Record<ReadToolName, ToolHandler> = {
   searchProducts,
   recallPreviousProducts,
-  chooseProduct,
+  selectProduct,
   getProductDetails,
   suggestProducts,
   calculateShipping,

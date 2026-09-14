@@ -215,6 +215,32 @@ async function checkToolServiceMatrix(): Promise<boolean> {
       data: { merchantId: merchant.id, customerId: customer.id },
     });
     ids.conversationId = conversation.id;
+
+    const identity = {
+      conversationId: ids.conversationId,
+      merchantId: ids.merchantId,
+      customerId: ids.customerId,
+    };
+
+    // A concrete name absent from an EMPTY catalog is authoritatively NOT_FOUND
+    // with no LLM call — deterministic, fast, no matcher flakiness.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('searchProducts', JSON.stringify({ product: 'no-such-product-grpc-check' }), identity),
+        8000,
+        'searchProducts unknown (empty catalog)'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'searchProducts unknown -> NOT_FOUND',
+        r?.success === false &&
+          r?.outcome === 'OUTCOME_NOT_FOUND' &&
+          r?.error !== '' &&
+          data.query === 'no-such-product-grpc-check',
+      ]);
+    }
+
     const product = await prisma.product.create({
       data: {
         merchantId: merchant.id,
@@ -226,12 +252,6 @@ async function checkToolServiceMatrix(): Promise<boolean> {
       },
     });
     ids.productId = product.id;
-
-    const identity = {
-      conversationId: ids.conversationId,
-      merchantId: ids.merchantId,
-      customerId: ids.customerId,
-    };
 
     {
       const r = await toolCall<any>(
@@ -251,22 +271,38 @@ async function checkToolServiceMatrix(): Promise<boolean> {
       ]);
     }
 
-    // A concrete name absent from the catalog falls through to LLM matching
-    // (Gemini), which is slow and variable (~20s+); leave generous headroom.
+    // selectProduct: pick the fixture product by name → success.
     {
       const r = await toolCall<any>(
         client,
-        authExec('searchProducts', JSON.stringify({ product: 'no-such-product-grpc-check' }), identity),
-        60000,
-        'searchProducts unknown'
+        authExec('selectProduct', JSON.stringify({ productName: 'GrpcCheckCamouflage' }), identity),
+        8000,
+        'selectProduct fixture'
       );
       const data = parseDataJson(r?.dataJson);
       results.push([
-        'searchProducts unknown -> recoverable outcome',
-        r?.success === false &&
-          (r?.outcome === 'OUTCOME_NOT_FOUND' || r?.outcome === 'OUTCOME_AMBIGUOUS') &&
-          r?.error !== '' &&
-          data.query === 'no-such-product-grpc-check',
+        'selectProduct -> fixture product',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.productId === ids.productId &&
+          data.productName === 'GrpcCheckCamouflage',
+      ]);
+    }
+
+    // selectProduct: non-existent product name → NOT_FOUND. Runs after the
+    // fixture select (which set currentProductId) to prove an explicit name
+    // beats the injected "current product" fallback.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('selectProduct', JSON.stringify({ productName: 'no-such-product-grpc-check' }), identity),
+        8000,
+        'selectProduct unknown'
+      );
+      results.push([
+        'selectProduct unknown -> NOT_FOUND',
+        r?.success === false && r?.outcome === 'OUTCOME_NOT_FOUND' && r?.error !== '',
       ]);
     }
   } finally {

@@ -76,7 +76,7 @@ export function intentToString(intent: IntentField): string {
 export const ReadToolNameSchema = z.enum([
   'searchProducts',
   'recallPreviousProducts',
-  'chooseProduct',
+  'selectProduct',
   'getProductDetails',
   'suggestProducts',
   'calculateShipping',
@@ -120,7 +120,7 @@ export function isWriteTool(name: ToolName): name is WriteToolName {
 // based on whether a product entity is present (catalog search) or absent
 // (recall from conversation memory).
 const INTENT_TOOL_MAP: Partial<Record<Intent, ToolName>> = {
-  PRODUCT_SELECT: 'chooseProduct',
+  PRODUCT_SELECT: 'selectProduct',
   PRODUCT_DETAILS: 'getProductDetails',
   PRODUCT_SUGGEST: 'suggestProducts',
   ORDER_CREATE: 'createOrder',
@@ -159,13 +159,18 @@ export function resolveTool(intent: IntentField, entities: Record<string, unknow
 // pipeline today, gRPC ToolService later) MATERIALIZES previously-implicit
 // context into explicit native params:
 //   orderId   — from conversation.currentOrderId (order tools).
-//   productId — from conversation.currentProductId and/or resolved bare
-//               references from conversation memory (product tools).
+//   productId — from conversation.currentProductId (getProductDetails /
+//               selectProduct / createOrder). Product tools never resolve
+//               "bare" references from memory anymore — searchProducts is a
+//               pure catalog query, selectProduct takes the explicit id/name.
 //   wilaya / commune — from the customer record's saved delivery info.
 //   conversationState — a live conversation.state read (confirmOrder only).
+//   excludedProductIds — abandoned/rejected product ids computed from
+//               conversation memory by the TRANSPORT and passed to
+//               suggestProducts as a JSON-encoded string; the tool itself
+//               never reads memory.
 //   memory / lastProductResults — a conversation.memory read (JSON-encoded:
-//                     params are scalar-only; used by suggestProducts and the
-//                     product-navigation tools).
+//               recallPreviousProducts, a legacy internal-only tool).
 
 const InjectedMerchantId = { merchantId: z.string().min(1) };
 const InjectedCustomerId = { customerId: z.string().min(1) };
@@ -174,17 +179,14 @@ const InjectedCurrentOrderId = { currentOrderId: z.string().nullable().optional(
 const InjectedProductId = { productId: z.string().optional() };
 const InjectedOrderId = { orderId: z.string().optional() };
 const InjectedConversationState = { conversationState: z.string().nullable().optional() };
+const InjectedExcludedProductIds = { excludedProductIds: z.string().optional() };
 const InjectedMemory = { memory: z.string().optional() };
 const InjectedLastProductResults = { lastProductResults: z.string().optional() };
 
 export const SearchProductsArgsSchema = z.object({
-  product: z.string().min(1).optional(),
+  product: z.string().min(1),
   ...InjectedMerchantId,
   ...InjectedConversationId,
-  ...InjectedLastProductResults,
-  ...InjectedProductId,
-}).refine(data => data.product !== undefined || data.productId !== undefined, {
-  message: 'Either a product name (product) or an explicit productId is required',
 });
 
 export const RecallPreviousProductsArgsSchema = z.object({
@@ -195,14 +197,13 @@ export const RecallPreviousProductsArgsSchema = z.object({
   ...InjectedProductId,
 });
 
-export const ChooseProductArgsSchema = z.object({
+export const SelectProductArgsSchema = z.object({
+  productId: z.string().min(1).optional(),
   productName: z.string().min(1).optional(),
-  productIndex: z.number().int().min(0).optional(),
   ...InjectedMerchantId,
   ...InjectedConversationId,
-  ...InjectedLastProductResults,
-}).refine(data => data.productName || data.productIndex !== undefined, {
-  message: 'Either productName or productIndex is required',
+}).refine(data => data.productId !== undefined || data.productName !== undefined, {
+  message: 'Either productId or productName is required',
 });
 
 export const GetProductDetailsArgsSchema = z.object({
@@ -210,6 +211,8 @@ export const GetProductDetailsArgsSchema = z.object({
   ...InjectedMerchantId,
   ...InjectedConversationId,
   ...InjectedProductId,
+}).refine(data => data.productId !== undefined || data.productName !== undefined, {
+  message: 'Either productId or productName is required',
 });
 
 export const SuggestProductsArgsSchema = z.object({
@@ -219,10 +222,9 @@ export const SuggestProductsArgsSchema = z.object({
   minPrice: z.number().min(0).optional(),
   maxPrice: z.number().min(0).optional(),
   preferences: z.string().min(1).optional(),
+  ...InjectedExcludedProductIds,
   ...InjectedMerchantId,
   ...InjectedConversationId,
-  ...InjectedMemory,
-  ...InjectedProductId,
 });
 
 export const CreateOrderArgsSchema = z.object({
@@ -292,7 +294,7 @@ export const EscalateConversationArgsSchema = z.object({
 export const toolSchemas: Record<ToolName, z.ZodType<unknown>> = {
   searchProducts: SearchProductsArgsSchema,
   recallPreviousProducts: RecallPreviousProductsArgsSchema,
-  chooseProduct: ChooseProductArgsSchema,
+  selectProduct: SelectProductArgsSchema,
   getProductDetails: GetProductDetailsArgsSchema,
   suggestProducts: SuggestProductsArgsSchema,
   calculateShipping: CalculateShippingArgsSchema,

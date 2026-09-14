@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   SearchProductsArgsSchema,
   RecallPreviousProductsArgsSchema,
-  ChooseProductArgsSchema,
+  SelectProductArgsSchema,
   GetProductDetailsArgsSchema,
   SuggestProductsArgsSchema,
   CreateOrderArgsSchema,
@@ -19,7 +19,7 @@ import type { ToolName } from '../schemas/intents.schemas';
 const ALL_TOOL_SCHEMAS: Record<ToolName, unknown> = {
   searchProducts: SearchProductsArgsSchema,
   recallPreviousProducts: RecallPreviousProductsArgsSchema,
-  chooseProduct: ChooseProductArgsSchema,
+  selectProduct: SelectProductArgsSchema,
   getProductDetails: GetProductDetailsArgsSchema,
   suggestProducts: SuggestProductsArgsSchema,
   createOrder: CreateOrderArgsSchema,
@@ -73,12 +73,32 @@ describe('tool schemas: injected identity contract (M6-1)', () => {
     assert.ok(injected.success && injected.data.orderId === 'ord_1');
   });
 
-  it('searchProducts accepts either product name or injected productId', () => {
+  it('searchProducts requires an explicit product name to search for', () => {
     const byName = SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', product: 'iphone' });
-    const byId = SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', productId: 'prod_1' });
+    assert.equal(byName.success, true);
+    // Passing a bare product-id or leaving out product both fail — the tool is
+    // a pure catalog query.
+    assert.equal(SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1' }).success, false);
+    assert.equal(
+      SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', productId: 'p1' }).success,
+      false,
+    );
+  });
+
+  it('selectProduct requires either productId or productName', () => {
+    const byId = SelectProductArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', productId: 'prod_1' });
+    const byName = SelectProductArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', productName: 'iPhone' });
+    assert.equal(byId.success, true);
+    assert.equal(byName.success, true);
+    assert.equal(SelectProductArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1' }).success, false);
+  });
+
+  it('getProductDetails requires either productId or productName', () => {
+    const byName = GetProductDetailsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', productName: 'iPhone' });
+    const byId = GetProductDetailsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1', productId: 'prod_1' });
     assert.equal(byName.success, true);
     assert.equal(byId.success, true);
-    assert.equal(SearchProductsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1' }).success, false);
+    assert.equal(GetProductDetailsArgsSchema.safeParse({ merchantId: 'm1', conversationId: 'c1' }).success, false);
   });
 
   it('confirmOrder keeps the implicit-confirmation keys (currentOrderId + conversationState)', () => {
@@ -107,13 +127,18 @@ describe('tool schemas: injected identity contract (M6-1)', () => {
     assert.equal(parsed.success, true);
   });
 
-  it('suggestProducts accepts injected memory + productId', () => {
+  it('suggestProducts no longer consumes memory — accepts injected excludedProductIds', () => {
     const parsed = SuggestProductsArgsSchema.safeParse({
       merchantId: 'm1',
       conversationId: 'conv_1',
-      memory: JSON.stringify({ lastProductResults: [] }),
-      productId: 'prod_1',
+      excludedProductIds: '["p1"]',
     });
     assert.equal(parsed.success, true);
+    if (parsed.success) {
+      // memory is no longer part of the schema and must be dropped.
+      assert.equal('memory' in parsed.data, false);
+      assert.equal('productId' in parsed.data, false);
+      assert.equal(parsed.data.excludedProductIds, '["p1"]');
+    }
   });
 });

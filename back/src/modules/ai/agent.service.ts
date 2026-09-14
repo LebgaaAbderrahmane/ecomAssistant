@@ -6,6 +6,7 @@ import { buildIntentPrompt, buildReplyPrompt, AgentContext, ReplyContext } from 
 import { IntentSchema, ReadToolNameSchema, WriteToolNameSchema, resolveTool, isSuggestedIntent, isReadTool, isWriteTool, intentToString, type IntentField, type ToolName, type ReadToolName } from './schemas/intents.schemas';
 import { executeTool, ToolResult } from './tools/registry';
 import { READ_TOOL_TRANSITIONS } from './conversationState';
+import { memoryExclusionIds } from './tools/suggestionHelpers';
 import { recordSuggestion, topSuggested } from './suggestedIntents.service';
 import type { ConversationMemory, IntentSummary } from './memory.types';
 import type { IntentItem } from './schemas/ai.schemas';
@@ -220,6 +221,11 @@ export interface ToolSourceContext {
 // native keys the tools read — no `currentOrderId`/`currentProductId`/
 // `customerWilaya` context keys are passed (the confirmOrder implicit-
 // confirmation gate is the one exception, via `currentOrderId`).
+//
+// Product tools are explicit-query only under M6/M7: searchProducts is a pure
+// catalog search, selectProduct/getProductDetails take the injected current
+// product id or the customer's explicit name, and suggestProducts receives the
+// memory-derived exclusions as `excludedProductIds` instead of reading memory.
 export function buildToolEntities(
   toolName: ToolName,
   entities: InjectedToolEntities,
@@ -232,8 +238,6 @@ export function buildToolEntities(
     merchantId: conversation.merchantId,
     customerId: conversation.customerId,
     conversationId: conversation.id,
-    memory: JSON.stringify(source.memory),
-    lastProductResults: JSON.stringify(opts.lastProductResults ?? source.memory.lastProductResults ?? []),
     conversationState: conversation.state,
   };
 
@@ -256,9 +260,43 @@ export function buildToolEntities(
       }
       break;
 
-    case 'getProductDetails':
     case 'recallPreviousProducts':
+      // Legacy internal-only tool: still memory-driven, so the transport
+      // materializes the conversation memory + last results for it.
+      toolEntities.memory = JSON.stringify(source.memory);
+      toolEntities.lastProductResults = JSON.stringify(
+        opts.lastProductResults ?? source.memory.lastProductResults ?? [],
+      );
+      if (!toolEntities.productId && conversation.currentProductId) {
+        toolEntities.productId = conversation.currentProductId;
+      }
+      break;
+
     case 'suggestProducts':
+      // The tool never reads memory: the transport computes the discarded
+      // products (already offered this exchange + explicitly rejected +
+      // currently selected) and passes them as excludedProductIds.
+      {
+        const excludeIds = memoryExclusionIds(
+          { ...source.memory, lastProductResults: opts.lastProductResults ?? source.memory.lastProductResults ?? [] },
+          conversation.currentProductId,
+        );
+        if (excludeIds.length) {
+          toolEntities.excludedProductIds = JSON.stringify(excludeIds);
+        }
+      }
+      break;
+
+    case 'selectProduct':
+      // Materialize the tracked current product ONLY when the customer gave
+      // neither an explicit product id nor a product name — an explicit choice
+      // always wins over the "select the one we were discussing" fallback.
+      if (!toolEntities.productId && !toolEntities.productName && conversation.currentProductId) {
+        toolEntities.productId = conversation.currentProductId;
+      }
+      break;
+
+    case 'getProductDetails':
     case 'createOrder':
       if (!toolEntities.productId && conversation.currentProductId) {
         toolEntities.productId = conversation.currentProductId;
@@ -281,36 +319,9 @@ export function buildToolEntities(
   return toolEntities;
 }
 
-// Resolve a bare product reference ("the black one", "hadak", the sole product
-// from the previous search, the currently selected product) into an explicit
-// productId drawn from conversation memory — BEFORE searchProducts sees it. A
-// concrete product name with no memory counterpart is left untouched: the tool
-// resolves it against the catalog as before. Returns entities to merge.
-async function resolveBareProductReference(
-  entities: InjectedToolEntities,
-  source: ToolSourceContext,
-): Promise<InjectedToolEntities> {
-  const memoryProducts = source.memory.lastProductResults ?? [];
-
-  if (entities.productId) return { productId: entities.productId };
-
-  const name = typeof entities.product === 'string' ? entities.product.trim() : '';
-  if (name) {
-    const match = memoryProducts.find((p) => p.name.toLowerCase() === name.toLowerCase());
-    if (match) return { productId: match.id, product: match.name };
-  }
-  if (memoryProducts.length === 1) {
-    return { productId: memoryProducts[0].id, product: memoryProducts[0].name };
-  }
-  if (source.conversation.currentProductId) {
-    return { productId: source.conversation.currentProductId };
-  }
-  return {};
-}
-
 // READ tools are pure: the transport owns their conversation navigation. After
 // a successful READ-tool run the transport applies the tool's transition
-// (search/recall/suggest -> PRODUCT_DISCOVERY; chooseProduct/getProductDetails
+// (search/recall/suggest -> PRODUCT_DISCOVERY; selectProduct/getProductDetails
 // -> PRODUCT_SELECTED + currentProductId from the result) — handlers never
 // touch the conversation row.
 export async function applyReadToolState(
@@ -381,9 +392,10 @@ async function executeTools(
 
   for (const item of intents) {
     // Product intents are never short-circuited on "unresolved": their tools
-    // (searchProducts / chooseProduct / getProductDetails / suggestProducts)
-    // resolve the reference from conversation memory first and only report
-    // AMBIGUOUS when neither the message nor the memory can identify a product.
+    // (searchProducts / selectProduct / getProductDetails / suggestProducts)
+    // resolve the reference against the catalog and only report NOT_FOUND/
+    // AMBIGUOUS when the request cannot identify a product. getProductDetails /
+    // selectProduct can also fall back to the injected currentProductId.
     // Other intents that the LLM could not act on are recorded as AMBIGUOUS and skipped.
     if (item.status === 'unresolved' && !PRODUCT_INTENTS.has(intentToString(item.intent))) {
       toolResults.push({
@@ -404,19 +416,12 @@ async function executeTools(
       continue;
     }
 
-    // Enrich productId from product name (for intents that have a product entity)
+    // Enrich productId from product name for product intents that consume an
+    // explicit product reference. searchProducts is excluded: its `product`
+    // argument is a free-text catalog query, not a reference to resolve.
     const entities = { ...item.entities };
 
-    // Resolve bare references ("hadak", "the black one", the sole previously
-    // offered product, the tracked current product) from conversation memory
-    // BEFORE searchProducts runs — the tool then receives an explicit productId
-    // instead of re-reading memory itself.
-    if (toolName === 'searchProducts') {
-      const bareRef = await resolveBareProductReference(entities, source);
-      Object.assign(entities, bareRef);
-    }
-
-    if (entities.product && !entities.productId) {
+    if (toolName !== 'searchProducts' && entities.product && !entities.productId) {
       const resolvedId = await resolveProductId(conversation.merchantId, entities.product as string);
       if (resolvedId) {
         entities.productId = resolvedId;
@@ -480,7 +485,8 @@ async function executeTools(
 
     toolResults.push({ intent: intentToString(item.intent), result });
 
-    // Post-processing: store search results in memory for index-based selection
+    // Post-processing: store search results in memory for follow-up selection
+    // (PRODUCT_SELECT) and suggestions exclusions.
     if (
       (toolName === 'searchProducts' || toolName === 'recallPreviousProducts') &&
       result.success &&
@@ -522,22 +528,13 @@ async function executeTools(
     if (toolResultCache.has(toolKey)) {
       result = toolResultCache.get(toolKey) as ToolResult;
     } else {
-      // suggestProducts historically read the conversation memory + current
-      // product fresh at execution time — materialize the fresh values as
-      // explicit entities for parity.
-      const freshConversation = await prisma.conversation.findUnique({
-        where: { id: conversation.id },
-        select: { memory: true, currentProductId: true },
+      // suggestProducts consumes only explicit criteria + the transport-computed
+      // exclusions (abandoned/rejected/current products). Pass the in-message
+      // lastProductResults so products offered earlier THIS message are never
+      // re-suggested — the tool itself never reads memory.
+      const suggestionEntities = buildToolEntities('suggestProducts', entities, source, {
+        lastProductResults,
       });
-      const freshSource: ToolSourceContext = {
-        ...source,
-        memory: (freshConversation?.memory as ConversationMemory | null) ?? {},
-        conversation: {
-          ...source.conversation,
-          currentProductId: freshConversation?.currentProductId ?? null,
-        },
-      };
-      const suggestionEntities = buildToolEntities('suggestProducts', entities, freshSource);
       try {
         result = await executeTool('suggestProducts', suggestionEntities);
         console.log(`[agent] tool "suggestProducts" (intent=${intentToString(item.intent)}) ->`, result);

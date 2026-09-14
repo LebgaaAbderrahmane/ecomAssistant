@@ -11,7 +11,7 @@ describe('TOOL_STATE_TRANSITIONS', () => {
     assert.equal(TOOL_STATE_TRANSITIONS.searchProducts, 'PRODUCT_DISCOVERY');
     assert.equal(TOOL_STATE_TRANSITIONS.recallPreviousProducts, 'PRODUCT_DISCOVERY');
     assert.equal(TOOL_STATE_TRANSITIONS.suggestProducts, 'PRODUCT_DISCOVERY');
-    assert.equal(TOOL_STATE_TRANSITIONS.chooseProduct, 'PRODUCT_SELECTED');
+    assert.equal(TOOL_STATE_TRANSITIONS.selectProduct, 'PRODUCT_SELECTED');
     assert.equal(TOOL_STATE_TRANSITIONS.getProductDetails, 'PRODUCT_SELECTED');
     assert.equal(TOOL_STATE_TRANSITIONS.createOrder, 'WAITING_CONFIRMATION');
     assert.equal(TOOL_STATE_TRANSITIONS.confirmOrder, 'CONFIRMED');
@@ -43,7 +43,7 @@ describe('nextConversationState', () => {
 
   it('(3) selecting a product after a search moves to PRODUCT_SELECTED', () => {
     assert.equal(
-      nextConversationState('PRODUCT_DISCOVERY', 'chooseProduct', true),
+      nextConversationState('PRODUCT_DISCOVERY', 'selectProduct', true),
       'PRODUCT_SELECTED',
     );
   });

@@ -17,7 +17,7 @@ from utils import last_user_text
 
 logger = logging.getLogger(__name__)
 
-PRODUCT_RESULT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "chooseProduct"}
+PRODUCT_RESULT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "selectProduct"}
 
 
 def _tool_result_products(content: str) -> list[Product] | None:
@@ -31,8 +31,8 @@ def _tool_result_products(content: str) -> list[Product] | None:
         return None
     products = []
     for item in data:
-        pid = item.get("product_id") or item.get("id")
-        name = item.get("product_name") or item.get("name")
+        pid = item.get("product_id") or item.get("productId") or item.get("id")
+        name = item.get("product_name") or item.get("productName") or item.get("name")
         price = item.get("price")
         if not pid or not name or price is None:
             continue
@@ -129,22 +129,19 @@ def calling_tool(state: AgentState) -> dict:
                 flow.product_discovery = ProductDiscoveryContext()
             flow.product_discovery.tool_results = prods
             selected = prods[0]
-            if called_name == "chooseProduct":
+            if called_name == "selectProduct":
                 name_sel = str(call_args.get("productName") or "").strip()
-                idx = call_args.get("productIndex")
-                try:
-                    idx = int(idx)
-                except (TypeError, ValueError):
-                    idx = None
-                if idx is not None and 0 <= idx < len(prods):
-                    selected = prods[idx]
+                pid = str(call_args.get("productId") or "").strip()
+                if pid:
+                    selected = next((p for p in prods if p.product_id == pid), prods[0])
                 elif name_sel:
                     selected = next(
                         (p for p in prods if p.product_name.lower() == name_sel.lower() or p.product_id == name_sel),
                         prods[0],
                     )
-            elif call_args.get("product_id"):
-                selected = next((p for p in prods if p.product_id == str(call_args.get("product_id"))), prods[0])
+            elif call_args.get("product_id") or call_args.get("productId"):
+                pid = call_args.get("product_id") or call_args.get("productId")
+                selected = next((p for p in prods if p.product_id == str(pid)), prods[0])
             flow.product_discovery.selected_product = selected
 
     return {

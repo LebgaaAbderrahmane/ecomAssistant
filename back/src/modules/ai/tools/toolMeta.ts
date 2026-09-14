@@ -6,8 +6,11 @@ import type { ToolName } from '../schemas/intents.schemas';
 //   conversationState / currentOrderId        — confirmOrder's implicit-
 //                                               confirmation gate.
 //   memory / lastProductResults               — JSON-encoded conversation
-//                                               memory for the recommendation
-//                                               and product-navigation tools.
+//                                               memory (legacy recall signal).
+//   excludedProductIds                        — abandoned/rejected product ids
+//                                               computed from conversation
+//                                               memory by the transport for
+//                                               suggestProducts.
 // These keys are excluded from the agent-facing contract (contracts
 // src/generated/tools.json), whose args are exactly the public, caller-supplied
 // keys each tool schema exposes.
@@ -19,6 +22,7 @@ export const INJECTED_ARG_NAMES = [
   'currentOrderId',
   'memory',
   'lastProductResults',
+  'excludedProductIds',
 ] as const;
 
 export interface ToolArgMeta {
@@ -35,10 +39,10 @@ export interface ToolMeta {
 // no missing, no stray. The generated tools.json is built from this + schemas.
 export const TOOL_META: Record<ToolName, ToolMeta> = {
   searchProducts: {
-    description: 'Search the merchant catalog for a product and return the matching products',
+    description:
+      'Search the merchant catalog for a product by name and return the matching products (authoritative NOT_FOUND when absent)',
     args: {
       product: { description: 'Product name or query to search for' },
-      productId: { description: 'Product id to fetch directly (pass either product or productId)' },
     },
   },
   recallPreviousProducts: {
@@ -49,12 +53,12 @@ export const TOOL_META: Record<ToolName, ToolMeta> = {
       productId: { description: 'Id of the currently selected product to fall back on' },
     },
   },
-  chooseProduct: {
+  selectProduct: {
     description:
-      'Select a product the customer picked, by name or by its index in the last search results, and make it the active product',
+      'Select a product the customer picked (by id or by name) and make it the active product',
     args: {
+      productId: { description: 'Product id to select' },
       productName: { description: 'Product name to select' },
-      productIndex: { description: 'Index of the product in the last search results' },
     },
   },
   getProductDetails: {
@@ -73,7 +77,6 @@ export const TOOL_META: Record<ToolName, ToolMeta> = {
       minPrice: { description: 'Minimum price filter' },
       maxPrice: { description: 'Maximum price filter' },
       preferences: { description: 'Free-text preference description' },
-      productId: { description: 'Id of the currently selected product to recommend alternatives to' },
     },
   },
   calculateShipping: {
