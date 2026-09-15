@@ -6,7 +6,7 @@ export interface ReplyServiceDeps {
   ) => Promise<{ id: string; merchantId: string; customerId: string; takenOverByHuman: boolean } | null>;
   customerFindUnique: (
     args: { where: { id: string } }
-  ) => Promise<{ id: string; phone: string | null } | null>;
+  ) => Promise<{ id: string; phone: string | null; waJid: string | null } | null>;
   messageCreate: (args: {
     data: {
       conversationId: string;
@@ -78,13 +78,14 @@ export const deliverAssistantReply = async (
       where: { merchantId: conversation.merchantId },
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
-      if (customer?.phone) {
+      const target = customer?.waJid ?? customer?.phone;
+      if (target) {
         await deps.sendMessagesSequentially(
           waSession.sessionId,
-          customer.phone,
+          target,
           texts,
         );
-        console.log(`[reply] Sent via WhatsApp to ${customer.phone} (${texts.length} messages)`);
+        console.log(`[reply] Sent via WhatsApp to ${target} (${texts.length} messages)`);
       } else {
         console.log(`[reply] No phone found for customer ${conversation.customerId}, reply not sent`);
       }

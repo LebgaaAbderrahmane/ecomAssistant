@@ -103,6 +103,7 @@ services:
       - ALLOW_DEV_API_KEY=true
       - ENGINE_TYPE=baileys
       - SSRF_ALLOWED_HOSTS=back
+      - RESOLVE_LID_TO_PHONE=true
     volumes:
       - openwa_data:/app/data
     healthcheck:

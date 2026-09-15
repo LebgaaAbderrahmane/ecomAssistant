@@ -70,6 +70,20 @@ function extractPhone(from: string): string {
   return from.replace(/@[a-z.]+$/g, "");
 }
 
+async function resolveSenderPhone(
+  sessionId: string,
+  from: string,
+  senderPhone?: string | null,
+): Promise<string | null> {
+  if (senderPhone) return String(senderPhone).replace(/^\+/, "");
+  const plain = extractPhone(from);
+  if (from.includes("@lid")) {
+    const resolved = await openwaService.resolveContactPhone(sessionId, plain);
+    if (resolved) return resolved.replace(/^\+/, "");
+  }
+  return plain || null;
+}
+
 export async function handleWebhook(
   req: Request,
   res: Response,
@@ -95,14 +109,15 @@ export async function handleWebhook(
       case "message.received": {
         const from = data.from as string;
         const body = (data.body as string) || "";
-        const phone = extractPhone(from);
+        const phone =
+          (await resolveSenderPhone(sessionId, from, data.senderPhone as string | null | undefined)) || "";
         const msgType = mapWaType((data.type as string) || "text");
         const timestamp = data.timestamp as number | undefined;
         const createdAt = timestamp
           ? new Date(timestamp * 1000)
           : new Date();
 
-        console.log(`[WhatsApp] Message from=${phone} type=${msgType} body="${body.substring(0, 80)}"`);
+        console.log(`[WhatsApp] Message from=${from} senderPhone=${phone} type=${msgType} body="${body.substring(0, 80)}"`);
 
         const waSession = await prisma.whatsAppSession.findUnique({
           where: { sessionId },
@@ -118,22 +133,60 @@ export async function handleWebhook(
             phone,
           );
         if (!conversation) {
-          const customer = await prisma.customer.findFirst({
-            where: {
-              merchantId: waSession.merchantId,
-              phone: { in: [`+${phone}`, phone] },
-            },
-          });
-          if (!customer) {
-            console.log(`[WhatsApp] No customer found for phone=${phone}, ignoring`);
-            return res.status(200).json({ status: "ignored" });
+          const isLidSender = data.isLidSender === true;
+          const lidJid =
+            isLidSender && from.toLowerCase().includes("@lid") ? from : null;
+
+          if (!conversation && lidJid) {
+            conversation = await conversationService.getByJid(
+              waSession.merchantId,
+              lidJid,
+            );
           }
-          conversation = await conversationService.findOrCreateByCustomer(
-            waSession.merchantId,
-            customer.id,
-            customer.phone,
-          );
-          console.log(`[WhatsApp] Auto-created conversation ${conversation.id} for customer ${customer.name}`);
+
+          if (!conversation) {
+            const customer = lidJid
+              ? await prisma.customer.upsert({
+                  where: {
+                    merchantId_phone: {
+                      merchantId: waSession.merchantId,
+                      phone: extractPhone(lidJid),
+                    },
+                  },
+                  update: {
+                    waJid: lidJid,
+                    ...((data.contact as { pushName?: string } | undefined)
+                      ?.pushName
+                      ? { name: (data.contact as { pushName: string }).pushName }
+                      : {}),
+                  },
+                  create: {
+                    merchantId: waSession.merchantId,
+                    phone: extractPhone(lidJid),
+                    waJid: lidJid,
+                    name:
+                      (data.contact as { pushName?: string } | undefined)
+                        ?.pushName || `WhatsApp ${extractPhone(lidJid).slice(-6)}`,
+                  },
+                })
+              : await prisma.customer.findFirst({
+                  where: {
+                    merchantId: waSession.merchantId,
+                    phone: { in: [`+${phone}`, phone] },
+                  },
+                });
+
+            if (!customer) {
+              console.log(`[WhatsApp] No customer found for phone=${phone}, ignoring`);
+              return res.status(200).json({ status: "ignored" });
+            }
+            conversation = await conversationService.findOrCreateByCustomer(
+              waSession.merchantId,
+              customer.id,
+              customer.phone,
+            );
+            console.log(`[WhatsApp] Auto-created conversation ${conversation.id} for customer ${customer.name}`);
+          }
         }
 
         let mediaUrl: string | undefined;
