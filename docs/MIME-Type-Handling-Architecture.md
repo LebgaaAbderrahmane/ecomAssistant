@@ -61,10 +61,10 @@ A full list of additional weaknesses — including a stale `voice`-type mapping 
                     └─────────────┬──────────────┘
                                   │ message.worker
                     ┌─────────────▼──────────────┐
-                    │  agent.service (processMessage)
-                    │  LLM #1 intent extraction  │
-                    │  tools (search/orders/…)   │──▶ Postgres
-                    │  LLM #2 reply generation   │──▶ WhatsApp (outbound)
+                    │  agent.bridge (gRPC)       │
+                    │  Python agent:             │
+                    │    tools (search/orders/…) │──▶ Postgres
+                    │    reply / escalate human  │──▶ WhatsApp (outbound)
                     └────────────────────────────┘
 ```
 
@@ -280,28 +280,17 @@ Both run **synchronously in the webhook request handler** before the message is 
 
 `back/src/workers/message.worker.ts`:
 
-- Worker with `concurrency: 5`, calls `processMessage(job.data.messageId)`.
-- `failed` handler logs `[worker] message <id> failed: <error>` — exactly the log observed in the incident, with the stack tracing to `gemini.client.ts:41`.
+- Worker with `concurrency: 5`, calls `handleMessageViaAgent(job.data.messageId)` (`agent.bridge.ts`). Every inbound message is routed to the **Python agent over gRPC** — the legacy in-process pipeline and the `MESSAGE_HANDLER` switch are gone.
+- `failed` handler logs `[worker] message <id> failed: <error>`; the job fails after 5 retries.
 
 ### 3.8 Agent processing
 
-`back/src/modules/ai/agent.service.ts` — `processMessage` (line 55):
+The backend is only a transport now — `back/src/grpc/agent.client.ts` + `back/src/modules/ai/agent.bridge.ts` (`handleMessageViaAgent`, line 68):
 
-1. Loads `Message` + `Conversation` + `Customer` (lines 56–66).
-2. **Image-category routing** (lines 68–87), only when `message.messageType === "image"`:
-   - `PAYMENT_PROOF` / `DAMAGE_COMPLAINT` → `effectiveText = "[Image received: payment proof|damage complaint] <text>"` (escalation signal; the AI replies defensively).
-   - `PRODUCT_PHOTO` → prepends `"[Customer sent a photo (product: <name>)] <text>"` so intent extraction is rich.
-   - `OTHER` / uncategorized → falls through with `effectiveText = message.text` (the caption).
-   - **Note:** this routing reads `messageType` (app-level), `entities.imageCategory` (from captioning). Voice transcripts reach the agent via `message.text`; no special routing.
-3. **LLM #1 — multi-intent extraction** (lines 89–112): `callLLM({ systemPrompt: buildIntentPrompt(...), userMessage: effectiveText, responseSchema: INTENT_RESPONSE_SCHEMA })`. Text-only (no ContentParts).
-4. **Parsing** — `back/src/modules/ai/parser/response.parser.ts`: `stripFences` → `JSON.parse` → Zod `LLMResponseSchema`; wraps failures in `LLMParseError`.
-5. **Intent sorting** (lines 43–53, 115–124): by LLM `order`, tie-broken by hardcoded `INTENT_PRIORITY`.
-6. Persists primary intent + entities (lines 127–135).
-7. **Tool loop** (lines 152–216): `resolveTool` → entity enrichment (`resolveProductId`) → `executeTool` (registry) → stores product search results into entities + memory.
-8. **LLM #2 — reply generation** (lines 231–235): `callLLM({ systemPrompt: buildReplyPrompt(...), userMessage: effectiveText, responseSchema: REPLY_RESPONSE_SCHEMA })`, parsed with `ReplyResponseSchema`.
-9. Persists each reply as an `OUT`/`AI`/`assistant` Message row (lines 248–259).
-10. **Outbound send** (lines 262–282): finds the session; `openwaService.sendMessagesSequentially` → `sendText` (text-only; **no media is ever sent back**).
-11. **Memory update** (lines 284–306): merges intents into `Conversation.memory` JSON.
+1. Loads the `Message` + its `Conversation`. Conversations owned by a human are skipped (no auto-reply).
+2. Loads the `Customer`, then calls the Python agent's `AgentService.ProcessMessage` over gRPC (`agentBridgeCore.ts` `runAgentBridge`), passing `messageId`, `conversationId`, `merchantId`, `customerId`.
+3. `DECISION_REPLY` → the reply text is persisted + sent via `deliverAssistantReply` (`back/src/modules/whatsapp/reply.service.ts`); `DECISION_ESCALATE` → the conversation is handed to a human.
+4. Audio/image enrichment (voicemail §3.6) happens earlier, in the webhook handler, and reaches the agent as `message.text` / `Message.entities`.
 
 ### 3.9 LLM client layer (the MIME boundary)
 
@@ -336,17 +325,13 @@ function toGeminiContents(userMessage: string | ContentPart[]) {
 ```
 
 - Text parts → `{ text }`; binary parts → Gemini `inlineData { mimeType, data }` (base64). **No whitelist/validation** of `part.mimeType` happens here.
-- `callLLM` (lines 31–57) computes the **output** MIME:
+- `callLLM` resolves the **output** MIME:
   ```ts
-  const resolvedMidmeType = responseMimeType ?? (responseSchema ? "application/json" : "text/plain"); // ← TYPO (line 34)
+  const resolvedMimeType = responseMimeType ?? (responseSchema ? "application/json" : "text/plain");
   ...
-  responseMimeType: resolvedMimeType,   // ← undefined identifier → ReferenceError (line 41)
+  responseMimeType: resolvedMimeType,
   ```
-  The typo on line 34 means line 41 references an undefined binding. Since line 41 runs unconditionally, **every `callLLM` throws**, cascading to:
-  - `transcription.service.ts:31` and `imageCaption.service.ts:77` (pre-enrichment, inside the webhook handler — caught and replaced with fallback text there),
-  - `agent.service.ts:96` and `agent.service.ts:231` (worker — uncaught, so the job fails after 5 retries),
-  - `tools/searchHelpers.ts:71` (product matcher).
-  This is the root cause of the `[worker] message ... failed: ReferenceError: resolvedMimeType is not defined` log.
+  (A historical `resolvedMidmeType` typo here made every `callLLM` throw; it is fixed. The MIME boundary is only exercised by the pre-enrichment media services — `transcription.service.ts` / `imageCaption.service.ts` — and the tool-layer product matcher `tools/searchHelpers.ts`.)
 
 - Response handling: `usageMetadata` is logged (`promptTokenCount`, `candidatesTokenCount`, latency); returns `response.text ?? ""`.
 
@@ -368,8 +353,8 @@ function toGeminiContents(userMessage: string | ContentPart[]) {
 | Media MIME → extension | `whatsapp.controller.ts` `mimeToExt` | raw `media.mimetype` | `.jpg/.png/.gif/.webp/.ogg/.mp3/.m4a/.mp4/.3gp/.pdf/.bin` | Parameter-stripped for the *filename* only |
 | Media MIME → persisted | `conversation.service.ts` | raw `media.mimetype` | stored as `Message.mimeType` | **Parameters retained** (§10.5) |
 | Media MIME → Gemini input | `gemini.client.ts` `toGeminiContents` | `ContentPart.mimeType` | `inlineData.mimeType` | Passed verbatim; no whitelist |
-| Output MIME resolution | `gemini.client.ts` `callLLM` | `responseMimeType` / `responseSchema` | `application/json` or `text/plain` | Currently broken by typo |
-| Caption category | `imageCaption.service.ts` + `agent.service.ts` | image category | `PRODUCT_PHOTO / PAYMENT_PROOF / DAMAGE_COMPLAINT / OTHER` | Second-order classification derived from the *image*, not the MIME |
+| Output MIME resolution | `gemini.client.ts` `callLLM` | `responseMimeType` / `responseSchema` | `application/json` or `text/plain` | `responseMimeType ?? (responseSchema ? json : text/plain)` |
+| Caption category | `imageCaption.service.ts` | image category | `PRODUCT_PHOTO / PAYMENT_PROOF / DAMAGE_COMPLAINT / OTHER` | Second-order classification derived from the *image*, not the MIME |
 
 ### 4.2 File type routing matrix (as implemented today)
 
@@ -437,11 +422,11 @@ Customer           OpenWA                    back: /whatsapp/webhook      conver
    │                   │◀──────────────────────────── {status:"received"}                          │
    │                   │                                            │                              │
    │                   │                      BullMQ "message" queue │                              │
-   │                   │                          worker → processMessage(id)                       │
-   │                   │                             LLM#1 intent (text only)──────────────────────▶│
-   │                   │                             tools (DB)                                     │
-   │                   │                             LLM#2 reply───────────────────────────────────▶│
-   │                   │                             persist OUT messages; sendText back            │
+   │                   │                    worker → handleMessageViaAgent(id)                       │
+   │                   │                       gRPC ProcessMessage ───────▶ Python agent            │
+   │                   │                       tools (backend via gRPC)                             │
+   │                   │                       reply / escalate ────────────────────────▶            │
+   │                   │                       deliverAssistantReply; sendText back                 │
    │                   │◀────────────────────────────────────────── send-text ──────────────────────│
 ```
 
@@ -488,16 +473,12 @@ IncomingMessage.media.mimetype
 | `modules/whatsapp/conversation.service.ts` | `addMessage`: persists MIME metadata + defaults; conversation queries. |
 | `modules/whatsapp/whatsapp.service.ts` | `openwaService` HTTP client (send text/media/typing; session/webhook management). |
 | `queues/message.queue.ts` | BullMQ queue config (5 attempts). |
-| `workers/message.worker.ts` | Consumes queue → `processMessage`. |
-| `modules/ai/agent.service.ts` | Two-pass agent: intent extraction, image-category routing, tool loop, reply generation, send, memory. |
-| `modules/ai/clients/llm.client.ts` | `ContentPart` union + `CallLLMParams`; the LLM-client abstraction. |
-| `modules/ai/clients/gemini.client.ts` | Gemini adapter: `ContentPart → inlineData`, output-MIME resolution. **Contains the active bug.** |
+| `workers/message.worker.ts` | Consumes queue → `handleMessageViaAgent` (gRPC to Python agent). |
+| `modules/ai/agent.bridge.ts` + `agentBridgeCore.ts` | Translates BullMQ message → gRPC `ProcessMessage` → reply/escalation. |
+| `modules/ai/clients/llm.client.ts` | `ContentPart` union + `CallLLMParams`; the LLM-client abstraction (re-exports `callLLM`). |
+| `modules/ai/clients/gemini.client.ts` | Gemini adapter: `ContentPart → inlineData`, output-MIME resolution. |
 | `modules/ai/media/transcription.service.ts` | Audio → text via Gemini (`responseMimeType: text/plain`). |
 | `modules/ai/media/imageCaption.service.ts` | Image → `{productName, description, category}` via Gemini + Zod. |
-| `modules/ai/parser/response.parser.ts` | `stripFences` + JSON.parse + Zod for agent responses. |
-| `modules/ai/schemas/gemini.schemas.ts` | JSON-schema-style response schema for Gemini (shapes generation). |
-| `modules/ai/schemas/ai.schemas.ts` | Zod schemas (verifies generation). |
-| `modules/ai/prompts/promptBuilder.ts`, `systemPrompts.ts` | System prompts. |
 | `modules/ai/tools/registry.ts`, `searchHelpers.ts` | Tool registry; product matching (also calls `callLLM`). |
 | `prisma/schema.prisma` | `Message` model fields for MIME/media metadata. |
 
@@ -507,9 +488,9 @@ IncomingMessage.media.mimetype
 
 1. **Adapter / Anti-Corruption Layer (OpenWA).** Each WhatsApp engine is wrapped by an adapter that maps library-specific tokens/protos to the neutral `MessageType` + `IncomingMessage` shape, so downstream never sees engine dialects. *Strength:* clean seam; *weakness:* the back API then duplicates the mapping instead of consuming the same vocabulary.
 2. **Strategy / Factory.** `EngineFactory` selects the engine by `ENGINE_TYPE`. `MessageType` is the strategy interface.
-3. **Queued job / Command.** Webhook → `enqueueMessageJob` → BullMQ → worker → `processMessage`. Decouples HTTP latency from AI latency; gives retries + concurrency.
-4. **Pipeline (two-pass LLM).** LLM #1 (intent) → deterministic tools → LLM #2 (reply). Media enrichment (transcription/caption) is a *third*, pre-queue stage.
-5. **Schema-shaping vs. schema-verification.** Gemini `responseSchema` (JSON-schema-ish, `gemini.schemas.ts`) constrains generation; Zod (`ai.schemas.ts`) validates afterward. Commented explicitly as two different jobs.
+3. **Queued job / Command.** Webhook → `enqueueMessageJob` → BullMQ → worker → `handleMessageViaAgent` (gRPC). Decouples HTTP latency from AI latency; gives retries + concurrency.
+4. **Agent as a remote service.** The Python agent owns intents/tools/reply; the backend is a thin transport (persist → gRPC `ProcessMessage` → persist/send reply or escalate). Media enrichment (transcription/caption) is a pre-queue stage that feeds `message.text`/`entities`.
+5. **Schema-shaping vs. schema-verification.** Gemini `responseSchema` (schema-shaped) constrains generation; Zod validates the JSON afterward. Used by the media services (`IMAGE_CAPTION_SCHEMA`) and tool product matching.
 6. **Discriminated union (ContentPart).** `{type:'text'|'audio'|'image', ...}` as the input payload abstraction. Cleanly extensible (e.g. `video`) but currently only text+audio+image.
 7. **Contract-by-convention (no shared package).** Back and OpenWA live in separate packages with no shared type/schema. `mapWaType` and `mimeToExt` are hand-maintained mirrors of OpenWA's behavior — the source of drift (§10.2).
 
@@ -517,10 +498,10 @@ IncomingMessage.media.mimetype
 
 ## 8. Weaknesses, Inconsistencies & Duplicated Logic
 
-### 8.1 Critical (active)
+### 8.1 Critical
 
-1. **`ReferenceError: resolvedMimeType is not defined` — `gemini.client.ts:34/41`.**
-   `resolvedMidmeType` (typo) is computed but `resolvedMimeType` (correct spelling) is referenced. Every `callLLM` throws. This breaks the whole AI pipeline. One-character fix on line 34.
+1. **`ReferenceError: resolvedMimeType is not defined` — `gemini.client.ts` (historical, **fixed**).**
+   A `resolvedMidmeType`→`resolvedMimeType` typo made every `callLLM` throw. Corrected to `const resolvedMimeType = responseMimeType ?? (responseSchema ? "application/json" : "text/plain")`. Retained here only as incident history — the exposure is gone now that the two-pass pipeline is deleted and `callLLM` is exercised solely by media enrichment + tool product matching.
 
 2. **`mapWaType` lacks `voice` → voice notes never transcribed.** OpenWA emits neutral `voice` for PTT voice notes (Baileys `audioMessage` + `ptt`). `mapWaType` only handles legacy `ptt`. So `data.type === "voice"` falls to the `"text"` default: no `messageType = "voice"`, no `transcribeAudio`, and the agent receives an **empty string** (PTT has no `body`). Evidence: `uploads/media/*.ogg` files exist, so voice notes do arrive — but the pipeline treats them as empty text. The `ptt: "audio"` entry is stale.
 
@@ -610,8 +591,8 @@ IncomingMessage.media.mimetype
 | Media persist | `back/src/modules/whatsapp/conversation.service.ts:21` |
 | Voice/image enrichment | `back/src/modules/whatsapp/whatsapp.controller.ts:184,206` |
 | `ContentPart` union | `back/src/modules/ai/clients/llm.client.ts:1` |
-| `resolvedMimeType` bug | `back/src/modules/ai/clients/gemini.client.ts:34,41` |
-| Agent two-pass | `back/src/modules/ai/agent.service.ts:55,96,231` |
+| `resolvedMimeType` fix | `back/src/modules/ai/clients/gemini.client.ts:79` |
+| Agent bridge (gRPC) | `back/src/modules/ai/agent.bridge.ts:68` + `agentBridgeCore.ts:34` |
 | `Message` model | `back/prisma/schema.prisma:195` |
 
 ---

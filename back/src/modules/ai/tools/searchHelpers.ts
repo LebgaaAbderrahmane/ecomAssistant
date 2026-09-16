@@ -2,7 +2,6 @@ import type { Product } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../../../config/db.config';
 import { callLLM } from '../clients/llm.client';
-import type { ProductResult } from '../memory.types';
 
 const CATALOG_LIMIT = 200;
 
@@ -123,108 +122,4 @@ export async function fetchProductsByIds(
   return ids
     .map((id) => productMap.get(id))
     .filter((p): p is Product => Boolean(p));
-}
-
-// ─── Product resolution (stage: what does the customer mean?) ───────────
-// A product request is resolved in this order:
-//   1. Conversation context — memory (lastProductResults) or the currently
-//      selected product. This resolves bare references like "the black one"
-//      and "this one" when products were already discussed.
-//   2. Catalog search — SQL fast-path, then LLM matching over the catalog.
-//   3. Ambiguity decision — ONLY when neither context nor catalog identifies
-//      a product AND the query is a bare reference with no prior context.
-//      A concrete product name that simply isn't in the catalog is NOT
-//      ambiguous: it is authoritatively NOT_FOUND, and the reply must say
-//      so directly instead of asking "do you mean cargo or jeans?".
-
-export interface ProductContext {
-  lastProductResults?: ProductResult[];
-  currentProductId?: string | null;
-}
-
-export type ProductOutcome =
-  | { outcome: 'SUCCESS'; products: Product[]; source: 'catalog' | 'memory' }
-  | { outcome: 'NOT_FOUND'; query: string }
-  | { outcome: 'AMBIGUOUS'; reason: string };
-
-async function productsFromMemory(
-  ctx: ProductContext,
-  merchantId: string,
-): Promise<Product[] | null> {
-  if (ctx.lastProductResults?.length) {
-    const products = await fetchProductsByIds(
-      merchantId,
-      ctx.lastProductResults.map((p) => p.id),
-    );
-    if (products.length) return products;
-  }
-  if (ctx.currentProductId) {
-    const current = await prisma.product.findFirst({
-      where: { id: ctx.currentProductId, merchantId },
-    });
-    if (current) return [current];
-  }
-  return null;
-}
-
-export async function resolveProductRequest(
-  query: string | undefined,
-  ctx: ProductContext,
-  merchantId: string,
-): Promise<ProductOutcome> {
-  const trimmed = (query ?? '').trim();
-
-  // 1. Bare query or empty query → the customer points at products already
-  //    discussed. Resolve purely from conversation context.
-  if (!trimmed) {
-    const fromMemory = await productsFromMemory(ctx, merchantId);
-    if (fromMemory) return { outcome: 'SUCCESS', products: fromMemory, source: 'memory' };
-    return {
-      outcome: 'AMBIGUOUS',
-      reason: 'No product name given and no product context in this conversation to resolve it from.',
-    };
-  }
-
-  // 2. Fast SQL search on the product name.
-  const fastResults = await prisma.product.findMany({
-    where: {
-      merchantId,
-      name: { contains: trimmed, mode: 'insensitive' },
-    },
-    take: 5,
-  });
-  if (fastResults.length) {
-    return { outcome: 'SUCCESS', products: fastResults, source: 'catalog' };
-  }
-
-  // 3. LLM matching over the catalog, with reference classification.
-  const catalog = await buildProductCatalog(merchantId);
-  if (catalog.length === 0) {
-    // Empty store: nothing can match — definitive, no follow-up needed.
-    return { outcome: 'NOT_FOUND', query: trimmed };
-  }
-
-  const { ids, isReference } = await matchProductsWithLLM(catalog, trimmed);
-  if (ids.length) {
-    const products = await fetchProductsByIds(merchantId, ids);
-    if (products.length) {
-      return { outcome: 'SUCCESS', products: products.slice(0, 5), source: 'catalog' };
-    }
-  }
-
-  // 4. No catalog match. If the query is a bare reference, try conversation
-  //    context; only if there is no context is it genuinely ambiguous.
-  if (isReference) {
-    const fromMemory = await productsFromMemory(ctx, merchantId);
-    if (fromMemory) return { outcome: 'SUCCESS', products: fromMemory, source: 'memory' };
-    return {
-      outcome: 'AMBIGUOUS',
-      reason: `"${trimmed}" refers to something previously discussed but no product context exists in this conversation to resolve it against.`,
-    };
-  }
-
-  // 5. A concrete product name that is not in the catalog → authoritative
-  //    absence. The reply must state this plainly and must not ask the
-  //    customer to choose among alternatives they never mentioned.
-  return { outcome: 'NOT_FOUND', query: trimmed };
 }

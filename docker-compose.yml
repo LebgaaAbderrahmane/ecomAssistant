@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -14,7 +14,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.7-alpine
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -35,6 +35,9 @@ services:
     ports:
       - "3000:3000"
       - "5555:5555"
+    # Internal only — the ToolService gRPC server (50051) is NOT published to
+    # the host; only the agent reaches it as `back:50051` over the Compose
+    # network. Do not add it to the ports list above.
     volumes:
       - .:/app
       - /app/node_modules
@@ -47,6 +50,35 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  agent:
+    build:
+      context: ./ecom_agent
+    restart: unless-stopped
+    # Internal only — no host port. The backend reaches it as `agent:50052`
+    # over the default Compose network (see AGENT_GRPC_ADDR / TOOLS_GRPC_ADDR).
+    env_file: .env
+    environment:
+      AGENT_GRPC_ADDR: 0.0.0.0:50052
+      BACK_TOOLS_GRPC_ADDR: back:50051
+      LLM_PROVIDER: groq,gemini
+      GROQ_MODEL: openai/gpt-oss-120b
+      GEMINI_MODEL: gemini-2.5-flash
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_started
+    healthcheck:
+      # Probes the unauthenticated AgentService.Health gRPC RPC, not just
+      # process liveness. See ecom_agent/healthcheck.py.
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   front:
     build:
@@ -74,6 +106,7 @@ services:
       - ALLOW_DEV_API_KEY=true
       - ENGINE_TYPE=baileys
       - SSRF_ALLOWED_HOSTS=back
+      - RESOLVE_LID_TO_PHONE=true
     volumes:
       - openwa_data:/app/data
     healthcheck:

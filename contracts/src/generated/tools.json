@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "generatedFrom": "@ecomassistant/back toolSchemas + TOOL_META",
+  "tools": [
+    {
+      "name": "searchProducts",
+      "description": "Search the merchant catalog for a product by name and return the matching products (authoritative NOT_FOUND when absent)",
+      "args": [
+        {
+          "name": "product",
+          "type": "string",
+          "required": true,
+          "description": "Product name or query to search for"
+        }
+      ]
+    },
+    {
+      "name": "selectProduct",
+      "description": "Select a product the customer picked (by id or by name) and make it the active product",
+      "args": [
+        {
+          "name": "productId",
+          "type": "string",
+          "required": false,
+          "description": "Product id to select"
+        },
+        {
+          "name": "productName",
+          "type": "string",
+          "required": false,
+          "description": "Product name to select"
+        }
+      ]
+    },
+    {
+      "name": "getProductDetails",
+      "description": "Return full details (description, price, currency, stock status, category) for a product",
+      "args": [
+        {
+          "name": "productName",
+          "type": "string",
+          "required": false,
+          "description": "Product name to fetch details for"
+        },
+        {
+          "name": "productId",
+          "type": "string",
+          "required": false,
+          "description": "Product id to fetch details for"
+        }
+      ]
+    },
+    {
+      "name": "suggestProducts",
+      "description": "Recommend products matching the customer preferences, reranking catalog candidates",
+      "args": [
+        {
+          "name": "category",
+          "type": "string",
+          "required": false,
+          "description": "Product category to match"
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "required": false,
+          "description": "Product color to match"
+        },
+        {
+          "name": "size",
+          "type": "string",
+          "required": false,
+          "description": "Product size to match"
+        },
+        {
+          "name": "minPrice",
+          "type": "number",
+          "required": false,
+          "description": "Minimum price filter"
+        },
+        {
+          "name": "maxPrice",
+          "type": "number",
+          "required": false,
+          "description": "Maximum price filter"
+        },
+        {
+          "name": "preferences",
+          "type": "string",
+          "required": false,
+          "description": "Free-text preference description"
+        }
+      ]
+    },
+    {
+      "name": "calculateShipping",
+      "description": "Look up the delivery cost configured for a wilaya for this merchant",
+      "args": [
+        {
+          "name": "wilaya",
+          "type": "string",
+          "required": true,
+          "description": "Wilaya (name or number) to calculate shipping for"
+        }
+      ]
+    },
+    {
+      "name": "getOrderStatus",
+      "description": "Return the status and tracking number of an order by its id",
+      "args": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "Order id to check the status of"
+        }
+      ]
+    },
+    {
+      "name": "createOrder",
+      "description": "Create a new pending order (explicit product id, delivery wilaya, commune, quantity), compute the total with delivery cost, and flag it as waiting for confirmation",
+      "args": [
+        {
+          "name": "productId",
+          "type": "string",
+          "required": true,
+          "description": "Product id to order"
+        },
+        {
+          "name": "wilaya",
+          "type": "string",
+          "required": true,
+          "description": "Delivery wilaya"
+        },
+        {
+          "name": "commune",
+          "type": "string",
+          "required": true,
+          "description": "Delivery commune (baladia)"
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "required": true,
+          "description": "Quantity to order"
+        }
+      ]
+    },
+    {
+      "name": "confirmOrder",
+      "description": "Confirm an order by its id",
+      "args": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "Order id to confirm"
+        }
+      ]
+    },
+    {
+      "name": "modifyOrder",
+      "description": "Update an order's quantity, wilaya, or commune by its id and recompute the total",
+      "args": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "Order id to update"
+        },
+        {
+          "name": "wilaya",
+          "type": "string",
+          "required": false,
+          "description": "New delivery wilaya"
+        },
+        {
+          "name": "commune",
+          "type": "string",
+          "required": false,
+          "description": "New delivery commune"
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "required": false,
+          "description": "New quantity"
+        }
+      ]
+    },
+    {
+      "name": "cancelOrder",
+      "description": "Cancel an order by its id",
+      "args": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "Order id to cancel"
+        }
+      ]
+    },
+    {
+      "name": "escalateConversation",
+      "description": "Hand the conversation to a human agent with a reason (idempotent)",
+      "args": [
+        {
+          "name": "reason",
+          "type": "string",
+          "required": true,
+          "description": "Reason the customer needs a human agent"
+        }
+      ]
+    }
+  ]
+}

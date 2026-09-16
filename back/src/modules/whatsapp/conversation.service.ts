@@ -18,6 +18,18 @@ export const conversationService = {
     });
   },
 
+  getByJid: async (merchantId: string, jid: string) => {
+    const customer = await prisma.customer.findFirst({
+      where: { merchantId, waJid: jid },
+    });
+    if (!customer) return null;
+
+    return prisma.conversation.findFirst({
+      where: { merchantId, customerId: customer.id },
+      include: { messages: { orderBy: { createdAt: "asc" } }, customer: true },
+    });
+  },
+
   addMessage: async (
     conversationId: string,
     role: "agent" | "customer" | "system",

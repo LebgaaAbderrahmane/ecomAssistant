@@ -1,0 +1,41 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	hydrate(hydrate)
+	draft_gate(draft_gate)
+	extract_tool_args(extract_tool_args)
+	ask_reply(ask_reply)
+	check_llm(check_llm)
+	query_tool(query_tool)
+	escalate(escalate)
+	flow_resolver(flow_resolver)
+	calling_tool(calling_tool)
+	reply(reply)
+	persist(persist)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> hydrate;
+	ask_reply --> reply;
+	calling_tool --> reply;
+	check_llm -.-> query_tool;
+	check_llm -.-> reply;
+	draft_gate -.-> check_llm;
+	draft_gate -.-> extract_tool_args;
+	draft_gate -.-> reply;
+	escalate --> persist;
+	extract_tool_args -.-> ask_reply;
+	extract_tool_args -.-> calling_tool;
+	flow_resolver -.-> calling_tool;
+	flow_resolver -.-> extract_tool_args;
+	flow_resolver -.-> reply;
+	hydrate --> draft_gate;
+	query_tool -.-> escalate;
+	query_tool -.-> flow_resolver;
+	reply --> persist;
+	persist --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

@@ -9,14 +9,18 @@
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
     "lint": "echo 'lint ok'",
-    "test": "tsx --test src/modules/ai/__tests__/*.test.ts",
+    "test": "tsx --test src/modules/ai/__tests__/agentBridge.test.ts src/modules/ai/__tests__/contract.test.ts src/modules/ai/__tests__/conversationState.test.ts src/modules/ai/__tests__/messageQueueOptions.test.ts src/modules/ai/__tests__/suggestionHelpers.test.ts src/modules/ai/__tests__/toolSchemas.test.ts src/modules/whatsapp/__tests__/reply.service.test.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "grpc:check": "tsx scripts/grpc-check.ts"
   },
   "dependencies": {
+    "@ecomassistant/contracts": "workspace:*",
     "@ecomassistant/shared": "workspace:*",
     "@google/genai": "^2.10.0",
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
     "@prisma/client": "^5.22.0",
     "@sendgrid/mail": "^8.1.6",
     "@shopify/shopify-api": "^13.0.0",
@@ -32,6 +36,7 @@
     "jsonwebtoken": "^9.0.3",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "pino": "^10.3.1",
     "redis": "^6.0.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1",

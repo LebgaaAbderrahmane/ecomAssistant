@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package ecomassistant.agent.v1;
+
+service AgentService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc ProcessMessage(ProcessMessageRequest) returns (ProcessMessageResponse);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_SERVING = 1;
+    STATUS_NOT_SERVING = 2;
+  }
+  Status status = 1;
+}
+
+message ProcessMessageRequest {
+  string message_id = 1;
+  string conversation_id = 2;
+  string merchant_id = 3;
+  string customer_id = 4;
+}
+
+message ProcessMessageResponse {
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    DECISION_REPLY = 1;
+    DECISION_ESCALATE = 2;
+    DECISION_UNAVAILABLE = 3;
+  }
+  Decision decision = 1;
+  string text = 2;
+  optional string escalate_reason = 3;
+}

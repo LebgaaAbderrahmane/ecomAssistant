@@ -9,7 +9,7 @@
 # minifier) optional dependency fails to install ("Cannot find module lightningcss.linux-arm64-gnu.node").
 # The per-arch runtime deps are installed natively in the target-platform production stage below.
 ARG BUILDPLATFORM=linux/amd64
-FROM --platform=$BUILDPLATFORM docker.io/node:22-slim AS builder
+FROM --platform=$BUILDPLATFORM docker.io/node:22.23.2-slim AS builder
 
 WORKDIR /app
 
@@ -41,7 +41,7 @@ COPY . .
 RUN npm run build
 
 # ===== Stage 2: Production =====
-FROM docker.io/node:22-slim AS production
+FROM docker.io/node:22.23.2-slim AS production
 
 # Install runtime essentials (baileys engine doesn't need Chrome)
 RUN apt-get update && apt-get install -y \

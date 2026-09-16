@@ -2,6 +2,7 @@ packages:
   - 'back'
   - 'front'
   - 'shared'
+  - 'contracts'
 allowBuilds:
   '@google/genai': false
   '@prisma/client': true
@@ -11,4 +12,4 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: true
   prisma: true
-  protobufjs: false
+  protobufjs: true

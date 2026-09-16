@@ -24,6 +24,13 @@ export interface BaileysAdapterConfig {
   authDir: string;
   proxyUrl?: string;
   proxyType?: 'http' | 'https' | 'socks4' | 'socks5';
+  /**
+   * Storage key for the persisted message store. `sessionId` (the session *name*)
+   * keys the auth directory and is stable across re-creations, but the store rows
+   * FK to `sessions.id` (the UUID) — so this must carry the session UUID for key
+   * persistence (reply/forward/react/delete) to work. Defaults to `sessionId`.
+   */
+  messageStoreId?: string;
   /** Persisted store for reply/forward/react/delete. Provided by the plugin; the four ops require it. */
   messageStore?: BaileysMessageStore;
   /** Persisted, cross-session lid->phone resolution table. Backs lid resolution beyond the in-memory map. */

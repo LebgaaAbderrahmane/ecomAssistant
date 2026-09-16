@@ -4,10 +4,11 @@ import type { ConversationMemory } from '../memory.types';
 import type { CatalogEntry } from './searchHelpers';
 
 // ─── suggestProducts context ─────────────────────────────────────────────
-// Pure helpers that turn conversation memory + the current message into a
-// recommendation query. Kept separate from the tool so the preference
-// consolidation, exclusion logic and where-clause building are unit-testable
-// without touching the database or the LLM.
+// Pure helpers that turn explicit customer-signal entities into a
+// recommendation query.  The tool receives ONLY explicit params from the
+// LLM plus injected transport keys — it never reads conversation memory
+// itself.  Memory-derived exclusions are computed by the transport
+// (toolContext / grpc ToolService) and passed as `excludedProductIds`.
 
 export interface SuggestionPreferences {
   category?: string;
@@ -21,25 +22,18 @@ export interface SuggestionPreferences {
 export type PreferenceEntities = Record<string, string | number | boolean | null>;
 
 /**
- * Merge preference entities from the current message with previously discussed
- * entities accumulated in memory.entities. Message values win over memory.
- * `terms` collects every free-text signal (category/color/size/product/preferences)
- * so it can be turned into a keyword query for ranking.
+ * Build SuggestionPreferences from explicit message entities only.
+ * The tool receives this from the parsed zod args — no memory merge.
  */
-export function consolidatePreferences(
-  entities: PreferenceEntities,
-  memory: ConversationMemory,
-): SuggestionPreferences {
-  const memoryEntities = (memory.entities ?? {}) as PreferenceEntities;
-
+export function buildSuggestionPreferences(entities: PreferenceEntities): SuggestionPreferences {
   const stringVal = (key: string): string | undefined => {
-    const value = entities[key] ?? memoryEntities[key];
+    const value = entities[key];
     if (typeof value === 'string' && value.trim()) return value.trim();
     return undefined;
   };
 
   const numberVal = (key: string): number | undefined => {
-    const value = entities[key] ?? memoryEntities[key];
+    const value = entities[key];
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
     if (typeof value === 'string') {
       const parsed = Number(value);
@@ -53,8 +47,6 @@ export function consolidatePreferences(
     const value = stringVal(key);
     if (value) terms.push(value);
   }
-  const product = stringVal('product');
-  if (product) terms.push(product);
   const preferences = stringVal('preferences');
   if (preferences) terms.push(preferences);
 
@@ -71,12 +63,10 @@ export function consolidatePreferences(
 /**
  * Product ids that must never be suggested again: products already presented
  * in this exchange (lastProductResults), products the customer rejected
- * (rejectedProducts), and the currently selected product.
+ * (rejectedProducts), and the currently selected product.  Used by the
+ * transport to populate `excludedProductIds` before calling the tool.
  */
-export function computeExclusionIds(
-  memory: ConversationMemory,
-  currentProductId?: string | null,
-): string[] {
+export function memoryExclusionIds(memory: ConversationMemory, currentProductId?: string | null): string[] {
   const ids = new Set<string>();
   for (const list of [memory.lastProductResults ?? [], memory.rejectedProducts ?? []]) {
     for (const entry of list) {

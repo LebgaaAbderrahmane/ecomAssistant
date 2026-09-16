@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package ecomassistant.tools.v1;
+
+service ToolService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc ExecuteTool(ExecuteToolRequest) returns (ExecuteToolResponse);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_SERVING = 1;
+    STATUS_NOT_SERVING = 2;
+  }
+  Status status = 1;
+}
+
+message ExecuteToolRequest {
+  string tool_name = 1;
+  string entities_json = 2;
+  Identity identity = 3;
+}
+
+message Identity {
+  string merchant_id = 1;
+  string customer_id = 2;
+  string conversation_id = 3;
+}
+
+message ExecuteToolResponse {
+  enum Outcome {
+    OUTCOME_UNSPECIFIED = 0;
+    OUTCOME_SUCCESS = 1;
+    OUTCOME_NOT_FOUND = 2;
+    OUTCOME_AMBIGUOUS = 3;
+  }
+  bool success = 1;
+  Outcome outcome = 2;
+  string data_json = 3;
+  string error = 4;
+}
