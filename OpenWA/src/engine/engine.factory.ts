@@ -13,6 +13,8 @@ export interface EngineCreateOptions {
   sessionId: string;
   proxyUrl?: string;
   proxyType?: 'http' | 'https' | 'socks4' | 'socks5';
+  /** UUID backing the persisted message store (see BaileysAdapterConfig.messageStoreId). */
+  messageStoreId?: string;
 }
 
 @Injectable()
@@ -100,6 +102,7 @@ export class EngineFactory implements OnModuleInit {
         sessionId: options.sessionId,
         proxyUrl: options.proxyUrl,
         proxyType: options.proxyType,
+        messageStoreId: options.messageStoreId,
       }) as IWhatsAppEngine;
     }
 

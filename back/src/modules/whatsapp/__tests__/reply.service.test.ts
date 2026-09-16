@@ -91,7 +91,7 @@ describe('deliverAssistantReply', () => {
     assert.equal(send.mock.callCount(), 1);
   });
 
-  it('sends to the LID jid when the customer has a waJid instead of a phone', async (t) => {
+  it('sends to the LID jid when the customer is genuinely lid-only (phone is the LID placeholder)', async (t) => {
     const send = t.mock.fn(async (_s: string, _p: string, _t: string[]) => {});
     const deps = makeDeps({
       customerFindUnique: async () => ({
@@ -108,6 +108,27 @@ describe('deliverAssistantReply', () => {
     assert.deepEqual(send.mock.calls[0].arguments, [
       'sess-1',
       '59820958851268@lid',
+      ['Bonjour'],
+    ]);
+  });
+
+  it('prefers the real phone over the LID jid when the customer record holds one', async (t) => {
+    const send = t.mock.fn(async (_s: string, _p: string, _t: string[]) => {});
+    const deps = makeDeps({
+      customerFindUnique: async () => ({
+        id: 'cus-1',
+        phone: '+213792842752',
+        waJid: '59820958851268@lid',
+      }),
+      sendMessagesSequentially: send,
+    });
+
+    await deliverAssistantReply('conv-1', 'Bonjour', deps);
+
+    assert.equal(send.mock.callCount(), 1);
+    assert.deepEqual(send.mock.calls[0].arguments, [
+      'sess-1',
+      '+213792842752',
       ['Bonjour'],
     ]);
   });
