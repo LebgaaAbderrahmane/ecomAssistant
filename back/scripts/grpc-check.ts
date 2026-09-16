@@ -274,6 +274,80 @@ async function checkToolServiceMatrix(): Promise<boolean> {
       ]);
     }
 
+    // suggestProducts: no explicit criteria -> recent in-stock (fixture).
+    // Placed before any tool pins currentProductId (getProductDetails /
+    // selectProduct): once it is set the transport excludes the current
+    // product as "already offered this exchange", which would make the only
+    // fixture product unrecommendable.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('suggestProducts', '{}', identity),
+        8000,
+        'suggestProducts bare'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'suggestProducts bare -> popular incl. fixture',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.recommended === true &&
+          data.basedOn === 'popular' &&
+          Array.isArray(data.products) &&
+          data.products.some((p: any) => p.id === ids.productId),
+      ]);
+    }
+
+    // suggestProducts: preference matching nothing -> NOT_FOUND (no LLM call).
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('suggestProducts', JSON.stringify({ category: 'no-such-category-grpc-check' }), identity),
+        8000,
+        'suggestProducts empty pref'
+      );
+      results.push([
+        'suggestProducts unmatched pref -> NOT_FOUND',
+        r?.success === false && r?.outcome === 'OUTCOME_NOT_FOUND' && r?.error !== '',
+      ]);
+    }
+
+    // getProductDetails: explicit productName -> SUCCESS with catalog fields.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('getProductDetails', JSON.stringify({ productName: 'GrpcCheckCamouflage' }), identity),
+        8000,
+        'getProductDetails fixture'
+      );
+      const data = parseDataJson(r?.dataJson);
+      results.push([
+        'getProductDetails -> fixture product',
+        r?.success === true &&
+          r?.outcome === 'OUTCOME_SUCCESS' &&
+          r?.error === '' &&
+          data.productId === ids.productId &&
+          data.productName === 'GrpcCheckCamouflage' &&
+          data.price === 1500 &&
+          typeof data.stockStatus === 'string',
+      ]);
+    }
+
+    // getProductDetails: unknown name -> NOT_FOUND.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('getProductDetails', JSON.stringify({ productName: 'no-such-product-grpc-check' }), identity),
+        8000,
+        'getProductDetails unknown'
+      );
+      results.push([
+        'getProductDetails unknown -> NOT_FOUND',
+        r?.success === false && r?.outcome === 'OUTCOME_NOT_FOUND' && r?.error !== '',
+      ]);
+    }
+
     // selectProduct: pick the fixture product by name → success.
     {
       const r = await toolCall<any>(
@@ -595,6 +669,45 @@ async function checkToolServiceMatrix(): Promise<boolean> {
           r?.error === '' &&
           data.escalated === true &&
           data.reason === 'Conflit de livraison',
+      ]);
+    }
+
+    // ─── Human take-over gate (conversation.takenOverByHuman is now true) ─
+    // getOrderStatus would normally succeed (the SHIPPED fixture order still
+    // exists) — the gate must suppress it as a read tool.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec('getOrderStatus', JSON.stringify({ orderId: ids.orderId }), identity),
+        8000,
+        'getOrderStatus under takeover'
+      );
+      results.push([
+        'takeover suppresses read getOrderStatus',
+        r?.success === false &&
+          r?.outcome === 'OUTCOME_UNSPECIFIED' &&
+          typeof r?.error === 'string' &&
+          r.error.toLowerCase().includes('human takeover'),
+      ]);
+    }
+
+    // Write tools must still execute during human takeover: createOrder.
+    {
+      const r = await toolCall<any>(
+        client,
+        authExec(
+          'createOrder',
+          JSON.stringify({ productId: ids.productId, quantity: 1, wilaya: 'Alger', commune: 'Bab Ezzouar' }),
+          identity,
+        ),
+        8000,
+        'createOrder under takeover'
+      );
+      const data = parseDataJson(r?.dataJson);
+      if (typeof data.orderId === 'string') createdOrderIds.push(data.orderId);
+      results.push([
+        'takeover allows write createOrder',
+        r?.success === true && r?.outcome === 'OUTCOME_SUCCESS' && typeof data.orderId === 'string',
       ]);
     }
   } finally {

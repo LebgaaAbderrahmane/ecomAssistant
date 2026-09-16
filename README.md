@@ -6,27 +6,114 @@ AI-powered WhatsApp agent for Algerian e-commerce merchants. Automates COD order
 
 ## Architecture
 
+Multi-container architecture orchestrated via Docker Compose. The WhatsApp
+channel is owned by OpenWA, the AI reasoning lives in a separate Python
+agent (LangGraph + LLM providers), and the TypeScript backend handles
+product sync, business logic, and message routing. The backend and agent
+communicate over an **internal gRPC boundary** authenticated with a shared
+`INTERNAL_API_KEY`.
+
 ```
-ecomAssistant/
-├── back/              # Express + TypeScript API
-│   ├── src/           # App setup, routes, config
-│   ├── prisma/        # Database schema & migrations
-│   └── Dockerfile
-├── front/             # React + Vite + TailwindCSS
-│   ├── src/           # Components, pages, hooks
-│   └── Dockerfile
-├── shared/            # @ecomassistant/shared
-│   └── src/
-│       ├── types/     # Domain types (shared between front & back)
-│       ├── schemas/   # Zod validation schemas
-│       └── utils/     # Helpers (wilaya names, price formatting, etc.)
-├── docker-compose.yml # Full stack: postgres + redis + back + front
-├── pnpm-workspace.yaml
-├── tsconfig.base.json
-└── .env.example
+┌──────────────────────────┐         ┌──────────────────────────┐
+│                          │ gRPC    │                          │
+│   back (TypeScript)      │◄───────►│  ecom_agent (Python)     │
+│   Express + Prisma       │ :50052  │  LangGraph + LLM clients │
+│                          │         │                          │
+│   ToolService :50051     │         │  AgentService :50052     │
+└────────────┬─────────────┘         └──────────────────────────┘
+             │                                      │
+             │                                      │
+    ┌────────▼────────┐                   ┌─────────▼─────────┐
+    │    postgres     │                   │  groq / gemini    │
+    │    redis        │                   │  LangSmith        │
+    └─────────────────┘                   └───────────────────┘
+             │
+    ┌────────▼────────┐
+    │   openwa        │   WhatsApp WebSocket (whatsapp-web.js)
+    └─────────────────┘
+             │
+       WhatsApp Cloud
 ```
 
-All three packages live in a single pnpm monorepo. The `shared` package is consumed by both `back` and `front` as a workspace dependency.
+### Services
+
+| Service | Language | Host port(s) | Compose DNS | Role |
+|---|---|---|---|---|
+| `back` | TypeScript (Express) | 3000, 5555 | `back` | API + message router + ToolService gRPC server |
+| `front` | React + Vite | 5173 | — | Merchant dashboard |
+| `ecom_agent` | Python (LangGraph) | — | `agent` | AI conversation agent + AgentService gRPC server |
+| `postgres` | PostgreSQL 16 | — | `postgres` | Primary data store |
+| `redis` | Redis 7 | — | `redis` | Session + message queue |
+| `openwa` | Node.js | 3000 (REST + WS) | `openwa` | WhatsApp bridge (whatsapp-web.js) |
+
+**Ports note**: the gRPC ports (back `:50051`, agent `:50052`) are **internal only** — never
+published to the host. Only the back HTTP and front dashboard ports are reachable
+from outside Docker.
+
+### Ownership
+
+| Service | Domain | Notes |
+|---|---|---|
+| `back` | TypeScript backend | Products, orders, conversations, ToolService |
+| `front` | React frontend | Merchant dashboard, auth UI |
+| `ecom_agent` | AI / Python backend | LangGraph agent, LLM integration, ToolService client |
+| `postgres` | Platform / infra | Database, seeded on first run |
+| `redis` | Platform / infra | Session cache, message queue |
+| `openwa` | Platform / infra | WhatsApp WebSocket, message relay |
+
+### Message flow
+
+```
+WhatsApp → openwa REST webhook
+         → back (message router, MESSAGE_HANDLER=grpc)
+         → AgentService.ProcessMessage → ecom_agent (LangGraph)
+           → ToolService.ExecuteTool → back (DB read/write)
+           ← AgentService.ProcessMessage response (DECISION_REPLY)
+         → back sends reply via openwa
+```
+
+### gRPC boundary
+
+Both services read the same proto definitions from `contracts/proto/`. Full
+protocol reference: [docs/grpc-contract.md](docs/grpc-contract.md).
+
+| Service | Auth | Notes |
+|---|---|---|
+| `AgentService.Health` | **none** (intentional) | Container healthcheck probe |
+| `AgentService.ProcessMessage` | `INTERNAL_API_KEY` | Main entry point for inbound messages |
+| `ToolService.Health` | `INTERNAL_API_KEY` | Back health via HTTP `/health` (not gRPC) |
+| `ToolService.ExecuteTool` | `INTERNAL_API_KEY` | All 11 tools with structured outcomes |
+
+### Local start
+
+#### Full stack (Docker)
+
+```bash
+cp .env.example .env   # set INTERNAL_API_KEY + LLM keys (GROQ_API_KEY / GOOGLE_API_KEY)
+docker compose up -d
+# back:   http://localhost:3000
+# front:  http://localhost:5173
+```
+
+#### Dev mode (services in Docker, app local)
+
+```bash
+docker compose up -d postgres redis openwa
+pnpm dev
+# back:   http://localhost:3000
+# front:  http://localhost:5173
+```
+
+#### E2E gRPC matrix
+
+```bash
+docker compose exec back ./node_modules/.bin/tsx scripts/grpc-check.ts
+```
+
+Exercises every RPC: AgentService.Health/ProcessMessage round trip,
+all 11 tools (success + NOT_FOUND), auth rejection (missing/wrong key),
+and human-takeover read/write gating. Outputs PASS/FAIL per check
+and finishes with `ALL CHANNELS OK`.
 
 ---
 
@@ -93,7 +180,8 @@ pnpm dev                               # App with hot reload
 docker compose up -d   # Full stack in containers
 ```
 
-All four containers (postgres, redis, back, front) run in Docker. Source code is mounted as a volume, so hot reload still works.
+All six services (postgres, redis, back, front, agent, openwa) run in Docker.
+Source code is mounted as a volume, so hot reload still works.
 
 ### Mode C: Individual packages
 
@@ -146,10 +234,14 @@ back/
 │   ├── app.ts            # Express app setup (middleware, routes)
 │   ├── config/
 │   │   └── index.ts      # Env-based config loader
-│   └── routes/
-│       └── index.ts      # API route definitions
+│   ├── grpc/             # gRPC boundary (agent client, tool server, proxy)
+│   ├── modules/ai/       # Intent parsing, tool registry, agent bridge
+│   ├── modules/whatsapp/ # OpenWA webhook, reply delivery
+│   └── routes/           # API route definitions
 ├── prisma/
-│   └── schema.prisma     # Full database schema (9 models)
+│   └── schema.prisma     # Full database schema
+├── scripts/
+│   └── grpc-check.ts     # E2E gRPC matrix (see Architecture)
 ├── Dockerfile
 ├── tsconfig.json
 └── package.json
@@ -160,24 +252,33 @@ front/
 │   ├── App.tsx           # Root component (placeholder)
 │   ├── index.css         # Tailwind imports
 │   └── vite-env.d.ts     # Vite type declarations
-├── index.html
-├── vite.config.ts        # Dev server config, API proxy
-├── tailwind.config.js
-├── postcss.config.js
 ├── Dockerfile
-├── tsconfig.json
 └── package.json
 
+ecom_agent/
+├── ecom_agent/           # Python package (agent loop, tools, LLM clients)
+├── healthcheck.py        # gRPC AgentService.Health probe (container healthcheck)
+├── Dockerfile
+└── pyproject.toml
+
+contracts/
+├── proto/
+│   ├── agent/v1/agent.proto    # AgentService (Health, ProcessMessage)
+│   └── tools/v1/tool.proto     # ToolService (Health, ExecuteTool)
+└── src/generated/              # Generated tool schemas (tools.json)
+
+OpenWA/                  # WhatsApp bridge (whatsapp-web.js) container
 shared/
 └── src/
-    ├── index.ts          # Barrel export
-    ├── types/
-    │   └── index.ts      # Merchant, Order, Conversation, Product, etc.
-    ├── schemas/
-    │   └── index.ts      # Zod schemas (signup, login, agent config, etc.)
-    └── utils/
-        └── index.ts      # getWilayaName, formatPrice, maskPhone
+    ├── types/           # Domain types (shared between front & back)
+    ├── schemas/         # Zod validation schemas
+    └── utils/           # Helpers (wilaya names, price formatting, etc.)
 ```
+
+The TS packages (back, front, shared) live in a single pnpm monorepo; `shared`
+is consumed as a workspace dependency. `contracts/` holds the single source of
+truth for the gRPC boundary (protos + generated tool schemas), consumed by both
+`back` and `ecom_agent`.
 
 ---
 
@@ -210,8 +311,15 @@ The Prisma schema defines 9 models matching the PRD domain:
 | `API_PORT` | No | `3000` | API server port |
 | `NODE_ENV` | No | `development` | Environment |
 | `JWT_SECRET` | Yes | — | Secret key for auth tokens |
+| `INTERNAL_API_KEY` | Yes | — | Shared secret for gRPC (back ↔ agent) |
+| `MESSAGE_HANDLER` | No | `grpc` | `grpc` routes messages to the Python agent; `legacy` keeps the old TS pipeline |
+| `LOG_LEVEL` | No | `info` | pino log verbosity (binary/observability) |
 
-Additional variables (WhatsApp, Shopify, LLM, etc.) are listed in `.env.example` — configure them as you integrate each service.
+Since the TypeScript/agent split, gRPC, WhatsApp, and LLM variables (e.g.
+`AGENT_GRPC_ADDR`, `TOOLS_GRPC_ADDR`, `BACK_TOOLS_GRPC_ADDR`, `OPENWA_*`,
+`GROQ_API_KEY`, `GOOGLE_API_KEY`, `LLM_PROVIDER`, `GROQ_MODEL`, `GEMINI_MODEL`,
+`CHARGILY_*`) are managed in `.env.example` — copy it to `.env` and configure
+as you integrate each service.
 
 ---
 
