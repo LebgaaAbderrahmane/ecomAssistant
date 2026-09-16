@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12.14-slim
 
 # CA certificates keep PyPI reachable over TLS; no build toolchain is needed
 # because the pinned deps all ship manylinux wheels for 3.12.

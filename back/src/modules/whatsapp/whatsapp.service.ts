@@ -55,8 +55,11 @@ function stripSuffix(phone: string): string {
   return phone.replace(/@[a-z.]+$/g, "");
 }
 
-function addSuffix(phone: string): string {
-  const clean = phone.replace(/^\+/, "").replace(/@[a-z.]+$/g, "");
+function addSuffix(phoneOrJid: string): string {
+  if (phoneOrJid.includes("@")) {
+    return phoneOrJid; // already a full JID (e.g. <lid>@lid) — do not re-suffix
+  }
+  const clean = phoneOrJid.replace(/^\+/, "").replace(/@[a-z.]+$/g, "");
   return `${clean}@c.us`;
 }
 
@@ -238,6 +241,21 @@ export const openwaService = {
       { phoneNumber: stripSuffix(phoneNumber) },
     );
     return result.code;
+  },
+
+  resolveContactPhone: async (
+    sessionId: string,
+    contactId: string,
+  ): Promise<string | null> => {
+    try {
+      const result = await request<{ phone: string | null }>(
+        "GET",
+        `/sessions/${sessionId}/contacts/${stripSuffix(contactId)}/phone`,
+      );
+      return result.phone || null;
+    } catch {
+      return null;
+    }
   },
 
   stripSuffix,

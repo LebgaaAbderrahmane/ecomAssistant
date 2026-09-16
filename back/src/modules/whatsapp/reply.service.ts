@@ -6,7 +6,7 @@ export interface ReplyServiceDeps {
   ) => Promise<{ id: string; merchantId: string; customerId: string; takenOverByHuman: boolean } | null>;
   customerFindUnique: (
     args: { where: { id: string } }
-  ) => Promise<{ id: string; phone: string | null } | null>;
+  ) => Promise<{ id: string; phone: string | null; waJid: string | null } | null>;
   messageCreate: (args: {
     data: {
       conversationId: string;
@@ -33,6 +33,27 @@ const defaultDeps: ReplyServiceDeps = {
     await openwaService.sendMessagesSequentially(sessionId, phone, texts);
   },
 };
+
+/**
+ * Pick the address an assistant reply should be delivered to.
+ *
+ * Outbound to a real number (`<phone>@c.us`) is the reliable WhatsApp channel,
+ * so it always wins over the privacy id. A customer whose record only carries a
+ * LID-placeholder phone (phone === waJid digits) is genuinely lid-only — nothing
+ * real to send to — so replies fall back to the LID jid as a best effort.
+ */
+function resolveDeliveryTarget(customer: {
+  phone: string | null;
+  waJid: string | null;
+} | null): string | null {
+  if (!customer) return null;
+  const { phone, waJid } = customer;
+  if (waJid?.toLowerCase().endsWith("@lid")) {
+    const lidDigits = waJid.slice(0, waJid.indexOf("@"));
+    if (!phone || phone === lidDigits) return waJid;
+  }
+  return phone ?? waJid ?? null;
+}
 
 /**
  * Persist an assistant reply as OUT/AI message row(s), then deliver it over
@@ -78,13 +99,14 @@ export const deliverAssistantReply = async (
       where: { merchantId: conversation.merchantId },
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
-      if (customer?.phone) {
+      const target = resolveDeliveryTarget(customer);
+      if (target) {
         await deps.sendMessagesSequentially(
           waSession.sessionId,
-          customer.phone,
+          target,
           texts,
         );
-        console.log(`[reply] Sent via WhatsApp to ${customer.phone} (${texts.length} messages)`);
+        console.log(`[reply] Sent via WhatsApp to ${target} (${texts.length} messages)`);
       } else {
         console.log(`[reply] No phone found for customer ${conversation.customerId}, reply not sent`);
       }

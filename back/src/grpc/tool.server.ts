@@ -3,6 +3,7 @@ import * as grpc from '@grpc/grpc-js';
 import { join } from 'node:path';
 import { config } from '../config/index.js';
 import { loaderOptions, PROTO_ROOT } from './proto.js';
+import { grpcLogger } from '../lib/logger';
 import prisma from '../config/db.config';
 import {
   ToolNameSchema,
@@ -82,12 +83,25 @@ function healthHandler(
   call: grpc.ServerUnaryCall<HealthRequest, HealthResponse>,
   callback: grpc.sendUnaryData<HealthResponse>
 ): void {
+  const startedAt = process.hrtime.bigint();
   const unauthorized = authError(call);
   if (unauthorized) {
+    grpcLogger.error(
+      { rpc: 'ToolService.Health', code: unauthorized.code, ms: elapsedMs(startedAt) },
+      'unauthorized health probe'
+    );
     callback(unauthorized, null);
     return;
   }
   callback(null, { status: 'STATUS_SERVING' });
+  grpcLogger.info(
+    { rpc: 'ToolService.Health', status: 'STATUS_SERVING', ms: elapsedMs(startedAt) },
+    'health probe'
+  );
+}
+
+function elapsedMs(startedAt: bigint): number {
+  return Number(process.hrtime.bigint() - startedAt) / 1e6;
 }
 
 // Serialize a recoverable tool outcome into the wire response — recovery is an
@@ -106,9 +120,29 @@ async function executeToolHandler(
   call: grpc.ServerUnaryCall<ExecuteToolRequest, ExecuteToolResponse>,
   callback: grpc.sendUnaryData<ExecuteToolResponse>
 ): Promise<void> {
+  const startedAt = process.hrtime.bigint();
+  const finish = (err: grpc.ServiceError | null, response?: ExecuteToolResponse): void => {
+    const fields: Record<string, unknown> = {
+      rpc: 'ToolService.ExecuteTool',
+      tool: call.request.toolName,
+      conversationId: call.request.identity?.conversationId ?? '',
+      ms: elapsedMs(startedAt),
+    };
+    if (err) {
+      grpcLogger.error({ ...fields, code: err.code, message: err.message }, 'tool request failed');
+      callback(err, null);
+      return;
+    }
+    grpcLogger.info(
+      { ...fields, success: response?.success, outcome: response?.outcome ?? 'OK' },
+      'tool request handled'
+    );
+    callback(null, response ?? null);
+  };
+
   const unauthorized = authError(call);
   if (unauthorized) {
-    callback(unauthorized, null);
+    finish(unauthorized);
     return;
   }
 
@@ -116,7 +150,7 @@ async function executeToolHandler(
     const { toolName, entitiesJson, identity } = call.request;
 
     if (!ToolNameSchema.safeParse(toolName).success) {
-      callback({ code: grpc.status.INVALID_ARGUMENT, message: `Unknown tool "${toolName}"` }, null);
+      finish({ code: grpc.status.INVALID_ARGUMENT, message: `Unknown tool "${toolName}"` } as grpc.ServiceError);
       return;
     }
     const typedToolName = toolName as ToolName;
@@ -127,15 +161,17 @@ async function executeToolHandler(
     // context-free tools removed the last one (recallPreviousProducts) — but the
     // guard stays as a contract-parity safety net.
     if ((LEGACY_ONLY_TOOL_NAMES as readonly string[]).includes(typedToolName)) {
-      callback(
-        { code: grpc.status.INVALID_ARGUMENT, message: `Tool "${toolName}" is not part of the agent contract` },
-        null
+      finish(
+        {
+          code: grpc.status.INVALID_ARGUMENT,
+          message: `Tool "${toolName}" is not part of the agent contract`,
+        } as grpc.ServiceError
       );
       return;
     }
 
     if (!identity?.conversationId) {
-      callback({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.conversation_id is required' }, null);
+      finish({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.conversation_id is required' } as grpc.ServiceError);
       return;
     }
 
@@ -148,7 +184,7 @@ async function executeToolHandler(
         }
         agentEntities = parsed as Record<string, unknown>;
       } catch {
-        callback({ code: grpc.status.INVALID_ARGUMENT, message: 'entities_json is not a valid JSON object' }, null);
+        finish({ code: grpc.status.INVALID_ARGUMENT, message: 'entities_json is not a valid JSON object' } as grpc.ServiceError);
         return;
       }
     }
@@ -161,15 +197,15 @@ async function executeToolHandler(
       where: { id: identity.conversationId },
     });
     if (!conversation) {
-      callback({ code: grpc.status.NOT_FOUND, message: `Conversation "${identity.conversationId}" not found` }, null);
+      finish({ code: grpc.status.NOT_FOUND, message: `Conversation "${identity.conversationId}" not found` } as grpc.ServiceError);
       return;
     }
     if (identity.merchantId && identity.merchantId !== conversation.merchantId) {
-      callback({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.merchant_id does not match the conversation' }, null);
+      finish({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.merchant_id does not match the conversation' } as grpc.ServiceError);
       return;
     }
     if (identity.customerId && identity.customerId !== conversation.customerId) {
-      callback({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.customer_id does not match the conversation' }, null);
+      finish({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.customer_id does not match the conversation' } as grpc.ServiceError);
       return;
     }
 
@@ -177,14 +213,14 @@ async function executeToolHandler(
       where: { id: conversation.customerId },
     });
     if (!customer) {
-      callback({ code: grpc.status.NOT_FOUND, message: `Customer "${conversation.customerId}" not found` }, null);
+      finish({ code: grpc.status.NOT_FOUND, message: `Customer "${conversation.customerId}" not found` } as grpc.ServiceError);
       return;
     }
 
     // Human takeover gate: read tools are suppressed while a human owns the
     // conversation (write tools still run).
     if (conversation.takenOverByHuman && isReadTool(typedToolName)) {
-      callback(
+      finish(
         null,
         toolResponse(
           false,
@@ -228,22 +264,19 @@ async function executeToolHandler(
         : result.outcome === 'AMBIGUOUS'
           ? 'OUTCOME_AMBIGUOUS'
           : 'OUTCOME_UNSPECIFIED';
-    callback(
+    finish(
       null,
       toolResponse(result.success, outcome, JSON.stringify(result.data ?? {}), result.error ?? '')
     );
   } catch (err) {
-    console.error('[gRPC] ExecuteTool failed unexpectedly', err);
-    callback(
-      { code: grpc.status.INTERNAL, message: 'Tool execution failed unexpectedly' },
-      null
-    );
+    grpcLogger.error({ rpc: 'ToolService.ExecuteTool', err }, 'unexpected tool execution error');
+    finish({ code: grpc.status.INTERNAL, message: 'Tool execution failed unexpectedly' } as grpc.ServiceError);
   }
 }
 
 export async function startToolServer(): Promise<grpc.Server | null> {
   if (!config.toolsGrpcEnabled) {
-    console.log('[gRPC] ToolService disabled (TOOLS_GRPC_ENABLED != true)');
+    grpcLogger.warn('ToolService disabled (TOOLS_GRPC_ENABLED != true)');
     return null;
   }
 
@@ -262,7 +295,7 @@ export async function startToolServer(): Promise<grpc.Server | null> {
           reject(err);
           return;
         }
-        console.log(`[gRPC] ToolService listening on ${config.toolsGrpcAddr} (port ${port})`);
+        grpcLogger.info({ addr: config.toolsGrpcAddr, port }, 'ToolService listening');
         resolve();
       }
     );
