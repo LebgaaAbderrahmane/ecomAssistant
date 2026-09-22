@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,12 +13,7 @@ _model = None
 
 
 def get_model():
-    """Build and cache the provider-aware LLM client.
-
-    Provider priority comes from the LLM_PROVIDER env var (comma-separated,
-    default "groq,gemini"). Each provider is lazily constructed and the client
-    fails over to the next provider when a call errors or is rate-limited.
-    """
+    """Build the failover LLM client once. Order comes from LLM_PROVIDER."""
     global _model
     if _model is None:
         from llm import build_client

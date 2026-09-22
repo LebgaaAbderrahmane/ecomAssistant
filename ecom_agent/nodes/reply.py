@@ -5,15 +5,17 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from config import model
 from models.state import AgentState
+from prompts.common import DEFAULT_REPLY
+from prompts.reply import REPLY_FROM_TOOL, reply_input
+from text.messages import last_user_text
 from tools import escalateConversation
-from utils import last_user_text
 
 logger = logging.getLogger(__name__)
 
 
 def reply(state: AgentState) -> dict:
     if not state.needs_tool:
-        text = state.reply if state.reply.strip() else "I understood your request."
+        text = state.reply if state.reply.strip() else DEFAULT_REPLY
     else:
         tool_result = state.tool_outputs[-1] if state.tool_outputs else "No tool output available."
         user_text = ""
@@ -23,17 +25,8 @@ def reply(state: AgentState) -> dict:
                 user_text = content if isinstance(content, str) else str(content)
                 break
         response = model.invoke([
-            SystemMessage(
-                content=(
-                    "You are a helpful e-commerce assistant. Answer the user's request based only on "
-                    "the tool result provided. When the result lists products, present them as a short "
-                    "bulleted list with name and price in the given currency, and note stock availability "
-                    "if relevant. If the result says no products were found, acknowledge that politely. "
-                    "Always use the exact currency code from the tool result (DZD for orders); never "
-                    "invent or substitute a currency symbol."
-                )
-            ),
-            HumanMessage(content=f"Tool result:\n{tool_result}\n\nUser request: {user_text}"),
+            SystemMessage(content=REPLY_FROM_TOOL),
+            HumanMessage(content=reply_input(tool_result, user_text)),
         ])
         text = response.content if hasattr(response, "content") else str(response)
     return {"messages": [AIMessage(content=text)]}

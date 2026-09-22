@@ -424,6 +424,17 @@ What each node does:
 | `escalate` | `nodes/reply.py` | Calls `escalateConversation`. Produces no text. |
 | `persist` | `nodes/memory.py` | Saves the conversation memory in the store. |
 
+Code around the nodes:
+
+| Path | Holds |
+|---|---|
+| `routing.py` | Every router: `route`, `draft_route`, `after_extract`, `query_escalate_route`, `flow_route`. |
+| `prompts/` | Every prompt, one file per node. `common.py` has the JSON schema hint and the fixed fallback texts. |
+| `flows.py` | Memory helpers: active flow and draft, selected product, address prerequisites, shipping sync. |
+| `text/` | Regexes (`patterns.py`), message text helpers (`messages.py`), JSON extraction (`json_parse.py`). |
+| `llm/structured.py` | `call_json`, `ask_json_dict`, `llm_phrase`: the ways nodes call the LLM. |
+| `tools/schema.py` | Reads a tool's args schema: required fields, type casting, missing fields. |
+
 ### 6.4 State and memory
 
 - `AgentState` (`models/state.py`): messages, chosen tool, tool output, flags.
@@ -437,7 +448,7 @@ What each node does:
 
 - Providers come from `LLM_PROVIDER` (default `groq,gemini`). Groq uses `openai/gpt-oss-120b`. Gemini uses `gemini-2.5-flash`. Temperature is 0.
 - `LLMClient.invoke` tries each provider in order and moves on at any exception.
-- The graph asks for JSON in the prompt and parses it by hand (`utils.py::call_json`, up to two tries per call).
+- The graph asks for JSON in the prompt and parses it by hand (`llm/structured.py::call_json`, up to two tries per call).
 - A turn can make up to seven sequential LLM calls.
 - No timeouts or retry limits are set on the models.
 

@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage
 
 from db import get_message
 from graph import app
+from prompts.common import GREETING
 from grpc_gen.agent.v1 import agent_pb2, agent_pb2_grpc
 from tools.grpc import tool_identity
 
@@ -55,8 +56,7 @@ def _last_reply(state) -> str:
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
-    # Health is intentionally unauthenticated so orchestration tooling can
-    # probe liveness without the internal key.
+    # No auth on Health, so the Docker healthcheck works without the key.
     def Health(self, request, context):
         return agent_pb2.HealthResponse(status=agent_pb2.HealthResponse.STATUS_SERVING)
 
@@ -102,7 +102,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         if role != "customer" or not text:
             return agent_pb2.ProcessMessageResponse(
                 decision=agent_pb2.ProcessMessageResponse.DECISION_REPLY,
-                text="Bonjour, comment puis-je vous aider ?",
+                text=GREETING,
             )
 
         config = {

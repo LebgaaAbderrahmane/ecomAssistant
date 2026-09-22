@@ -53,10 +53,19 @@ two files; link to the other file instead.
 
 - `graph.py` — LangGraph graph definition (`app`).
 - `nodes/` — graph nodes: `check`, `query`, `draft`, `calling`, `memory`, `reply`, `flow`.
-- `routing.py` — conditional edges between nodes.
+  Node logic only; prompts and helpers live in the modules below.
+- `routing.py` — every conditional edge (router) between nodes.
+- `prompts/` — every LLM prompt and fixed customer text, one file per node,
+  plus `common.py` (JSON schema hint, fallback texts). Change prompt wording here only.
+- `flows.py` — helpers over conversation memory: active flow and draft,
+  selected product, address prerequisites, shipping sync.
+- `text/` — `patterns.py` (regexes), `messages.py` (message text helpers),
+  `json_parse.py` (pull a JSON object out of LLM output).
 - `llm/client.py` — provider-failover LLM client. Priority from `LLM_PROVIDER`
   env (comma-separated, default `groq,gemini`).
-- `tools/` — tool registry + gRPC client to `back`'s ToolService (`tools/grpc.py`).
+- `llm/structured.py` — `call_json` (JSON answer with one retry), `llm_phrase`.
+- `tools/` — tool registry, gRPC client to `back`'s ToolService (`tools/grpc.py`),
+  and `schema.py` (read, check and cast tool arguments from the args schema).
 - `models/` — pydantic models for state, conversation, domain data.
 - `grpc_gen/` — **generated** gRPC stubs, committed to the repo. Regenerate
   with `ecom_agent/scripts/gen_stubs.sh` after changing a `.proto` file, then
@@ -141,6 +150,9 @@ Full stack in Docker: `docker compose up -d`.
 - Python: type hints on function signatures, module-level `logging.getLogger`,
   short docstrings only when they explain a non-obvious *why* (see
   `server.py::_last_reply`) — not what the code does.
+- Comments: only when the code cannot say it. One short line. No banner or
+  separator blocks (`# =====`).
+- Prompts go in `ecom_agent/prompts/`, never inline in a node.
 - No test suite and no lint config currently exist under `ecom_agent/`. Don't
   assume `pytest`/`ruff` conventions are already set — ask before introducing
   a new one.

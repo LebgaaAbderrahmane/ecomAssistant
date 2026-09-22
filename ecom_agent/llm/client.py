@@ -9,6 +9,17 @@ class LLMUnavailableError(RuntimeError):
     """Raised when every configured LLM provider fails a call."""
 
 
+def _invoke_with_failover(models: list[tuple[str, Any]], messages: list[Any], label: str = "") -> Any:
+    errors = []
+    for name, model in models:
+        try:
+            return model.invoke(messages)
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+            logger.warning("LLM provider '%s'%s failed: %s", name, label, e)
+    raise LLMUnavailableError("all LLM providers failed: " + "; ".join(errors))
+
+
 class _BoundModel:
     """A tool-bound LLM view that fails over across all configured providers."""
 
@@ -16,14 +27,7 @@ class _BoundModel:
         self._binds = binds
 
     def invoke(self, messages: list[Any]) -> Any:
-        errors = []
-        for name, model in self._binds:
-            try:
-                return model.invoke(messages)
-            except Exception as e:
-                errors.append(f"{name}: {e}")
-                logger.warning("LLM provider '%s' (tool-calling) failed: %s", name, e)
-        raise LLMUnavailableError("all LLM providers failed: " + "; ".join(errors))
+        return _invoke_with_failover(self._binds, messages, " (tool-calling)")
 
     def __getattr__(self, name: str) -> Any:
         if self._binds:
@@ -32,15 +36,7 @@ class _BoundModel:
 
 
 class LLMClient:
-    """Provider-aware LLM client.
-
-    Holds an ordered list of (provider, chat model) pairs from .add_provider().
-    ``invoke()`` tries them in priority order and moves to the next provider
-    when a call fails (rate limit, outage, 4xx/5xx); it only raises once every
-    provider has failed, so callers can fall back (e.g. escalate to a human).
-    ``bind_tools()`` returns a failover wrapper bound to the given tools, so
-    the tool-calling path gets the same resilience as plain chat calls.
-    """
+    """Tries each provider in order. Raises only when all of them fail."""
 
     def __init__(self) -> None:
         self._models: list[tuple[str, Any]] = []
@@ -63,14 +59,7 @@ class LLMClient:
     def invoke(self, messages: list[Any]) -> Any:
         if not self._models:
             raise LLMUnavailableError("no LLM providers configured")
-        errors = []
-        for name, model in self._models:
-            try:
-                return model.invoke(messages)
-            except Exception as e:
-                errors.append(f"{name}: {e}")
-                logger.warning("LLM provider '%s' failed: %s", name, e)
-        raise LLMUnavailableError("all LLM providers failed: " + "; ".join(errors))
+        return _invoke_with_failover(self._models, messages)
 
     def bind_tools(self, tools: list[Any], **kwargs: Any) -> _BoundModel:
         if not self._models:
@@ -78,10 +67,6 @@ class LLMClient:
         binds = [(name, model.bind_tools(tools, **kwargs)) for name, model in self._models]
         return _BoundModel(binds)
 
-
-# ============================================================
-# Provider factories
-# ============================================================
 
 def _build_gemini() -> Any:
     from langchain_google_genai import ChatGoogleGenerativeAI

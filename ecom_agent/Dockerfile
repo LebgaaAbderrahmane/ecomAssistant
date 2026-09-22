@@ -26,7 +26,7 @@ RUN chmod +x /app/entrypoint.sh \
 
 USER appuser
 
-# M1: gRPC agent port (Task 4). Internal network only — not published to host.
+# Internal network only, never published to the host.
 EXPOSE 50052
 
 ENTRYPOINT ["/app/entrypoint.sh"]

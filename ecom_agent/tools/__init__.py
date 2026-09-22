@@ -1,6 +1,5 @@
 import logging
 
-from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import CONFIG_KEY_RUNTIME, DEFAULT_RUNTIME
 
@@ -40,6 +39,7 @@ TOOL_NODE_CONFIG: dict = {"configurable": {CONFIG_KEY_RUNTIME: DEFAULT_RUNTIME}}
 tool_model = model.bind_tools(TOOLS)
 
 TOOL_NAMES = tuple(t.name for t in TOOLS)
+PRODUCT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "selectProduct"}
 TOOL_DESCRIPTIONS = {
     "searchProducts": "Search the catalog for products matching a free-text name or query (authoritative NOT_FOUND when absent).",
     "selectProduct": "Select the specific product the customer picked, by productId or productName.",
@@ -55,5 +55,5 @@ TOOL_DESCRIPTIONS = {
 }
 
 
-def tool_for(tool_name: str, flow=None):
+def tool_for(tool_name: str):
     return next((t for t in TOOLS if t.name == tool_name), None)

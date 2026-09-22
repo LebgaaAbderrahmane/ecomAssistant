@@ -1,10 +1,9 @@
 from typing import Annotated, Any, Literal
 
-from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
 from models.conversation import ConversationMemory
-from models.domain import Filter, ProductDiscoveryInput
+from models.domain import Filter
 from tools import TOOL_NAMES
 
 

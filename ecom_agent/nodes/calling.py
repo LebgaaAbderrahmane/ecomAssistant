@@ -7,16 +7,14 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from config import model
+from flows import active_flow, sync_shipping
+from models.domain import Product, ProductDiscoveryContext
 from models.state import AgentState
-from models.domain import (
-    Product, ProductDiscoveryContext, ShippingContext,
-)
-from tools import TOOLS, tool_for, tool_node, TOOL_NODE_CONFIG
-from utils import last_user_text
+from prompts.calling import calling_system
+from text.messages import last_user_text
+from tools import PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, tool_for, tool_node
 
 logger = logging.getLogger(__name__)
-
-PRODUCT_RESULT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "selectProduct"}
 
 
 def _tool_result_products(content: str) -> list[Product] | None:
@@ -51,18 +49,34 @@ def _tool_result_products(content: str) -> list[Product] | None:
     return products or None
 
 
-def _active_flow(mem, resolved_flow_id):
-    flow_id = resolved_flow_id or mem.active_flow_id
-    if not flow_id:
-        return None
-    return next((f for f in mem.flows if f.flow_id == flow_id), None)
+def _run_tools(ai_msg: AIMessage, **error_fields: Any) -> list:
+    try:
+        return tool_node.invoke([ai_msg], config=TOOL_NODE_CONFIG)
+    except Exception as e:
+        logger.warning("calling_tool delegate failed (%s)", e)
+        return [ToolMessage(content=f"Tool execution failed: {e}", **error_fields)]
+
+
+def _pick_product(called_name: str, call_args: dict[str, Any], prods: list[Product]) -> Product:
+    if called_name == "selectProduct":
+        name_sel = str(call_args.get("productName") or "").strip()
+        pid = str(call_args.get("productId") or "").strip()
+        if pid:
+            return next((p for p in prods if p.product_id == pid), prods[0])
+        if name_sel:
+            return next(
+                (p for p in prods if p.product_name.lower() == name_sel.lower() or p.product_id == name_sel),
+                prods[0],
+            )
+    elif call_args.get("product_id") or call_args.get("productId"):
+        pid = call_args.get("product_id") or call_args.get("productId")
+        return next((p for p in prods if p.product_id == str(pid)), prods[0])
+    return prods[0]
 
 
 def calling_tool(state: AgentState) -> dict:
-    from nodes.flow import active_flow as _af
-
     mem = state.conversation_memory.model_copy(deep=True)
-    flow = _af(mem, state.resolved_flow_id)
+    flow = active_flow(mem, state.resolved_flow_id)
     draft = flow.tool_draft if flow is not None else None
 
     ai_msg: Any = None
@@ -78,15 +92,10 @@ def calling_tool(state: AgentState) -> dict:
             or flow.shipping.commune != gi.commune
             or flow.shipping.address != gi.address
         ):
-            flow.shipping = ShippingContext(
-                wilaya=gi.wilaya,
-                commune=gi.commune,
-                address=gi.address,
-                shipping_cost=flow.shipping.shipping_cost if flow.shipping else None,
-            )
+            sync_shipping(flow, gi)
 
     if draft is not None and draft.status == "ready":
-        t = tool_for(draft.tool_name, flow)
+        t = tool_for(draft.tool_name)
         if t is None:
             return {}
         tool_call_id = "draft-" + uuid.uuid4().hex[:8]
@@ -99,37 +108,21 @@ def calling_tool(state: AgentState) -> dict:
                 "type": "tool_call",
             }],
         )
-        try:
-            tool_messages = tool_node.invoke([ai_msg], config=TOOL_NODE_CONFIG)
-        except Exception as e:
-            logger.warning("calling_tool delegate failed (%s)", e)
-            tool_messages = [ToolMessage(
-                content=f"Tool execution failed: {e}", name=t.name, tool_call_id=tool_call_id
-            )]
+        tool_messages = _run_tools(ai_msg, name=t.name, tool_call_id=tool_call_id)
         called_name = t.name
         call_args = dict(draft.args)
         flow.tool_draft = None
         flow.updated_at = datetime.now(timezone.utc)
         logger.info("calling_tool executed ready draft -> %s %s", called_name, call_args)
     else:
+        # No ready draft: let the model choose the tool call itself.
         user_text = last_user_text(state.messages)
         tool_context = state.tool_outputs[-1] if state.tool_outputs else "No tool selected."
-        tools = TOOLS
-        model_with_tools = model.bind_tools(tools)
-
-        system = (
-            "You are an e-commerce assistant. Call the requested tool to fulfill the user's request."
-            f"\nResolved flow id: {state.resolved_flow_id or 'none'}. Tool context: {tool_context}"
-        )
+        model_with_tools = model.bind_tools(TOOLS)
+        system = calling_system(state.resolved_flow_id, tool_context)
         ai_msg = model_with_tools.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
         if getattr(ai_msg, "tool_calls", None):
-            try:
-                tool_messages = tool_node.invoke([ai_msg], config=TOOL_NODE_CONFIG)
-            except Exception as e:
-                logger.warning("calling_tool delegate failed (%s)", e)
-                tool_messages = [
-                    ToolMessage(content=f"Tool execution failed: {e}", tool_call_id="delegate-error")
-                ]
+            tool_messages = _run_tools(ai_msg, tool_call_id="delegate-error")
         else:
             logger.warning("Tool model returned no tool call; skipping tool execution")
             tool_messages = [
@@ -139,27 +132,13 @@ def calling_tool(state: AgentState) -> dict:
             called_name = ai_msg.tool_calls[0].get("name", "")
             call_args = ai_msg.tool_calls[0].get("args") or {}
 
-    if called_name in PRODUCT_RESULT_TOOLS and tool_messages:
+    if called_name in PRODUCT_TOOLS and tool_messages:
         prods = _tool_result_products(getattr(tool_messages[0], "content", ""))
         if prods and flow is not None:
             if flow.product_discovery is None:
                 flow.product_discovery = ProductDiscoveryContext()
             flow.product_discovery.tool_results = prods
-            selected = prods[0]
-            if called_name == "selectProduct":
-                name_sel = str(call_args.get("productName") or "").strip()
-                pid = str(call_args.get("productId") or "").strip()
-                if pid:
-                    selected = next((p for p in prods if p.product_id == pid), prods[0])
-                elif name_sel:
-                    selected = next(
-                        (p for p in prods if p.product_name.lower() == name_sel.lower() or p.product_id == name_sel),
-                        prods[0],
-                    )
-            elif call_args.get("product_id") or call_args.get("productId"):
-                pid = call_args.get("product_id") or call_args.get("productId")
-                selected = next((p for p in prods if p.product_id == str(pid)), prods[0])
-            flow.product_discovery.selected_product = selected
+            flow.product_discovery.selected_product = _pick_product(called_name, call_args, prods)
 
     return {
         "messages": [ai_msg, *tool_messages],
