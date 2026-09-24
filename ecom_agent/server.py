@@ -34,12 +34,16 @@ def _last_reply(state) -> str:
 
     The reply node always appends an AIMessage, so a non-empty trailing AI
     message is the turn's answer. Turns that end via the escalate node add no
-    AI message, so they surface as an empty string here.
+    AI message, so they surface as an empty string here. The search stops at
+    the latest customer message: the checkpointer keeps every turn, and an
+    older turn's reply must never be sent again.
     """
     messages = getattr(state, "messages", None)
     if messages is None and isinstance(state, dict):
         messages = state.get("messages", [])
     for m in reversed(messages or []):
+        if getattr(m, "type", "") == "human":
+            break
         if getattr(m, "type", "") != "ai":
             continue
         if hasattr(m, "content"):

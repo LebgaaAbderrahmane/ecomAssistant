@@ -381,7 +381,7 @@ No tests, no linter, no type checker are configured.
   1. Loads the `Message` row with `db.py::get_message`.
   2. If the message is not from a customer, or has no text, it replies with a fixed greeting.
   3. Otherwise it runs the graph with `thread_id = conversation_id`, inside `tool_identity(...)`.
-  4. It takes the last AI message as the reply. If the graph raised an error, or produced no reply, it answers `DECISION_ESCALATE`.
+  4. It takes the last AI message of this turn (after the latest customer message) as the reply. If the graph raised an error, or produced no reply, it answers `DECISION_ESCALATE`.
 
 ### 6.3 The graph (`graph.py`, `routing.py`, `nodes/`)
 
