@@ -23,6 +23,7 @@ How the system works is in [architecture.md](architecture.md).
 - [x] **Hand over to a human.** The agent escalates when it cannot help.
 - [x] **Two AI providers.** If Groq fails, the agent uses Gemini.
 - [x] **Remember the chat.** The agent remembers what was said while the agent is running.
+- [x] **Agent evals.** 10 test conversations with a fake shop, scored by code checks in LangSmith.
 
 ### Next
 

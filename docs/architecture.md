@@ -723,7 +723,18 @@ Weak (details in the report):
 
 ### 12.5 Testing and delivery
 
-- `back` has 7 test files. `front`, `shared`, `contracts`, `ecom_agent` have none.
+- `back` has 7 test files. `front`, `shared`, `contracts` have none.
+- `ecom_agent` has evals in `ecom_agent/evals/`, not unit tests. They run test
+  conversations through the graph with a fake shop instead of `back` (they swap
+  `tools.registry.call_tool`), then score each case with code-only checks as a
+  LangSmith experiment.
+  - Run: from `ecom_agent/`, `python -m evals.run` (all cases) or
+    `python -m evals.run --cases 6,7`.
+  - No-LLM self test: `python -m evals.selfcheck`.
+  - One turn costs about 3.4K tokens. The free Groq tier allows 8K tokens per
+    minute and 200K per day, so `--pause` (default 30 s) waits before each turn.
+  - A row with `llm_clean = 0` hit an LLM provider failure. Don't trust its
+    other scores.
 - `lint` scripts are `echo 'lint ok'`.
 - No CI. No GitHub Actions.
 - Git: `dev` is the default branch and `main` is for releases. Work goes in `feat/<name>` and `fix/<name>` branches and merges to `dev` by pull request.
