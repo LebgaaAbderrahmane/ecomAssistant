@@ -567,7 +567,7 @@ The two paths use different texts. Only the simulated path sets the state.
 4. The handler changes the order status and moves the conversation to `CONFIRMED` or `CANCELLED`.
 5. The agent writes the reply.
 
-The agent's own tool definitions mark `orderId` as required. This can make it ask the customer for an id that the backend already knows.
+In the agent's tool definitions, `orderId` is optional for `confirmOrder`, `cancelOrder`, `modifyOrder` and `getOrderStatus`. The agent leaves it out and `back` uses the current order.
 Confirming an order does not create a shipment.
 
 ### 8.4 Escalation

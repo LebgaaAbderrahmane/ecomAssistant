@@ -72,13 +72,13 @@ def calculateShipping(wilaya: str) -> str:
 
 
 class GetOrderStatusArgs(BaseModel):
-    orderId: str = Field(description="The id of the order to get the status and tracking number for.")
+    orderId: str | None = Field(default=None, description="The id of the order to get the status and tracking number for. Leave empty to use the customer's current order.")
 
 
 @tool(args_schema=GetOrderStatusArgs)
-def getOrderStatus(orderId: str) -> str:
-    """Get the status and tracking number of an existing order by its id. Required: the order id — reference the customer's order or use the active one."""
-    return call_tool("getOrderStatus", {"orderId": orderId})
+def getOrderStatus(orderId: str | None = None) -> str:
+    """Get the status and tracking number of the customer's order (the current one unless an id is given)."""
+    return call_tool("getOrderStatus", _only(orderId=orderId))
 
 
 class CreateOrderArgs(BaseModel):
@@ -95,17 +95,17 @@ def createOrder(productId: str, quantity: int, wilaya: str, commune: str) -> str
 
 
 class ConfirmOrderArgs(BaseModel):
-    orderId: str = Field(description="The id of the order to confirm.")
+    orderId: str | None = Field(default=None, description="The id of the order to confirm. Leave empty to use the customer's current order.")
 
 
 @tool(args_schema=ConfirmOrderArgs)
-def confirmOrder(orderId: str) -> str:
-    """Confirm an existing order by its id."""
-    return call_tool("confirmOrder", {"orderId": orderId})
+def confirmOrder(orderId: str | None = None) -> str:
+    """Confirm the customer's order (the current one unless an id is given)."""
+    return call_tool("confirmOrder", _only(orderId=orderId))
 
 
 class ModifyOrderArgs(BaseModel):
-    orderId: str = Field(description="The id of the order to modify.")
+    orderId: str | None = Field(default=None, description="The id of the order to modify. Leave empty to use the customer's current order.")
     wilaya: str | None = Field(default=None, description="The new shipping wilaya (province).")
     commune: str | None = Field(default=None, description="The new shipping commune (city/town).")
     quantity: int | None = Field(default=None, description="The new order quantity (integer).")
@@ -113,23 +113,23 @@ class ModifyOrderArgs(BaseModel):
 
 @tool(args_schema=ModifyOrderArgs)
 def modifyOrder(
-    orderId: str,
+    orderId: str | None = None,
     wilaya: str | None = None,
     commune: str | None = None,
     quantity: int | None = None,
 ) -> str:
-    """Modify an order (by its id) — change its shipping wilaya, commune, or quantity."""
+    """Modify the customer's order (the current one unless an id is given) — change its shipping wilaya, commune, or quantity."""
     return call_tool("modifyOrder", _only(orderId=orderId, wilaya=wilaya, commune=commune, quantity=quantity))
 
 
 class CancelOrderArgs(BaseModel):
-    orderId: str = Field(description="The id of the order to cancel.")
+    orderId: str | None = Field(default=None, description="The id of the order to cancel. Leave empty to use the customer's current order.")
 
 
 @tool(args_schema=CancelOrderArgs)
-def cancelOrder(orderId: str) -> str:
-    """Cancel an existing order by its id."""
-    return call_tool("cancelOrder", {"orderId": orderId})
+def cancelOrder(orderId: str | None = None) -> str:
+    """Cancel the customer's order (the current one unless an id is given)."""
+    return call_tool("cancelOrder", _only(orderId=orderId))
 
 
 class EscalateConversationArgs(BaseModel):

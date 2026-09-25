@@ -13,6 +13,8 @@ PRODUCTS = [
 ]
 SHIPPING = {"oran": ("Oran", 600), "alger": ("Alger", 400)}
 ORDERS = {"o1": {"orderId": "o1", "status": "PENDING", "productName": "Nike Air Max", "trackingNumber": None}}
+# Like back's conversation.currentOrderId: used when the agent sends no orderId.
+CURRENT_ORDER_ID = "o1"
 
 calls: list[dict] = []
 
@@ -41,7 +43,7 @@ def _find_product(entities: dict) -> dict | None:
 
 
 def _order_result(entities: dict, **changes: Any) -> str:
-    order = ORDERS.get(str(entities.get("orderId") or ""))
+    order = ORDERS.get(str(entities.get("orderId") or CURRENT_ORDER_ID))
     if order is None:
         return _not_found("Order not found")
     return json.dumps({**order, **changes}, ensure_ascii=False)
