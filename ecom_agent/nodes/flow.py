@@ -100,7 +100,8 @@ def flow_resolver(state: AgentState) -> dict:
         "resolved_flow_id": resolved_flow_id,
         "flow_action": result.action,
     }
-    if result.action in NO_FLOW_ACTIONS:
+    # NO_FLOW_LOOKUP keeps query_tool's "Selected tool: ..." output; calling_tool reads it.
+    if result.action in ("CLARIFY", "INVALID_ACTION"):
         updates["tool_outputs"] = [f"{result.action}: {result.reason or 'Please clarify.'}"]
     if result.action == "CREATE":
         updates["tool_calls"] = []

@@ -22,7 +22,10 @@ def query_escalate_route(state: AgentState) -> str:
 
 
 def flow_route(state: AgentState) -> str:
-    if state.flow_action in ("NO_FLOW_LOOKUP", "CLARIFY", "INVALID_ACTION"):
+    # A lookup that needs no flow  still runs its tool.
+    if state.flow_action == "NO_FLOW_LOOKUP":
+        return "calling_tool"
+    if state.flow_action in ("CLARIFY", "INVALID_ACTION"):
         return "reply"
     _, draft = flow_draft(state)
     if draft is not None and draft.status == "drafting":
