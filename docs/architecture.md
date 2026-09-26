@@ -414,8 +414,8 @@ What each node does:
 |---|---|---|
 | `hydrate` | `nodes/memory.py` | Resets per-turn fields. Loads saved memory from the store. |
 | `draft_gate` | `nodes/draft.py` | If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. |
-| `check_llm` | `nodes/check.py` | Classifies the message: answer directly, or use a tool. |
-| `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. May decide to escalate. |
+| `check_llm` | `nodes/check.py` | Classifies the message: answer directly (only for reading what is in memory), or use a tool (any action, and anything that changes over time). |
+| `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. Picks the tool even when arguments are missing (later nodes ask the customer). May decide to escalate. |
 | `flow_resolver` | `nodes/flow.py` | Decides which flow the tool applies to: continue one, create one, or ask the customer to clarify. |
 | `extract_tool_args` | `nodes/draft.py` | Asks the LLM to pull arguments (and the delivery address) out of the customer's text. Marks the draft `ready` when nothing is missing. |
 | `ask_reply` | `nodes/draft.py` | Writes a question for the missing arguments. |
