@@ -40,7 +40,7 @@ class ToolChoice(BaseModel):
 class AddressFields(BaseModel):
     wilaya: str | None = Field(default=None, description="The wilaya (province) mentioned in the customer message.")
     commune: str | None = Field(default=None, description="The commune (city/town) mentioned in the customer message.")
-    address: str | None = Field(default=None, description="The street or detailed delivery address mentioned in the customer message.")
+    address: str | None = Field(default=None, description="The street, building or neighborhood mentioned in the customer message. Never a quantity, a yes/no, or the wilaya/commune.")
 
 
 class FlowResolution(BaseModel):

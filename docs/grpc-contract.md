@@ -117,7 +117,7 @@ context:
 | `suggestProducts` | `{"products": [Product], "recommended": true, "basedOn": "preferences" \| "popular"}` |
 | `calculateShipping` | `{"wilaya", "cost"}` |
 | `getOrderStatus` | `{"orderId", "status", "trackingNumber"}` |
-| `createOrder` | `{"orderId", "productName", "quantity", "price", "totalAmount", "deliveryCost", "wilaya", "commune"}` |
+| `createOrder` | `{"orderId", "productName", "quantity", "price", "totalAmount", "deliveryCost", "wilaya", "commune", "address"}` |
 | `confirmOrder` | `{"orderId", "productName", "status"}` |
 | `modifyOrder` | `{"orderId", "productName", "quantity", "wilaya", "commune", "deliveryCost", "totalAmount"}` |
 | `cancelOrder` | `{"orderId", "productName", "status"}` |

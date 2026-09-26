@@ -86,12 +86,13 @@ class CreateOrderArgs(BaseModel):
     quantity: int = Field(description="How many units to order (integer).")
     wilaya: str = Field(description="The wilaya (province) the order ships to.")
     commune: str = Field(description="The commune (city/town) the order ships to.")
+    address: str | None = Field(default=None, description="The street, building or neighborhood for home delivery. Never a quantity, a yes/no, or the wilaya/commune.")
 
 
 @tool(args_schema=CreateOrderArgs)
-def createOrder(productId: str, quantity: int, wilaya: str, commune: str) -> str:
+def createOrder(productId: str, quantity: int, wilaya: str, commune: str, address: str | None = None) -> str:
     """Create a new order for the given product id with the delivery wilaya and commune (both are required — ask the customer for them if unknown)."""
-    return call_tool("createOrder", _only(productId=productId, quantity=quantity, wilaya=wilaya, commune=commune))
+    return call_tool("createOrder", _only(productId=productId, quantity=quantity, wilaya=wilaya, commune=commune, address=address))
 
 
 class ConfirmOrderArgs(BaseModel):

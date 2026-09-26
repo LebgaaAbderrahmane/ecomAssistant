@@ -20,7 +20,9 @@ EXTRACT_ARGS = (
 )
 
 EXTRACT_ADDRESS = (
-    "You extract a shipping address from an e-commerce customer message. Output ONLY a JSON "
+    "You extract a shipping address from an e-commerce customer message. The address is a street, "
+    "building or neighborhood; a quantity, a yes/no or the wilaya/commune alone is not an address. "
+    "Output ONLY a JSON "
     "object with the fields you can confidently determine; leave every other field OUT. Do "
     "not invent values, do not repeat the schema itself.\n"
 )

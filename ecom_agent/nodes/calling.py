@@ -98,19 +98,23 @@ def calling_tool(state: AgentState) -> dict:
         t = tool_for(draft.tool_name)
         if t is None:
             return {}
+        args = dict(draft.args)
+        # The street is collected as a prereq into memory, not as a draft arg.
+        if t.name == "createOrder" and not args.get("address") and mem.global_information.address:
+            args["address"] = mem.global_information.address
         tool_call_id = "draft-" + uuid.uuid4().hex[:8]
         ai_msg = AIMessage(
             content="",
             tool_calls=[{
                 "name": t.name,
-                "args": dict(draft.args),
+                "args": args,
                 "id": tool_call_id,
                 "type": "tool_call",
             }],
         )
         tool_messages = _run_tools(ai_msg, name=t.name, tool_call_id=tool_call_id)
         called_name = t.name
-        call_args = dict(draft.args)
+        call_args = args
         flow.tool_draft = None
         flow.updated_at = datetime.now(timezone.utc)
         logger.info("calling_tool executed ready draft -> %s %s", called_name, call_args)

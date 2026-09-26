@@ -143,6 +143,12 @@
           "type": "integer",
           "required": true,
           "description": "Quantity to order"
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "required": false,
+          "description": "Street, building or neighborhood for home delivery"
         }
       ]
     },
