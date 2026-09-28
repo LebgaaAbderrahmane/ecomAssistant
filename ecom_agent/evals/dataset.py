@@ -1,7 +1,7 @@
 """The test conversations. Each case: customer turns in, expected result out. Only the last turn is scored."""
 from langsmith import Client
 
-DATASET_NAME = "ecom-agent-v1"
+DATASET_NAME = "ecom-agent-v2"
 
 BUY_TURNS = ["3andkom Nike Air Max?", "nheb nchriha"]
 
@@ -19,9 +19,12 @@ CASES = [
     },
     {"case": 6, "turns": BUY_TURNS, "outcome": "ask_info", "expected_tools": []},
     {
-        "case": 7, "turns": [*BUY_TURNS, "Oran, Bir El Djir, wa7da"], "outcome": "reply",
+        "case": 7, "turns": [*BUY_TURNS, "Oran, Bir El Djir, wa7da, Cité 200 logements"], "outcome": "reply",
         "expected_tools": ["createOrder"],
-        "expected_args": {"productId": "p1", "wilaya": "oran", "commune": "bir el djir", "quantity": 1},
+        "expected_args": {
+            "productId": "p1", "wilaya": "oran", "commune": "bir el djir", "quantity": 1,
+            "address": "cité 200 logements",
+        },
     },
     {
         "case": 8, "turns": ["nheb refund, la montre khasra"], "outcome": "escalate",
@@ -33,10 +36,28 @@ CASES = [
         "expected_tools": ["escalateConversation"],
     },
     {
-        # Expected to fail today: orderId is a required arg, so the agent asks the customer for it
-        # instead of letting back fill it from conversation.currentOrderId.
+        # No orderId from the customer: back fills it from conversation.currentOrderId.
         "case": 10, "turns": ["oui je confirme ma commande"], "outcome": "reply",
         "expected_tools": ["confirmOrder"],
+    },
+    {
+        # The customer answers piece by piece; the order draft must remember every piece.
+        "case": 11, "turns": [*BUY_TURNS, "Oran", "Bir El Djir", "wa7da", "Cité 200 logements"],
+        "outcome": "reply", "expected_tools": ["createOrder"],
+        "expected_args": {
+            "productId": "p1", "wilaya": "oran", "commune": "bir el djir", "quantity": 1,
+            "address": "cité 200 logements",
+        },
+    },
+    {"case": 12, "turns": ["nheb nlghi la commande"], "outcome": "reply", "expected_tools": ["cancelOrder"]},
+    {
+        "case": 13, "turns": ["bedel la quantité l 2"], "outcome": "reply",
+        "expected_tools": ["modifyOrder"], "expected_args": {"quantity": 2},
+    },
+    {
+        # Order status changes over time, so it must come from the tool, not from memory.
+        "case": 14, "turns": ["win rahi la commande dyali?"], "outcome": "reply",
+        "expected_tools": ["getOrderStatus"],
     },
 ]
 
