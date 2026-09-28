@@ -12,11 +12,17 @@ CANCEL_STEP = (
     "cancelling the step in progress. Match the customer's language."
 )
 
+_CUSTOMER_LANGUAGE = (
+    "The customer writes in Algerian Darja, French or Arabic, often mixed. Number words in any of "
+    "these languages are quantities, never part of the address.\n"
+)
+
 EXTRACT_ARGS = (
     "You extract tool arguments from an e-commerce customer message. The target tool and its "
     "schema are given. Output ONLY a JSON object with the fields you can confidently determine "
     "from the customer message; leave every other field OUT. Do not invent values, do not repeat "
     "the schema itself.\n"
+    + _CUSTOMER_LANGUAGE
 )
 
 EXTRACT_ADDRESS = (
@@ -25,6 +31,7 @@ EXTRACT_ADDRESS = (
     "Output ONLY a JSON "
     "object with the fields you can confidently determine; leave every other field OUT. Do "
     "not invent values, do not repeat the schema itself.\n"
+    + _CUSTOMER_LANGUAGE
 )
 
 ASK_MISSING = (

@@ -34,6 +34,7 @@ How the system works is in [architecture.md](architecture.md).
 - [ ] **Tell the customer about the human.** When the agent hands over, it says "a person will reply soon".
 - [ ] **Detect an angry customer or a request for a human.** Hand over at once.
 - [ ] **Remember customers for a long time.** Keep name, address and language, even after a restart.
+- [ ] **Load what the backend knows at the start of each message.** The current order (for example from Shopify), the current product, and the saved wilaya and commune. Today the agent only knows what it did itself in this chat, so it can say "you have no order" or ask again for an address the backend already has.
 - [ ] **Suggest related products after a confirmation.** Offer one or two products that fit the order.
 
 ### Later

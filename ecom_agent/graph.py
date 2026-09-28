@@ -4,8 +4,11 @@ from typing import Any
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.store.memory import InMemoryStore
 
+from models.conversation import ConversationMemory
+from models.domain import FlowState
 from models.state import AgentState
 from nodes.draft import draft_gate, extract_tool_args, ask_reply
 from nodes.check import check_llm
@@ -67,7 +70,9 @@ def _build_graph() -> StateGraph:
 def _compile():
     store = InMemoryStore()
     g = _build_graph()
-    return g.compile(checkpointer=InMemorySaver(), store=store)
+    # Our own classes saved in the checkpoint. LangGraph will block any class not listed here.
+    serde = JsonPlusSerializer(allowed_msgpack_modules=[ConversationMemory, FlowState])
+    return g.compile(checkpointer=InMemorySaver(serde=serde), store=store)
 
 
 app = _compile()
