@@ -40,6 +40,8 @@ tool_model = model.bind_tools(TOOLS)
 
 TOOL_NAMES = tuple(t.name for t in TOOLS)
 PRODUCT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "selectProduct"}
+# They act on the customer's current order, which back knows (conversation.currentOrderId).
+ORDER_TOOLS = {"confirmOrder", "cancelOrder", "modifyOrder", "getOrderStatus"}
 TOOL_DESCRIPTIONS = {
     "searchProducts": "Search the catalog for products matching a free-text name or query (authoritative NOT_FOUND when absent).",
     "selectProduct": "Select the specific product the customer picked, by productId or productName.",

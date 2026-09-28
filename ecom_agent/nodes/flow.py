@@ -14,7 +14,7 @@ from models.state import AgentState, FlowResolution
 from prompts.common import struct_schema_hint
 from prompts.flow import FLOW_RULES
 from text.messages import last_user_text
-from tools import PRODUCT_TOOLS
+from tools import ORDER_TOOLS, PRODUCT_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,11 @@ def _new_flow(tool_name: str, result: FlowResolution, now: datetime) -> Flow:
 def flow_resolver(state: AgentState) -> dict:
     mem = state.conversation_memory.model_copy(deep=True)
     tool_name = state.tool_calls[0].get("name", "") if state.tool_calls else ""
-    last_tool = state.tool_outputs[-1] if state.tool_outputs else (
+    # The order often comes from Shopify, so it is not in the agent's memory. Back finds it.
+    if tool_name in ORDER_TOOLS:
+        logger.info("flow_resolver -> action=NO_FLOW_LOOKUP (order tool %s)", tool_name)
+        return {"resolved_flow_id": None, "flow_action": "NO_FLOW_LOOKUP"}
+    last_tool =state.tool_outputs[-1] if state.tool_outputs else (
         state.tool_calls[0].get("name") if state.tool_calls else "unknown"
     )
     context = {
