@@ -125,6 +125,7 @@ export const CreateOrderArgsSchema = z.object({
   wilaya: z.string().min(1),
   commune: z.string().min(1),
   quantity: z.number().int().positive(),
+  address: z.string().min(1).optional(),
   ...InjectedMerchantId,
   ...InjectedCustomerId,
   ...InjectedConversationId,

@@ -5,6 +5,8 @@ package ecomassistant.tools.v1;
 service ToolService {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc ExecuteTool(ExecuteToolRequest) returns (ExecuteToolResponse);
+  // What back knows about a conversation, read at the start of each customer message.
+  rpc GetConversationContext(GetConversationContextRequest) returns (GetConversationContextResponse);
 }
 
 message HealthRequest {}
@@ -41,4 +43,61 @@ message ExecuteToolResponse {
   Outcome outcome = 2;
   string data_json = 3;
   string error = 4;
+}
+
+message GetConversationContextRequest {
+  Identity identity = 1;
+  // How many recent messages to return. 0 means the server default (20).
+  int32 message_limit = 2;
+}
+
+message GetConversationContextResponse {
+  CustomerContext customer = 1;
+  // Unset when the conversation has no current order / product.
+  OrderContext current_order = 2;
+  ProductContext current_product = 3;
+  // Oldest first. Includes the message being processed right now.
+  repeated ContextMessage messages = 4;
+}
+
+message CustomerContext {
+  string name = 1;
+  string language = 2;
+  string wilaya = 3;
+  string commune = 4;
+}
+
+message OrderContext {
+  string order_id = 1;
+  string status = 2;
+  string product_id = 3;
+  string product_name = 4;
+  int32 quantity = 5;
+  double total_amount = 6;
+  double delivery_cost = 7;
+  string wilaya = 8;
+  string commune = 9;
+  string address = 10;
+  string tracking_number = 11;
+}
+
+message ProductContext {
+  string product_id = 1;
+  string name = 2;
+  double price = 3;
+  string currency = 4;
+  string stock_status = 5;
+}
+
+message ContextMessage {
+  enum Sender {
+    SENDER_UNSPECIFIED = 0;
+    SENDER_CUSTOMER = 1;
+    SENDER_AI = 2;
+    SENDER_MERCHANT = 3;
+  }
+  Sender sender = 1;
+  string text = 2;
+  // ISO 8601, UTC.
+  string created_at = 3;
 }

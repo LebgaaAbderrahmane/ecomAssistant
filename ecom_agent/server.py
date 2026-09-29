@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage
 
 from db import get_message
 from graph import app
+from prompts.common import GREETING
 from grpc_gen.agent.v1 import agent_pb2, agent_pb2_grpc
 from tools.grpc import tool_identity
 
@@ -33,12 +34,16 @@ def _last_reply(state) -> str:
 
     The reply node always appends an AIMessage, so a non-empty trailing AI
     message is the turn's answer. Turns that end via the escalate node add no
-    AI message, so they surface as an empty string here.
+    AI message, so they surface as an empty string here. The search stops at
+    the latest customer message: the checkpointer keeps every turn, and an
+    older turn's reply must never be sent again.
     """
     messages = getattr(state, "messages", None)
     if messages is None and isinstance(state, dict):
         messages = state.get("messages", [])
     for m in reversed(messages or []):
+        if getattr(m, "type", "") == "human":
+            break
         if getattr(m, "type", "") != "ai":
             continue
         if hasattr(m, "content"):
@@ -55,8 +60,7 @@ def _last_reply(state) -> str:
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
-    # Health is intentionally unauthenticated so orchestration tooling can
-    # probe liveness without the internal key.
+    # No auth on Health, so the Docker healthcheck works without the key.
     def Health(self, request, context):
         return agent_pb2.HealthResponse(status=agent_pb2.HealthResponse.STATUS_SERVING)
 
@@ -102,7 +106,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         if role != "customer" or not text:
             return agent_pb2.ProcessMessageResponse(
                 decision=agent_pb2.ProcessMessageResponse.DECISION_REPLY,
-                text="Bonjour, comment puis-je vous aider ?",
+                text=GREETING,
             )
 
         config = {

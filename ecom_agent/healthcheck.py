@@ -1,10 +1,4 @@
-"""Container healthcheck for the AgentService gRPC server.
-
-Probes the unauthenticated AgentService.Health RPC on the in-container
-address and exits non-zero until the server reports STATUS_SERVING.
-
-Usage: python healthcheck.py
-"""
+"""Docker healthcheck: exits 0 only when AgentService.Health says SERVING."""
 
 import sys
 

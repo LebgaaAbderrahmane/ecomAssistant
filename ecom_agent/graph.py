@@ -4,17 +4,21 @@ from typing import Any
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.store.memory import InMemoryStore
 
-from models.state import AgentState
-from nodes.draft import draft_gate, extract_tool_args, ask_reply, after_extract
+from models.backend import BackendContext
+from models.conversation import ConversationMemory
+from models.domain import FlowState
+from models.state import AgentState, ReplaceMessages
+from nodes.draft import draft_gate, extract_tool_args, ask_reply
 from nodes.check import check_llm
 from nodes.query import query_tool
 from nodes.flow import flow_resolver
 from nodes.calling import calling_tool
 from nodes.reply import reply, escalate
 from nodes.memory import hydrate, persist
-from routing import route, draft_route, query_escalate_route, flow_route
+from routing import route, draft_route, after_extract, query_escalate_route, flow_route
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +71,9 @@ def _build_graph() -> StateGraph:
 def _compile():
     store = InMemoryStore()
     g = _build_graph()
-    return g.compile(checkpointer=InMemorySaver(), store=store)
+    # Our own classes saved in the checkpoint. LangGraph will block any class not listed here.
+    serde = JsonPlusSerializer(allowed_msgpack_modules=[ConversationMemory, FlowState, BackendContext, ReplaceMessages])
+    return g.compile(checkpointer=InMemorySaver(serde=serde), store=store)
 
 
 app = _compile()

@@ -1,6 +1,5 @@
 import logging
 
-from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import CONFIG_KEY_RUNTIME, DEFAULT_RUNTIME
 
@@ -40,20 +39,23 @@ TOOL_NODE_CONFIG: dict = {"configurable": {CONFIG_KEY_RUNTIME: DEFAULT_RUNTIME}}
 tool_model = model.bind_tools(TOOLS)
 
 TOOL_NAMES = tuple(t.name for t in TOOLS)
+PRODUCT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "selectProduct"}
+# They act on the customer's current order, which back knows (conversation.currentOrderId).
+ORDER_TOOLS = {"confirmOrder", "cancelOrder", "modifyOrder", "getOrderStatus"}
 TOOL_DESCRIPTIONS = {
     "searchProducts": "Search the catalog for products matching a free-text name or query (authoritative NOT_FOUND when absent).",
     "selectProduct": "Select the specific product the customer picked, by productId or productName.",
     "getProductDetails": "Return full details for a product by its id or name.",
     "suggestProducts": "Suggest products matching explicit criteria (category, color, size, min/maxPrice, preferences).",
     "calculateShipping": "Look up the delivery cost for a wilaya (name or number) for this merchant. Requires the wilaya the customer wants to send to.",
-    "getOrderStatus": "Get the status and tracking number of an order by its id.",
+    "getOrderStatus": "Get the status and tracking number of the customer's order (current order unless an id is given).",
     "createOrder": "Place an order: provide an explicit productId, quantity, delivery wilaya, and commune (both are required).",
-    "confirmOrder": "Confirm an order by its id.",
-    "modifyOrder": "Modify an existing order by its id (change wilaya, commune, or quantity).",
-    "cancelOrder": "Cancel an order by its id.",
+    "confirmOrder": "Confirm the customer's order (current order unless an id is given).",
+    "modifyOrder": "Modify the customer's order (current order unless an id is given): change wilaya, commune, or quantity.",
+    "cancelOrder": "Cancel the customer's order (current order unless an id is given).",
     "escalateConversation": "Escalate to a human agent with a reason — use only when no other tool can handle the request.",
 }
 
 
-def tool_for(tool_name: str, flow=None):
+def tool_for(tool_name: str):
     return next((t for t in TOOLS if t.name == tool_name), None)

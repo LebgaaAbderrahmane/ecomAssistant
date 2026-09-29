@@ -83,6 +83,7 @@ export const TOOL_META: Record<ToolName, ToolMeta> = {
       wilaya: { description: 'Delivery wilaya' },
       commune: { description: 'Delivery commune (baladia)' },
       quantity: { description: 'Quantity to order' },
+      address: { description: 'Street, building or neighborhood for home delivery' },
     },
   },
   confirmOrder: {

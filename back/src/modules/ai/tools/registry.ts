@@ -450,7 +450,7 @@ const createOrder: ToolHandler = async (entities) => {
     return { success: false, error: `Missing required fields: ${missing}` };
   }
 
-  const { productId, quantity, wilaya } = parsedArgs.data;
+  const { productId, quantity, wilaya, address } = parsedArgs.data;
   const communeInput = parsedArgs.data.commune;
 
   // Validate commune exists
@@ -499,6 +499,7 @@ const createOrder: ToolHandler = async (entities) => {
       platformOrderId,
       wilaya,
       commune,
+      address,
       productId: product.id,
       productName: product.name,
       quantity,
@@ -531,6 +532,7 @@ const createOrder: ToolHandler = async (entities) => {
       deliveryCost: deliveryCostValue,
       wilaya,
       commune,
+      address: order.address,
     },
   };
 };

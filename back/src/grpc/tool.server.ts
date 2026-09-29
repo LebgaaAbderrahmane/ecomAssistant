@@ -45,6 +45,56 @@ export interface ExecuteToolResponse {
   error: string;
 }
 
+export interface GetConversationContextRequest {
+  identity: IdentityInput;
+  messageLimit: number;
+}
+
+interface CustomerContext {
+  name: string;
+  language: string;
+  wilaya: string;
+  commune: string;
+}
+
+interface OrderContext {
+  orderId: string;
+  status: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  totalAmount: number;
+  deliveryCost: number;
+  wilaya: string;
+  commune: string;
+  address: string;
+  trackingNumber: string;
+}
+
+interface ProductContext {
+  productId: string;
+  name: string;
+  price: number;
+  currency: string;
+  stockStatus: string;
+}
+
+interface ContextMessage {
+  sender: 'SENDER_CUSTOMER' | 'SENDER_AI' | 'SENDER_MERCHANT' | 'SENDER_UNSPECIFIED';
+  text: string;
+  createdAt: string;
+}
+
+export interface GetConversationContextResponse {
+  customer: CustomerContext;
+  currentOrder: OrderContext | null;
+  currentProduct: ProductContext | null;
+  messages: ContextMessage[];
+}
+
+const DEFAULT_CONTEXT_MESSAGES = 20;
+const MAX_CONTEXT_MESSAGES = 50;
+
 interface ToolServiceConstructor {
   service: grpc.ServiceDefinition;
 }
@@ -274,6 +324,130 @@ async function executeToolHandler(
   }
 }
 
+const SENDER_TO_PROTO: Record<string, ContextMessage['sender']> = {
+  CUSTOMER: 'SENDER_CUSTOMER',
+  AI: 'SENDER_AI',
+  MERCHANT: 'SENDER_MERCHANT',
+};
+
+async function getConversationContextHandler(
+  call: grpc.ServerUnaryCall<GetConversationContextRequest, GetConversationContextResponse>,
+  callback: grpc.sendUnaryData<GetConversationContextResponse>
+): Promise<void> {
+  const startedAt = process.hrtime.bigint();
+  const identity = call.request.identity;
+  const finish = (err: grpc.ServiceError | null, response?: GetConversationContextResponse): void => {
+    const fields: Record<string, unknown> = {
+      rpc: 'ToolService.GetConversationContext',
+      conversationId: identity?.conversationId ?? '',
+      ms: elapsedMs(startedAt),
+    };
+    if (err) {
+      grpcLogger.error({ ...fields, code: err.code, message: err.message }, 'context request failed');
+      callback(err, null);
+      return;
+    }
+    grpcLogger.info(
+      {
+        ...fields,
+        messages: response?.messages.length ?? 0,
+        hasOrder: Boolean(response?.currentOrder),
+        hasProduct: Boolean(response?.currentProduct),
+      },
+      'context request handled'
+    );
+    callback(null, response ?? null);
+  };
+
+  const unauthorized = authError(call);
+  if (unauthorized) {
+    finish(unauthorized);
+    return;
+  }
+
+  try {
+    if (!identity?.conversationId) {
+      finish({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.conversation_id is required' } as grpc.ServiceError);
+      return;
+    }
+
+    // Same scoping rules as ExecuteTool: the conversation row is the truth, and
+    // a mismatched merchant/customer is rejected (cross-tenant safety).
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: identity.conversationId },
+      include: { customer: true, currentOrder: true },
+    });
+    if (!conversation) {
+      finish({ code: grpc.status.NOT_FOUND, message: `Conversation "${identity.conversationId}" not found` } as grpc.ServiceError);
+      return;
+    }
+    if (identity.merchantId && identity.merchantId !== conversation.merchantId) {
+      finish({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.merchant_id does not match the conversation' } as grpc.ServiceError);
+      return;
+    }
+    if (identity.customerId && identity.customerId !== conversation.customerId) {
+      finish({ code: grpc.status.INVALID_ARGUMENT, message: 'identity.customer_id does not match the conversation' } as grpc.ServiceError);
+      return;
+    }
+
+    const product = conversation.currentProductId
+      ? await prisma.product.findFirst({
+          where: { id: conversation.currentProductId, merchantId: conversation.merchantId },
+        })
+      : null;
+
+    const requested = call.request.messageLimit;
+    const limit = requested > 0 ? Math.min(requested, MAX_CONTEXT_MESSAGES) : DEFAULT_CONTEXT_MESSAGES;
+    const recent = await prisma.message.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    const { customer, currentOrder: order } = conversation;
+    finish(null, {
+      customer: {
+        name: customer.name ?? '',
+        language: customer.language ?? '',
+        wilaya: customer.wilaya ?? '',
+        commune: customer.commune ?? '',
+      },
+      currentOrder: order
+        ? {
+            orderId: order.id,
+            status: order.status,
+            productId: order.productId,
+            productName: order.productName,
+            quantity: order.quantity,
+            totalAmount: order.totalAmount,
+            deliveryCost: order.deliveryCost,
+            wilaya: order.wilaya,
+            commune: order.commune,
+            address: order.address ?? '',
+            trackingNumber: order.trackingNumber ?? '',
+          }
+        : null,
+      currentProduct: product
+        ? {
+            productId: product.id,
+            name: product.name,
+            price: product.price,
+            currency: product.currency,
+            stockStatus: product.stockStatus,
+          }
+        : null,
+      messages: recent.reverse().map((m) => ({
+        sender: SENDER_TO_PROTO[m.sender] ?? 'SENDER_UNSPECIFIED',
+        text: m.text || m.content,
+        createdAt: m.createdAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    grpcLogger.error({ rpc: 'ToolService.GetConversationContext', err }, 'unexpected context error');
+    finish({ code: grpc.status.INTERNAL, message: 'Reading the conversation context failed unexpectedly' } as grpc.ServiceError);
+  }
+}
+
 export async function startToolServer(): Promise<grpc.Server | null> {
   if (!config.toolsGrpcEnabled) {
     grpcLogger.warn('ToolService disabled (TOOLS_GRPC_ENABLED != true)');
@@ -284,6 +458,7 @@ export async function startToolServer(): Promise<grpc.Server | null> {
   server.addService(loadToolService().service, {
     Health: healthHandler,
     ExecuteTool: executeToolHandler,
+    GetConversationContext: getConversationContextHandler,
   });
 
   await new Promise<void>((resolve, reject) => {
