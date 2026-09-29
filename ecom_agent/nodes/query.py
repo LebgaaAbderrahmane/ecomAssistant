@@ -90,6 +90,7 @@ def query_tool(state: AgentState) -> dict:
                 "active_flow": flow_context,
                 "flows_with_selected_product": selected_flows,
                 "recent_conversation": recent_transcript(state.messages),
+                "backend_context": state.backend_context.summary() if state.backend_context else None,
             }, ensure_ascii=False, default=str)),
         ],
     )

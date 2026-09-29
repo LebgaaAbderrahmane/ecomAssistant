@@ -12,7 +12,9 @@ def correct_outcome(outputs: dict, reference_outputs: dict) -> dict:
 
 def correct_tool(outputs: dict, reference_outputs: dict) -> dict:
     called = [c["name"] for c in outputs["tools_called"]]
-    expected = reference_outputs["expected_tools"]
+    expected = reference_outputs.get("expected_tools")
+    if expected is None:
+        return {"key": "correct_tool", "score": None, "comment": f"any tool is fine; called {called}"}
     ok = not called if not expected else any(name in expected for name in called)
     return {"key": "correct_tool", "score": int(ok), "comment": f"called {called}, want one of {expected}"}
 
@@ -22,7 +24,8 @@ def correct_args(outputs: dict, reference_outputs: dict) -> dict:
     if not expected_args:
         return {"key": "correct_args", "score": None, "comment": "no expected args for this case"}
     call = next(
-        (c for c in outputs["tools_called"] if c["name"] in reference_outputs["expected_tools"]), None
+        (c for c in outputs["tools_called"] if c["name"] in (reference_outputs.get("expected_tools") or [])),
+        None,
     )
     if call is None:
         return {"key": "correct_args", "score": 0, "comment": "expected tool was not called"}
@@ -41,9 +44,24 @@ def server_sends_right_thing(outputs: dict, reference_outputs: dict) -> dict:
     }
 
 
+def _squash(text: str) -> str:
+    # "12 600", "12,600" and "12600" all become "12600".
+    return "".join(ch for ch in text.lower() if ch not in " ,.  ")
+
+
+def reply_mentions(outputs: dict, reference_outputs: dict) -> dict:
+    """Each item must appear in the reply. "a|b" means a or b (e.g. the same word in two languages)."""
+    items = reference_outputs.get("reply_mentions") or []
+    if not items:
+        return {"key": "reply_mentions", "score": None, "comment": "nothing to check for this case"}
+    reply = _squash(outputs["reply"])
+    missing = [item for item in items if not any(_squash(alt) in reply for alt in item.split("|"))]
+    return {"key": "reply_mentions", "score": int(not missing), "comment": f"missing: {missing}" if missing else "ok"}
+
+
 def llm_clean(outputs: dict, reference_outputs: dict) -> dict:
     failures = outputs["llm_failures"]
     return {"key": "llm_clean", "score": int(failures == 0), "comment": f"{failures} LLM provider failures"}
 
 
-EVALUATORS = [correct_outcome, correct_tool, correct_args, server_sends_right_thing, llm_clean]
+EVALUATORS = [correct_outcome, correct_tool, correct_args, server_sends_right_thing, reply_mentions, llm_clean]

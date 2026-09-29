@@ -7,7 +7,7 @@ from config import model
 from models.state import AgentState
 from prompts.common import DEFAULT_REPLY
 from prompts.reply import REPLY_FROM_TOOL, reply_input
-from text.messages import last_user_text
+from text.messages import last_user_text, recent_transcript
 from tools import escalateConversation
 
 logger = logging.getLogger(__name__)
@@ -24,9 +24,13 @@ def reply(state: AgentState) -> dict:
             if getattr(m, "type", "") == "human" and content:
                 user_text = content if isinstance(content, str) else str(content)
                 break
+        backend = ""
+        if state.backend_context is not None:
+            backend = json.dumps(state.backend_context.summary(), ensure_ascii=False)
+        conversation = json.dumps(recent_transcript(state.messages), ensure_ascii=False)
         response = model.invoke([
             SystemMessage(content=REPLY_FROM_TOOL),
-            HumanMessage(content=reply_input(tool_result, user_text)),
+            HumanMessage(content=reply_input(tool_result, user_text, backend, conversation)),
         ])
         text = response.content if hasattr(response, "content") else str(response)
     return {"messages": [AIMessage(content=text)]}

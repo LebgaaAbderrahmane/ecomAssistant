@@ -6,7 +6,7 @@ import os
 import config  # noqa: F401  loads ecom_agent/.env before the LangSmith client reads the key
 from langsmith import Client
 
-from evals import fake_tools, target
+from evals import fake_backend, fake_tools, target
 from evals.dataset import DATASET_NAME, ensure_dataset
 from evals.evaluators import EVALUATORS
 
@@ -23,6 +23,7 @@ def main() -> None:
     args = parser.parse_args()
 
     fake_tools.install()
+    fake_backend.install()
     target.PAUSE_SECONDS = args.pause
     client = Client()
     ensure_dataset(client)

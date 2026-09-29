@@ -2,12 +2,19 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
+from models.backend import BackendContext
 from models.conversation import ConversationMemory
 from models.domain import Filter
 from tools import TOOL_NAMES
 
 
+class ReplaceMessages(list):
+    """Returned by a node to replace the whole chat history instead of adding to it."""
+
+
 def messages_reducer(left: list[Any], right: list[Any]) -> list[Any]:
+    if isinstance(right, ReplaceMessages):
+        return list(right)
     return [*left, *right]
 
 
@@ -23,6 +30,8 @@ class AgentState(BaseModel):
     flow_action: str | None = None
     escalation: bool = False
     proposed_intent: str | None = None
+    # Read-only: what back knows, loaded fresh by hydrate at every message.
+    backend_context: BackendContext | None = None
 
 
 class CheckResult(BaseModel):

@@ -37,8 +37,17 @@ def _summarize_flows(state: AgentState) -> str:
     return json.dumps(summaries, indent=2, ensure_ascii=False)
 
 
+def _backend_hint(state: AgentState) -> str:
+    ctx = state.backend_context
+    if ctx is None:
+        return ""
+    return json.dumps(ctx.summary(), indent=2, ensure_ascii=False)
+
+
 def check_llm(state: AgentState) -> dict:
-    system = check_system(TOOL_DESCRIPTIONS, struct_schema_hint(CheckResult), _summarize_flows(state))
+    system = check_system(
+        TOOL_DESCRIPTIONS, struct_schema_hint(CheckResult), _summarize_flows(state), _backend_hint(state),
+    )
     messages = [SystemMessage(content=system), *state.messages]
     # If the classifier cannot run or parse (LLM down or rate-limited), do not
     # guess: escalate so a human takes the conversation over.

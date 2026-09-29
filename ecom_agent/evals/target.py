@@ -5,7 +5,7 @@ import uuid
 
 from langchain_core.messages import HumanMessage
 
-from evals import fake_tools
+from evals import fake_backend, fake_tools
 from flows import flow_draft
 from graph import app
 from models.state import AgentState
@@ -49,13 +49,19 @@ def run_conversation(inputs: dict) -> dict:
     counter = _FailureCounter()
     llm_logger = logging.getLogger("llm.client")
     llm_logger.addHandler(counter)
+    fake_backend.start(inputs.get("backend") or {})
     try:
         result: dict = {}
         for text in inputs["turns"]:
             # Free-tier token limits are per minute, so spread the calls out.
             time.sleep(PAUSE_SECONDS)
             fake_tools.reset()
+            # Like back: save the customer message first, then the reply it sends.
+            fake_backend.add("customer", text)
             result = app.invoke({"messages": [HumanMessage(content=text)]}, config=config)
+            sent = _last_reply(AgentState.model_validate(result))
+            if sent.strip():
+                fake_backend.add("ai", sent)
     finally:
         llm_logger.removeHandler(counter)
     state = AgentState.model_validate(result)

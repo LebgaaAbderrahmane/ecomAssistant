@@ -1,9 +1,12 @@
 """The test conversations. Each case: customer turns in, expected result out. Only the last turn is scored."""
 from langsmith import Client
 
-DATASET_NAME = "ecom-agent-v2"
+DATASET_NAME = "ecom-agent-v3"
 
 BUY_TURNS = ["3andkom Nike Air Max?", "nheb nchriha"]
+# The order came from Shopify: back sent this template, the agent never wrote it.
+CONFIRM_TEMPLATE = "Salam! Merci pour votre commande. Vous confirmez ? Répondez oui ou non."
+SHOPIFY_ORDER = {"has_order": True, "messages": [CONFIRM_TEMPLATE]}
 
 CASES = [
     {"case": 1, "turns": ["salam"], "outcome": "reply", "expected_tools": []},
@@ -37,7 +40,7 @@ CASES = [
     },
     {
         # No orderId from the customer: back fills it from conversation.currentOrderId.
-        "case": 10, "turns": ["oui je confirme ma commande"], "outcome": "reply",
+        "case": 10, "backend": SHOPIFY_ORDER, "turns": ["oui je confirme ma commande"], "outcome": "reply",
         "expected_tools": ["confirmOrder"],
     },
     {
@@ -49,26 +52,50 @@ CASES = [
             "address": "cité 200 logements",
         },
     },
-    {"case": 12, "turns": ["nheb nlghi la commande"], "outcome": "reply", "expected_tools": ["cancelOrder"]},
     {
-        "case": 13, "turns": ["bedel la quantité l 2"], "outcome": "reply",
+        "case": 12, "backend": SHOPIFY_ORDER, "turns": ["nheb nlghi la commande"], "outcome": "reply",
+        "expected_tools": ["cancelOrder"],
+    },
+    {
+        "case": 13, "backend": SHOPIFY_ORDER, "turns": ["bedel la quantité l 2"], "outcome": "reply",
         "expected_tools": ["modifyOrder"], "expected_args": {"quantity": 2},
     },
     {
         # Order status changes over time, so it must come from the tool, not from memory.
-        "case": 14, "turns": ["win rahi la commande dyali?"], "outcome": "reply",
+        "case": 14, "backend": SHOPIFY_ORDER, "turns": ["win rahi la commande dyali?"], "outcome": "reply",
         "expected_tools": ["getOrderStatus"],
+    },
+    # The answers below are only in back's data (the order, or a merchant message), never in the
+    # agent's own memory. Any tool is fine; the reply must carry the right fact.
+    {
+        "case": 15, "backend": SHOPIFY_ORDER, "turns": ["chhal total?"], "outcome": "reply",
+        "expected_tools": None, "reply_mentions": ["12600"],
+    },
+    {
+        "case": 16, "backend": SHOPIFY_ORDER, "turns": ["wach commandit?"], "outcome": "reply",
+        "expected_tools": None, "reply_mentions": ["nike air max"],
+    },
+    {
+        "case": 17,
+        "backend": {"has_order": True, "messages": [
+            CONFIRM_TEMPLATE,
+            {"sender": "customer", "text": "wa9tach twasel?"},
+            {"sender": "merchant", "text": "twasel nhar el khamis inchallah"},
+        ]},
+        "turns": ["sm7li, wa9tach goultli twasel?"], "outcome": "reply",
+        "expected_tools": None, "reply_mentions": ["khamis|khmis|jeudi|thursday|الخميس"],
     },
 ]
 
 
 def _example(case: dict) -> dict:
     return {
-        "inputs": {"turns": case["turns"]},
+        "inputs": {"turns": case["turns"], "backend": case.get("backend", {})},
         "outputs": {
             "outcome": case["outcome"],
             "expected_tools": case["expected_tools"],
             "expected_args": case.get("expected_args", {}),
+            "reply_mentions": case.get("reply_mentions", []),
         },
         "metadata": {"case": case["case"]},
     }

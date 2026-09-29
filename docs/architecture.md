@@ -412,7 +412,7 @@ What each node does:
 
 | Node | File | Job |
 |---|---|---|
-| `hydrate` | `nodes/memory.py` | Resets per-turn fields. Loads saved memory from the store. |
+| `hydrate` | `nodes/memory.py` | Resets per-turn fields. Loads saved memory from the store. Calls `GetConversationContext` and replaces the chat history with the last 20 messages from the database. |
 | `draft_gate` | `nodes/draft.py` | If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. |
 | `check_llm` | `nodes/check.py` | Classifies the message: answer directly (only for reading what is in memory), or use a tool (any action, and anything that changes over time). |
 | `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. Picks the tool even when arguments are missing (later nodes ask the customer). May decide to escalate. |
@@ -441,7 +441,9 @@ Code around the nodes:
 - `ConversationMemory` (`models/conversation.py`): a `GlobalInformation` (name, wilaya, commune, address) and a list of `Flow` objects.
 - A `Flow` (`models/domain.py`) is one topic in the chat, such as "looking at product X". It holds product discovery results, an optional order context, shipping info and a `ToolCallDraft`.
 - A `ToolCallDraft` collects the arguments for one tool over several turns. Status: `drafting`, `ready`, `executed`, `cancelled`.
-- Storage: LangGraph `InMemorySaver` (chat history) and `InMemoryStore` (memory). **Both live in RAM only.** A restart loses everything.
+- `BackendContext` (`models/backend.py`): what `back` knows (customer, current order, current product, last 20 messages). `hydrate` loads it fresh at every message into `AgentState.backend_context`. `check_llm`, `query_tool` and `reply` read it. If `back` does not answer, it is `None` and the agent works with only its own memory.
+- Chat history: at every message `hydrate` replaces it with the last 20 messages from the database (customer, agent, back's templates, merchant). Merchant messages are shown to the LLM with a `[merchant]` prefix. When `back` does not answer, the RAM history is kept.
+- Storage: LangGraph `InMemorySaver` (state, including the working chat history) and `InMemoryStore` (memory). **Both live in RAM only.** After a restart the chat comes back from the database, but the memory (flows, drafts) is lost.
 - The Prisma column `Conversation.memory` is not used by the agent.
 
 ### 6.5 LLM client (`llm/client.py`)
@@ -482,7 +484,7 @@ Two services, defined in `contracts/proto/`.
 - **Transport.** Plain text (insecure channels). Safe only because the ports stay on the Compose network.
 - **Codegen.** The Python side uses generated stubs in `ecom_agent/grpc_gen/`, committed to git. The TypeScript side loads the `.proto` files at runtime with `@grpc/proto-loader`, so it has no generated code. See [grpc-ts-loading.md](grpc-ts-loading.md).
 - **Regenerate.** After a `.proto` change run `ecom_agent/scripts/gen_stubs.sh`. Commit the `.proto` and `grpc_gen/` together.
-- **Payloads.** `ProcessMessageRequest` has only four ids. The agent reads the message text from Postgres itself. `ExecuteTool` sends and returns JSON strings. `GetConversationContext` returns typed fields: the customer, the current order, the current product and the last messages. The agent does not call it yet.
+- **Payloads.** `ProcessMessageRequest` has only four ids. The agent reads the message text from Postgres itself. `ExecuteTool` sends and returns JSON strings. `GetConversationContext` returns typed fields: the customer, the current order, the current product and the last messages. The agent calls it at the start of every message (`hydrate`).
 - **Decisions.** `DECISION_REPLY` and `DECISION_ESCALATE` are used. `DECISION_UNAVAILABLE` exists, and `back` treats it like escalate, but the agent never sends it.
 - **Deadlines.** None are set on either side.
 - **Tool list.** `contracts/src/generated/tools.json` is generated from the backend registry by `back/scripts/export-contract.ts`. `back` has a test that fails if it drifts. The Python tool definitions are a hand copy and no test covers them.

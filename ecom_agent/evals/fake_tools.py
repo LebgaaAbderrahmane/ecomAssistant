@@ -12,9 +12,16 @@ PRODUCTS = [
     {"id": "p3", "name": "Hoodie Adidas", "price": 6000, "currency": "DZD", "stockStatus": "IN_STOCK"},
 ]
 SHIPPING = {"oran": ("Oran", 600), "alger": ("Alger", 400)}
-ORDERS = {"o1": {"orderId": "o1", "status": "PENDING", "productName": "Nike Air Max", "trackingNumber": None}}
+ORDERS = {
+    "o1": {
+        "orderId": "o1", "status": "PENDING", "productId": "p1", "productName": "Nike Air Max", "quantity": 1,
+        "totalAmount": 12600, "deliveryCost": 600, "wilaya": "Oran", "commune": "Bir El Djir",
+        "address": "Cité 200 logements", "trackingNumber": None,
+    },
+}
 # Like back's conversation.currentOrderId: used when the agent sends no orderId.
-CURRENT_ORDER_ID = "o1"
+# Set per test case by evals.fake_backend (None when the case has no order).
+CURRENT_ORDER_ID: str | None = "o1"
 
 calls: list[dict] = []
 

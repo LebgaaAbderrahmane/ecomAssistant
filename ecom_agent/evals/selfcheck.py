@@ -110,10 +110,87 @@ def check_llm_failure_counter() -> None:
         target.app = real_app
 
 
+def check_fake_backend() -> None:
+    from evals import fake_backend
+
+    fake_backend.start({"has_order": True, "messages": ["template", {"sender": "merchant", "text": "hi"}]})
+    fake_backend.add("customer", "chhal total?")
+    ctx = fake_backend.fake_get_conversation_context(limit=2)
+    assert ctx.current_order and ctx.current_order.total_amount == 12600, ctx
+    assert [(m.sender, m.text) for m in ctx.messages] == [("merchant", "hi"), ("customer", "chhal total?")]
+    history = ctx.chat_history()
+    assert [m.type for m in history] == ["ai", "human"] and history[0].content == "[merchant] hi"
+    assert fake_tools.CURRENT_ORDER_ID == "o1"
+    fake_backend.start({})
+    assert fake_backend.fake_get_conversation_context().current_order is None
+    assert fake_tools.CURRENT_ORDER_ID is None
+
+
+def check_reply_mentions() -> None:
+    from evals.evaluators import reply_mentions
+
+    out = {"reply": "Le total est de 12 600 DZD, livraison jeudi."}
+    assert reply_mentions(outputs=out, reference_outputs={"reply_mentions": ["12600", "khamis|jeudi"]})["score"] == 1
+    assert reply_mentions(outputs=out, reference_outputs={"reply_mentions": ["nike air max"]})["score"] == 0
+    assert reply_mentions(outputs=out, reference_outputs={})["score"] is None
+
+
+def check_hydrate_uses_backend() -> None:
+    from langchain_core.messages import AIMessage, HumanMessage
+    from evals import fake_backend
+    from models.state import AgentState, ReplaceMessages, messages_reducer
+    from nodes.memory import _with_backend
+
+    fake_backend.install()
+    fake_backend.start({"has_order": True, "messages": ["template"]})
+    fake_backend.add("customer", "chhal total?")
+    # RAM holds an old, different chat; the database must win.
+    state = AgentState(messages=[HumanMessage("old"), AIMessage("old reply"), HumanMessage("chhal total?")])
+    updates = _with_backend(state, {})
+    assert updates["backend_context"].current_order.total_amount == 12600
+    new = messages_reducer(state.messages, updates["messages"])
+    assert isinstance(updates["messages"], ReplaceMessages)
+    assert [(m.type, m.content) for m in new] == [("ai", "template"), ("human", "chhal total?")], new
+    # No backend (e.g. back is down): history is left alone.
+    import nodes.memory
+    nodes.memory.get_conversation_context = lambda limit=20: None
+    try:
+        assert "messages" not in _with_backend(state, {})
+    finally:
+        fake_backend.install()
+
+
+def check_checkpoint_allows_new_classes() -> None:
+    import logging
+    from langchain_core.messages import HumanMessage
+    from evals import fake_backend
+    from graph import app
+    from models.state import ReplaceMessages
+
+    seen: list[str] = []
+
+    class _H(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.append(record.getMessage())
+
+    handler = _H(level=logging.WARNING)
+    logging.getLogger().addHandler(handler)
+    try:
+        fake_backend.start({"has_order": True, "messages": ["template"]})
+        value = {"backend_context": fake_backend.fake_get_conversation_context(), "messages": ReplaceMessages([HumanMessage("x")])}
+        serde = app.checkpointer.serde
+        back = serde.loads_typed(serde.dumps_typed(value))
+    finally:
+        logging.getLogger().removeHandler(handler)
+    assert back["backend_context"] == value["backend_context"], back
+    assert not [m for m in seen if "unregistered" in m], seen
+
+
 def main() -> None:
     checks = (
         check_fake_tools, check_install, check_last_turn_reply, check_outcome_of, check_evaluators,
-        check_llm_failure_counter,
+        check_llm_failure_counter, check_fake_backend, check_reply_mentions, check_hydrate_uses_backend,
+        check_checkpoint_allows_new_classes,
     )
     for check in checks:
         check()
