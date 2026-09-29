@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13tools/v1/tool.proto\x12\x16\x65\x63omassistant.tools.v1\"\x0f\n\rHealthRequest\"\x9d\x01\n\x0eHealthResponse\x12=\n\x06status\x18\x01 \x01(\x0e\x32-.ecomassistant.tools.v1.HealthResponse.Status\"L\n\x06Status\x12\x16\n\x12STATUS_UNSPECIFIED\x10\x00\x12\x12\n\x0eSTATUS_SERVING\x10\x01\x12\x16\n\x12STATUS_NOT_SERVING\x10\x02\"r\n\x12\x45xecuteToolRequest\x12\x11\n\ttool_name\x18\x01 \x01(\t\x12\x15\n\rentities_json\x18\x02 \x01(\t\x12\x32\n\x08identity\x18\x03 \x01(\x0b\x32 .ecomassistant.tools.v1.Identity\"M\n\x08Identity\x12\x13\n\x0bmerchant_id\x18\x01 \x01(\t\x12\x13\n\x0b\x63ustomer_id\x18\x02 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x03 \x01(\t\"\xf5\x01\n\x13\x45xecuteToolResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x44\n\x07outcome\x18\x02 \x01(\x0e\x32\x33.ecomassistant.tools.v1.ExecuteToolResponse.Outcome\x12\x11\n\tdata_json\x18\x03 \x01(\t\x12\r\n\x05\x65rror\x18\x04 \x01(\t\"e\n\x07Outcome\x12\x17\n\x13OUTCOME_UNSPECIFIED\x10\x00\x12\x13\n\x0fOUTCOME_SUCCESS\x10\x01\x12\x15\n\x11OUTCOME_NOT_FOUND\x10\x02\x12\x15\n\x11OUTCOME_AMBIGUOUS\x10\x03\x32\xce\x01\n\x0bToolService\x12W\n\x06Health\x12%.ecomassistant.tools.v1.HealthRequest\x1a&.ecomassistant.tools.v1.HealthResponse\x12\x66\n\x0b\x45xecuteTool\x12*.ecomassistant.tools.v1.ExecuteToolRequest\x1a+.ecomassistant.tools.v1.ExecuteToolResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13tools/v1/tool.proto\x12\x16\x65\x63omassistant.tools.v1\"\x0f\n\rHealthRequest\"\x9d\x01\n\x0eHealthResponse\x12=\n\x06status\x18\x01 \x01(\x0e\x32-.ecomassistant.tools.v1.HealthResponse.Status\"L\n\x06Status\x12\x16\n\x12STATUS_UNSPECIFIED\x10\x00\x12\x12\n\x0eSTATUS_SERVING\x10\x01\x12\x16\n\x12STATUS_NOT_SERVING\x10\x02\"r\n\x12\x45xecuteToolRequest\x12\x11\n\ttool_name\x18\x01 \x01(\t\x12\x15\n\rentities_json\x18\x02 \x01(\t\x12\x32\n\x08identity\x18\x03 \x01(\x0b\x32 .ecomassistant.tools.v1.Identity\"M\n\x08Identity\x12\x13\n\x0bmerchant_id\x18\x01 \x01(\t\x12\x13\n\x0b\x63ustomer_id\x18\x02 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x03 \x01(\t\"\xf5\x01\n\x13\x45xecuteToolResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x44\n\x07outcome\x18\x02 \x01(\x0e\x32\x33.ecomassistant.tools.v1.ExecuteToolResponse.Outcome\x12\x11\n\tdata_json\x18\x03 \x01(\t\x12\r\n\x05\x65rror\x18\x04 \x01(\t\"e\n\x07Outcome\x12\x17\n\x13OUTCOME_UNSPECIFIED\x10\x00\x12\x13\n\x0fOUTCOME_SUCCESS\x10\x01\x12\x15\n\x11OUTCOME_NOT_FOUND\x10\x02\x12\x15\n\x11OUTCOME_AMBIGUOUS\x10\x03\"j\n\x1dGetConversationContextRequest\x12\x32\n\x08identity\x18\x01 \x01(\x0b\x32 .ecomassistant.tools.v1.Identity\x12\x15\n\rmessage_limit\x18\x02 \x01(\x05\"\x93\x02\n\x1eGetConversationContextResponse\x12\x39\n\x08\x63ustomer\x18\x01 \x01(\x0b\x32\'.ecomassistant.tools.v1.CustomerContext\x12;\n\rcurrent_order\x18\x02 \x01(\x0b\x32$.ecomassistant.tools.v1.OrderContext\x12?\n\x0f\x63urrent_product\x18\x03 \x01(\x0b\x32&.ecomassistant.tools.v1.ProductContext\x12\x38\n\x08messages\x18\x04 \x03(\x0b\x32&.ecomassistant.tools.v1.ContextMessage\"R\n\x0f\x43ustomerContext\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t\x12\x0e\n\x06wilaya\x18\x03 \x01(\t\x12\x0f\n\x07\x63ommune\x18\x04 \x01(\t\"\xe4\x01\n\x0cOrderContext\x12\x10\n\x08order_id\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x12\n\nproduct_id\x18\x03 \x01(\t\x12\x14\n\x0cproduct_name\x18\x04 \x01(\t\x12\x10\n\x08quantity\x18\x05 \x01(\x05\x12\x14\n\x0ctotal_amount\x18\x06 \x01(\x01\x12\x15\n\rdelivery_cost\x18\x07 \x01(\x01\x12\x0e\n\x06wilaya\x18\x08 \x01(\t\x12\x0f\n\x07\x63ommune\x18\t \x01(\t\x12\x0f\n\x07\x61\x64\x64ress\x18\n \x01(\t\x12\x17\n\x0ftracking_number\x18\x0b \x01(\t\"i\n\x0eProductContext\x12\x12\n\nproduct_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05price\x18\x03 \x01(\x01\x12\x10\n\x08\x63urrency\x18\x04 \x01(\t\x12\x14\n\x0cstock_status\x18\x05 \x01(\t\"\xcc\x01\n\x0e\x43ontextMessage\x12=\n\x06sender\x18\x01 \x01(\x0e\x32-.ecomassistant.tools.v1.ContextMessage.Sender\x12\x0c\n\x04text\x18\x02 \x01(\t\x12\x12\n\ncreated_at\x18\x03 \x01(\t\"Y\n\x06Sender\x12\x16\n\x12SENDER_UNSPECIFIED\x10\x00\x12\x13\n\x0fSENDER_CUSTOMER\x10\x01\x12\r\n\tSENDER_AI\x10\x02\x12\x13\n\x0fSENDER_MERCHANT\x10\x03\x32\xd8\x02\n\x0bToolService\x12W\n\x06Health\x12%.ecomassistant.tools.v1.HealthRequest\x1a&.ecomassistant.tools.v1.HealthResponse\x12\x66\n\x0b\x45xecuteTool\x12*.ecomassistant.tools.v1.ExecuteToolRequest\x1a+.ecomassistant.tools.v1.ExecuteToolResponse\x12\x87\x01\n\x16GetConversationContext\x12\x35.ecomassistant.tools.v1.GetConversationContextRequest\x1a\x36.ecomassistant.tools.v1.GetConversationContextResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -45,6 +45,20 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_EXECUTETOOLRESPONSE']._serialized_end=665
   _globals['_EXECUTETOOLRESPONSE_OUTCOME']._serialized_start=564
   _globals['_EXECUTETOOLRESPONSE_OUTCOME']._serialized_end=665
-  _globals['_TOOLSERVICE']._serialized_start=668
-  _globals['_TOOLSERVICE']._serialized_end=874
+  _globals['_GETCONVERSATIONCONTEXTREQUEST']._serialized_start=667
+  _globals['_GETCONVERSATIONCONTEXTREQUEST']._serialized_end=773
+  _globals['_GETCONVERSATIONCONTEXTRESPONSE']._serialized_start=776
+  _globals['_GETCONVERSATIONCONTEXTRESPONSE']._serialized_end=1051
+  _globals['_CUSTOMERCONTEXT']._serialized_start=1053
+  _globals['_CUSTOMERCONTEXT']._serialized_end=1135
+  _globals['_ORDERCONTEXT']._serialized_start=1138
+  _globals['_ORDERCONTEXT']._serialized_end=1366
+  _globals['_PRODUCTCONTEXT']._serialized_start=1368
+  _globals['_PRODUCTCONTEXT']._serialized_end=1473
+  _globals['_CONTEXTMESSAGE']._serialized_start=1476
+  _globals['_CONTEXTMESSAGE']._serialized_end=1680
+  _globals['_CONTEXTMESSAGE_SENDER']._serialized_start=1591
+  _globals['_CONTEXTMESSAGE_SENDER']._serialized_end=1680
+  _globals['_TOOLSERVICE']._serialized_start=1683
+  _globals['_TOOLSERVICE']._serialized_end=2027
 # @@protoc_insertion_point(module_scope)

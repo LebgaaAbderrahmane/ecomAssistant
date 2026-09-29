@@ -44,6 +44,11 @@ class ToolServiceStub(object):
                 request_serializer=tools_dot_v1_dot_tool__pb2.ExecuteToolRequest.SerializeToString,
                 response_deserializer=tools_dot_v1_dot_tool__pb2.ExecuteToolResponse.FromString,
                 _registered_method=True)
+        self.GetConversationContext = channel.unary_unary(
+                '/ecomassistant.tools.v1.ToolService/GetConversationContext',
+                request_serializer=tools_dot_v1_dot_tool__pb2.GetConversationContextRequest.SerializeToString,
+                response_deserializer=tools_dot_v1_dot_tool__pb2.GetConversationContextResponse.FromString,
+                _registered_method=True)
 
 
 class ToolServiceServicer(object):
@@ -61,6 +66,13 @@ class ToolServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetConversationContext(self, request, context):
+        """What back knows about a conversation, read at the start of each customer message.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ToolServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -73,6 +85,11 @@ def add_ToolServiceServicer_to_server(servicer, server):
                     servicer.ExecuteTool,
                     request_deserializer=tools_dot_v1_dot_tool__pb2.ExecuteToolRequest.FromString,
                     response_serializer=tools_dot_v1_dot_tool__pb2.ExecuteToolResponse.SerializeToString,
+            ),
+            'GetConversationContext': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetConversationContext,
+                    request_deserializer=tools_dot_v1_dot_tool__pb2.GetConversationContextRequest.FromString,
+                    response_serializer=tools_dot_v1_dot_tool__pb2.GetConversationContextResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -129,6 +146,33 @@ class ToolService(object):
             '/ecomassistant.tools.v1.ToolService/ExecuteTool',
             tools_dot_v1_dot_tool__pb2.ExecuteToolRequest.SerializeToString,
             tools_dot_v1_dot_tool__pb2.ExecuteToolResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetConversationContext(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ecomassistant.tools.v1.ToolService/GetConversationContext',
+            tools_dot_v1_dot_tool__pb2.GetConversationContextRequest.SerializeToString,
+            tools_dot_v1_dot_tool__pb2.GetConversationContextResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -482,7 +482,7 @@ Two services, defined in `contracts/proto/`.
 - **Transport.** Plain text (insecure channels). Safe only because the ports stay on the Compose network.
 - **Codegen.** The Python side uses generated stubs in `ecom_agent/grpc_gen/`, committed to git. The TypeScript side loads the `.proto` files at runtime with `@grpc/proto-loader`, so it has no generated code. See [grpc-ts-loading.md](grpc-ts-loading.md).
 - **Regenerate.** After a `.proto` change run `ecom_agent/scripts/gen_stubs.sh`. Commit the `.proto` and `grpc_gen/` together.
-- **Payloads.** `ProcessMessageRequest` has only four ids. The agent reads the message text from Postgres itself. `ExecuteTool` sends and returns JSON strings.
+- **Payloads.** `ProcessMessageRequest` has only four ids. The agent reads the message text from Postgres itself. `ExecuteTool` sends and returns JSON strings. `GetConversationContext` returns typed fields: the customer, the current order, the current product and the last messages. The agent does not call it yet.
 - **Decisions.** `DECISION_REPLY` and `DECISION_ESCALATE` are used. `DECISION_UNAVAILABLE` exists, and `back` treats it like escalate, but the agent never sends it.
 - **Deadlines.** None are set on either side.
 - **Tool list.** `contracts/src/generated/tools.json` is generated from the backend registry by `back/scripts/export-contract.ts`. `back` has a test that fails if it drifts. The Python tool definitions are a hand copy and no test covers them.

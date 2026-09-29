@@ -131,6 +131,43 @@ and return an OK response with `success=false`,
 `error="Conversation is under human takeover; read tools are suppressed"`.
 **Write tools** still execute.
 
+## ToolService.GetConversationContext
+
+    rpc GetConversationContext(GetConversationContextRequest) returns (GetConversationContextResponse);
+
+What `back` knows about a conversation. The agent is meant to call it at the
+start of each customer message, so it sees data it did not create itself (a
+Shopify order, the confirmation template, merchant messages).
+
+### Request
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `identity` | `Identity` | `conversation_id` is required. `merchant_id` / `customer_id` are checked against the conversation if set. |
+| `message_limit` | `int32` | Recent messages to return. `0` means 20. Capped at 50. |
+
+### Response
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `customer` | `CustomerContext` | `name`, `language`, `wilaya`, `commune`. Empty string when unknown. |
+| `current_order` | `OrderContext` | From `Conversation.currentOrderId`. Unset when there is none. |
+| `current_product` | `ProductContext` | From `Conversation.currentProductId`. Unset when there is none. |
+| `messages` | `repeated ContextMessage` | The last `message_limit` messages, oldest first, with `sender` (`SENDER_CUSTOMER`, `SENDER_AI`, `SENDER_MERCHANT`), `text` and `created_at` (ISO 8601, UTC). It includes the message being processed. |
+
+`SENDER_AI` covers both the agent's replies and back's own templates (the order
+confirmation). Merchant messages sent from the phone are not saved yet, so they
+are missing.
+
+### gRPC status codes
+
+| Code | When |
+| --- | --- |
+| `PERMISSION_DENIED` | Missing or wrong `INTERNAL_API_KEY`. |
+| `INVALID_ARGUMENT` | Empty `conversation_id`, or `merchant_id` / `customer_id` does not match the conversation. |
+| `NOT_FOUND` | The conversation does not exist. |
+| `INTERNAL` | Unexpected error while reading. |
+
 ## AgentService.ProcessMessage
 
     rpc ProcessMessage(ProcessMessageRequest) returns (ProcessMessageResponse);

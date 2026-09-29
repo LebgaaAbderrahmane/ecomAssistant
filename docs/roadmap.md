@@ -34,7 +34,10 @@ How the system works is in [architecture.md](architecture.md).
 - [ ] **Tell the customer about the human.** When the agent hands over, it says "a person will reply soon".
 - [ ] **Detect an angry customer or a request for a human.** Hand over at once.
 - [ ] **Remember customers for a long time.** Keep name, address and language, even after a restart.
-- [ ] **Load what the backend knows at the start of each message.** The current order (for example from Shopify), the current product, and the saved wilaya and commune. Today the agent only knows what it did itself in this chat, so it can say "you have no order" or ask again for an address the backend already has.
+- [ ] **Load what the backend knows at the start of each message.** The last 20 chat messages from everyone (customer, agent, the confirmation template, the merchant), the current order, the current product, and the customer (name, language, saved wilaya and commune). Through a new gRPC call on `ToolService`. Today the agent only knows what it did itself in this chat, so it can ask "which product?" right after the shop sent the order.
+- [ ] **Keep the agent's working notes after a restart.** Save the agent's own state (an order in progress, the fields already collected) in Postgres with `PostgresSaver` instead of RAM.
+- [ ] **Lookup tools for older data.** `getOrderHistory` for past orders ("same as last time") and `searchChatHistory` for messages older than the last 20. Add them when a test or a real chat shows the need.
+- [ ] **Check the quality of replies.** An LLM-judge evaluator that checks the reply is in the customer's language and says clearly what happened (for example "cancelled").
 - [ ] **Suggest related products after a confirmation.** Offer one or two products that fit the order.
 
 ### Later
@@ -71,6 +74,7 @@ How the system works is in [architecture.md](architecture.md).
 
 - [ ] **Conversations page.** See all chats with the full message history.
 - [ ] **Take over from the dashboard.** The merchant writes a reply that goes to WhatsApp, then hands the chat back to the agent.
+- [ ] **Save messages the merchant sends from the phone.** Store them in `Message` with `sender: MERCHANT`, so the agent and the dashboard see them.
 - [ ] **Follow-up scheduler.** Send the reminders at the times the merchant chose. Stop when the customer answers. Mark the order failed after the last one.
 - [ ] **Ship when the order is confirmed.** Create the parcel at the carrier and send the tracking number to the customer.
 - [ ] **Delivery price table.** The merchant edits the price for each of the 58 wilayas. A default table comes with a new account.
