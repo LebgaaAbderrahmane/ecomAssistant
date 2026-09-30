@@ -28,8 +28,9 @@ export const sendOrderConfirmation = async (orderId: string) => {
   );
 
   // Persist each confirmation message as a separate DB row
+  const messageIds: string[] = [];
   for (const text of messages) {
-    await prisma.message.create({
+    const row = await prisma.message.create({
       data: {
         conversationId: conversation.id,
         direction: 'OUT',
@@ -39,7 +40,12 @@ export const sendOrderConfirmation = async (orderId: string) => {
         content: text,
       },
     });
+    messageIds.push(row.id);
   }
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: { lastMessageAt: new Date() },
+  });
 
   // Send sequentially via WhatsApp with typing indicators
   try {
@@ -48,11 +54,19 @@ export const sendOrderConfirmation = async (orderId: string) => {
     });
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
       if (order.customer.phone) {
-        await openwaService.sendMessagesSequentially(
+        const sentIds = await openwaService.sendMessagesSequentially(
           waSession.sessionId,
           order.customer.phone,
           messages,
         );
+        // Record the WhatsApp ids so the `message.sent` webhook recognizes these
+        // rows as our own sends instead of storing them again as merchant messages.
+        for (let i = 0; i < messageIds.length && i < sentIds.length; i++) {
+          await prisma.message.update({
+            where: { id: messageIds[i] },
+            data: { whatsappMessageId: sentIds[i] },
+          });
+        }
         console.log(`[orders] Confirmation sent via WhatsApp for order ${orderId} (${messages.length} messages)`);
       } else {
         console.log(`[orders] No phone for customer ${order.customerId}, skipping WhatsApp send`);

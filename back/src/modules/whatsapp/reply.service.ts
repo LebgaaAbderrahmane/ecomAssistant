@@ -16,21 +16,35 @@ export interface ReplyServiceDeps {
       text: string;
       role: string;
     };
+  }) => Promise<{ id: string } | undefined>;
+  messageUpdate: (args: {
+    where: { id: string };
+    data: { whatsappMessageId: string };
+  }) => Promise<unknown>;
+  conversationUpdate: (args: {
+    where: { id: string };
+    data: { lastMessageAt: Date };
   }) => Promise<unknown>;
   whatsAppSessionFindUnique: (
     args: { where: { merchantId: string } }
   ) => Promise<{ sessionId: string; status: string } | null>;
-  sendMessagesSequentially: (sessionId: string, phone: string, texts: string[]) => Promise<void>;
+  sendMessagesSequentially: (
+    sessionId: string,
+    phone: string,
+    texts: string[],
+  ) => Promise<string[]>;
 }
 
 const defaultDeps: ReplyServiceDeps = {
   conversationFindUnique: (args) => prisma.conversation.findUnique(args as never),
   customerFindUnique: (args) => prisma.customer.findUnique(args as never),
   messageCreate: (args) => prisma.message.create(args as never),
+  messageUpdate: (args) => prisma.message.update(args as never),
+  conversationUpdate: (args) => prisma.conversation.update(args as never),
   whatsAppSessionFindUnique: (args) => prisma.whatsAppSession.findUnique(args as never),
   sendMessagesSequentially: async (sessionId, phone, texts) => {
     const { openwaService } = await import('./whatsapp.service');
-    await openwaService.sendMessagesSequentially(sessionId, phone, texts);
+    return openwaService.sendMessagesSequentially(sessionId, phone, texts);
   },
 };
 
@@ -80,8 +94,9 @@ export const deliverAssistantReply = async (
   const customer = await deps.customerFindUnique({ where: { id: conversation.customerId } });
 
   // Persist each reply message as a separate DB row
+  const messageIds: string[] = [];
   for (const t of texts) {
-    await deps.messageCreate({
+    const row = await deps.messageCreate({
       data: {
         conversationId,
         direction: 'OUT',
@@ -91,6 +106,18 @@ export const deliverAssistantReply = async (
         role: 'assistant',
       },
     });
+    if (row) messageIds.push(row.id);
+  }
+  if (messageIds.length > 0) {
+    // Bookkeeping only — a failed bump must not cost us the reply itself.
+    try {
+      await deps.conversationUpdate({
+        where: { id: conversationId },
+        data: { lastMessageAt: new Date() },
+      });
+    } catch (err) {
+      console.error('[reply] Failed to bump lastMessageAt:', err);
+    }
   }
 
   // ─── Send reply via WhatsApp (sequential with typing indicators) ─────
@@ -101,11 +128,19 @@ export const deliverAssistantReply = async (
     if (waSession && (waSession.status === 'connected' || waSession.status === 'ready')) {
       const target = resolveDeliveryTarget(customer);
       if (target) {
-        await deps.sendMessagesSequentially(
+        const sentIds = await deps.sendMessagesSequentially(
           waSession.sessionId,
           target,
           texts,
         );
+        // The ids OpenWA echoes back let the `message.sent` webhook tell our own
+        // sends apart from messages the merchant typed on the linked phone.
+        for (let i = 0; i < messageIds.length && i < sentIds.length; i++) {
+          await deps.messageUpdate({
+            where: { id: messageIds[i] },
+            data: { whatsappMessageId: sentIds[i] },
+          });
+        }
         console.log(`[reply] Sent via WhatsApp to ${target} (${texts.length} messages)`);
       } else {
         console.log(`[reply] No phone found for customer ${conversation.customerId}, reply not sent`);

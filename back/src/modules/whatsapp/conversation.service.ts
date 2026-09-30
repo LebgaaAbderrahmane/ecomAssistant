@@ -44,6 +44,7 @@ export const conversationService = {
       messageType?: "text" | "voice" | "image";
       filePath?: string;
       createdAt?: Date;
+      whatsappMessageId?: string;
     } = {},
   ) => {
     const now = opts.createdAt ?? new Date();
@@ -62,6 +63,7 @@ export const conversationService = {
           rawPayload: (opts.rawPayload as Prisma.InputJsonValue) ?? undefined,
           messageType: opts.messageType ?? "text",
           filePath: opts.filePath ?? null,
+          whatsappMessageId: opts.whatsappMessageId ?? null,
           createdAt: now,
         },
       }),

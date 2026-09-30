@@ -145,8 +145,9 @@ export const openwaService = {
     sessionId: string,
     to: string,
     messages: string[],
-  ): Promise<void> => {
+  ): Promise<string[]> => {
     let typingFailed = false;
+    const messageIds: string[] = [];
 
     for (let i = 0; i < messages.length; i++) {
       const text = messages[i];
@@ -167,7 +168,8 @@ export const openwaService = {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
-      await openwaService.sendText(sessionId, to, text);
+      const { messageId } = await openwaService.sendText(sessionId, to, text);
+      messageIds.push(messageId);
 
       // Clear typing indicator
       if (!typingFailed) {
@@ -183,6 +185,8 @@ export const openwaService = {
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
+
+    return messageIds;
   },
 
   registerWebhook: async (
