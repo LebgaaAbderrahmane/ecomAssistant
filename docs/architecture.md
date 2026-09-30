@@ -222,7 +222,7 @@ erDiagram
 | `Customer` | A buyer. Unique on `(merchantId, phone)`. Has `waJid`, `language`, `blocked`, wilaya, commune. |
 | `Order` | A COD order. Product snapshot, quantity, totals, delivery cost, status, tracking number. |
 | `Conversation` | One per `(merchantId, customerId)`. Holds `state`, `currentOrderId`, `currentProductId`, `takenOverByHuman`, `escalatedAt`, `memory`. |
-| `Message` | One WhatsApp message. Direction `IN` or `OUT`, sender `CUSTOMER`, `AI` or `MERCHANT`, text, media fields. |
+| `Message` | One WhatsApp message. Direction `IN` or `OUT`, sender `CUSTOMER`, `AI` or `MERCHANT`, text, media fields, `whatsappMessageId`. |
 | `WilayaDeliveryCost` | Delivery price per wilaya per merchant. |
 | `WhatsAppSession` | One OpenWA session per merchant: session id, status, phone number. |
 | `DeliveryProviderConfig` | The merchant's carrier and credentials. One per merchant. |
@@ -235,7 +235,7 @@ State enums:
 - `ConversationState`: `IDLE`, `GREETING`, `PRODUCT_DISCOVERY`, `PRODUCT_SELECTED`, `WAITING_CONFIRMATION`, `CONFIRMED`, `SHIPPING`, `FINISHED`, `CANCELLED`.
 - `ConversationStatus`: `ACTIVE`, `RESOLVED`.
 
-Several columns exist but nothing writes or reads them (for example `Message.intent`, `Message.whatsappMessageId`, `Conversation.followUpStep`, `Conversation.memory`, most of `AgentConfig`). See the report.
+Several columns exist but nothing writes or reads them (for example `Message.intent`, `Conversation.followUpStep`, `Conversation.memory`, most of `AgentConfig`). See the report.
 Migrations are in `back/prisma/migrations/`. The column `Customer.waJid` has no migration. `db push` hides this.
 
 ### 4.9 The tool layer
@@ -346,22 +346,37 @@ Compose sets `QUEUE_ENABLED=false`, `ALLOW_DEV_API_KEY=true`, `SSRF_ALLOWED_HOST
    - LID sender: find by `waJid`, or create a customer with a placeholder phone.
    - Unknown phone: ignore the message. A customer must exist first, from an order.
 5. Save media to disk. Map the WhatsApp type to `text`, `voice` or `image`.
-6. Create the `Message` row (`IN`, `CUSTOMER`) and update `lastMessageAt`.
+6. Create the `Message` row (`IN`, `CUSTOMER`) with the WhatsApp id in `whatsappMessageId`, and update `lastMessageAt`. A redelivered webhook (id already stored) is skipped.
 7. For voice, transcribe. For images, caption. Update the row.
 8. Enqueue a `message` job.
 
 Not handled: groups and messages from the merchant's own number are not filtered out. Video, documents, locations and reactions become a placeholder or empty text.
-There is no deduplication. OpenWA's idempotency key and message id are ignored.
 
 ### 5.4 Outbound
 
 `modules/whatsapp/reply.service.ts::deliverAssistantReply`:
 1. If a human owns the conversation, stop. Nothing is saved or sent.
-2. Save each reply as an `OUT`, `AI` message row.
+2. Save each reply as an `OUT`, `AI` message row and bump `lastMessageAt`.
 3. If the merchant's session is `connected` or `ready`, send the texts one by one with a typing indicator (`whatsapp.service.ts::sendMessagesSequentially`).
-4. Any send error is logged and swallowed. The row already says "sent".
+4. Write the WhatsApp id OpenWA returned for each send back onto the row created in step 2.
+5. Any send error is logged and swallowed. The row already says "sent".
 
 The target is the real phone number (`<phone>@c.us`). Only a customer with a placeholder phone falls back to the LID id.
+Order confirmations and delivery notices follow the same rule: the row is created first, then the WhatsApp id is attached after the send (`modules/orders/orderConfirmation.service.ts`, `whatsapp.controller.ts::sendOrderNotification` and `::sendDeliveryStatusNotification`).
+
+### 5.5 What the merchant types on the phone
+
+`message.sent` covers every outgoing message of the linked account, including the sends above, so it cannot be stored blindly.
+`modules/whatsapp/merchantMessage.service.ts::persistMerchantMessage`:
+1. If `data.id` is already in `Message.whatsappMessageId`, it is our own send: stop, answered with `duplicate`.
+2. Find the conversation by phone, then by LID jid.
+3. Unknown recipient: upsert the customer on `(merchantId, phone)` (keeping the LID jid and push name) and create the conversation.
+4. If the id is unknown, look for an own outgoing row (`direction OUT`, `sender != MERCHANT`) with the same content in that conversation, created in the last 2 minutes. A hit is still our own send (the id the send API returned and the id on the webhook can disagree) and is answered with `duplicate`. The window is measured against our clock, not the webhook timestamp, and MERCHANT rows are excluded so a merchant repeating their own text is stored.
+5. Store the message as `OUT`, `MERCHANT` with the WhatsApp id, and update `lastMessageAt`.
+
+A logged out session produces no `message.sent` at all: with no live Baileys connection nothing the merchant types on the phone is observed, and no row is created. Re-pairing the session is the only fix for that case.
+
+The merchant's reply does not change the agent: it is not enqueued and it does not set `takenOverByHuman`. Only an escalation or a hold does that.
 
 ---
 
@@ -529,7 +544,9 @@ sequenceDiagram
         alt REPLY
             W->>DB: save Message OUT
             W->>O: send text
+            O->>DB: attach whatsappMessageId
             O->>C: reply
+            O-->>B: message.sent, skipped as duplicate
         else ESCALATE
             W->>DB: takenOverByHuman, notification
         end

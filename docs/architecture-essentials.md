@@ -65,6 +65,13 @@ sequenceDiagram
 6. The merchant ships the order from the dashboard (`POST /delivery/ship-order/:orderId`).
 7. The carrier sends a webhook. `back` updates the status and tells the customer.
 
+## 4b. When the merchant answers on the phone
+
+1. `openwa` sends `message.sent` for every outgoing message of the linked account, ours included.
+2. `back` skips it when the WhatsApp id is already stored on a row, or when an own row with the same content is less than two minutes old, because that is a message `back` sent itself.
+3. Otherwise it is a message the merchant typed on the phone: `back` saves it as a `MERCHANT` row on the conversation.
+4. The merchant's message never reaches the agent and never changes the takeover state. A logged out session sends no `message.sent` at all. Details: `docs/architecture.md` section 5.5.
+
 ## 5. Repo map
 
 ```text

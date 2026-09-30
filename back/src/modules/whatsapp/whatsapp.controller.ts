@@ -7,6 +7,7 @@ import { redis } from "../../config";
 import { config } from "../../config";
 import { openwaService } from "./whatsapp.service";
 import { conversationService } from "./conversation.service";
+import { persistMerchantMessage } from "./merchantMessage.service";
 import { notificationService } from "./notification.service";
 import { AuthenticatedRequest } from "../../middlwares/auth.middlware";
 import { enqueueMessageJob } from "../../queues/message.queue";
@@ -127,6 +128,21 @@ export async function handleWebhook(
           return res.status(200).json({ status: "ignored" });
         }
 
+        // A redelivered webhook must not produce a second row (and a second agent
+        // run), so an id we already stored means this message is known to us.
+        // Checked before any media is written to disk.
+        const waMessageId = (data.id as string) || null;
+        if (waMessageId) {
+          const known = await prisma.message.findUnique({
+            where: { whatsappMessageId: waMessageId },
+            select: { id: true },
+          });
+          if (known) {
+            console.log(`[WhatsApp] Duplicate webhook for message id=${waMessageId}, ignoring`);
+            return res.status(200).json({ status: "duplicate" });
+          }
+        }
+
         let conversation: Awaited<ReturnType<typeof conversationService.findOrCreateByCustomer>> | null =
           await conversationService.getByPhone(
             waSession.merchantId,
@@ -238,6 +254,7 @@ export async function handleWebhook(
           messageType,
           filePath,
           createdAt,
+          whatsappMessageId: waMessageId ?? undefined,
         });
 
         console.log(`[WhatsApp] Message saved to conversation ${conversation.id} (type=${messageType})`);
@@ -358,8 +375,16 @@ export async function handleWebhook(
       }
 
       case "message.sent": {
-        const phone = extractPhone(data.to as string);
-        console.log(`[WhatsApp] Message sent by merchant to=${phone}`);
+        const to = (data.to as string) || "";
+        const phone = extractPhone(to);
+        const waMessageId = (data.id as string) || null;
+        const body = (data.body as string) || "";
+        const msgType = mapWaType((data.type as string) || "text");
+        const timestamp = data.timestamp as number | undefined;
+
+        console.log(
+          `[WhatsApp] Message sent to=${phone} id=${waMessageId} type=${msgType} body="${body.substring(0, 80)}"`,
+        );
 
         const waSession = await prisma.whatsAppSession.findUnique({
           where: { sessionId },
@@ -369,18 +394,21 @@ export async function handleWebhook(
           return res.status(200).json({ status: "ignored" });
         }
 
-        const conversation = await conversationService.getByPhone(
-          waSession.merchantId,
-          phone,
+        const result = await persistMerchantMessage(
+          {
+            merchantId: waSession.merchantId,
+            to,
+            phone,
+            contentType: msgType,
+            body,
+            waMessageId,
+            pushName: (data.contact as { pushName?: string } | undefined)?.pushName,
+            createdAt: timestamp ? new Date(timestamp * 1000) : new Date(),
+          },
+          data,
         );
-        if (!conversation) {
-          console.log(`[WhatsApp] message.sent: no conversation for phone=${phone}, ignoring`);
-          return res.status(200).json({ status: "ignored" });
-        }
 
-        // The merchant replied manually — whatever the AI had queued to say is
-        // now stale. Nothing to cancel: the (legacy) deferred layer-2 queue is gone.
-        return res.status(200).json({ status: "ok" });
+        return res.status(200).json({ status: result });
       }
 
       default:
@@ -805,8 +833,8 @@ export async function sendOrderNotification(order: {
     .replace(/\{wilaya\}/g, wilaya);
 
   try {
-    await openwaService.sendText(waSession.sessionId, customerPhone, text);
-    await conversationService.addMessage(conversation.id, "agent", text);
+    const { messageId } = await openwaService.sendText(waSession.sessionId, customerPhone, text);
+    await conversationService.addMessage(conversation.id, "agent", text, { whatsappMessageId: messageId });
     console.log(
       `[WhatsApp] Order confirmation sent for order ${platformOrderId}`,
     );
@@ -912,8 +940,8 @@ export async function sendDeliveryStatusNotification(order: {
     .replace(/\{wilaya\}/g, wilaya);
 
   try {
-    await openwaService.sendText(waSession.sessionId, customerPhone, text);
-    await conversationService.addMessage(conversation.id, "agent", text);
+    const { messageId } = await openwaService.sendText(waSession.sessionId, customerPhone, text);
+    await conversationService.addMessage(conversation.id, "agent", text, { whatsappMessageId: messageId });
     console.log(
       `[WhatsApp] Delivery status "${status}" sent for order ${platformOrderId}`,
     );
