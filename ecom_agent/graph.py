@@ -68,15 +68,17 @@ def _build_graph() -> StateGraph:
     return graph
 
 
-def _compile():
-    store = InMemoryStore()
+# Our own classes saved in the checkpoint. LangGraph will block any class not listed here.
+SERDE = JsonPlusSerializer(allowed_msgpack_modules=[ConversationMemory, FlowState, BackendContext, ReplaceMessages])
+
+
+def build_app(store=None):
+    """Compile the graph. The store keeps the notes across messages. Without one they stay in RAM (evals, REPL)."""
     g = _build_graph()
-    # Our own classes saved in the checkpoint. LangGraph will block any class not listed here.
-    serde = JsonPlusSerializer(allowed_msgpack_modules=[ConversationMemory, FlowState, BackendContext, ReplaceMessages])
-    return g.compile(checkpointer=InMemorySaver(serde=serde), store=store)
+    return g.compile(checkpointer=InMemorySaver(serde=SERDE), store=store or InMemoryStore())
 
 
-app = _compile()
+app = build_app()
 
 
 def to_serializable(value: Any) -> Any:

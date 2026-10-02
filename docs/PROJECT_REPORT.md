@@ -4,7 +4,19 @@
 - **Branch / commit:** `feat/agent` at `94f6f2e` (merge of PR #28)
 - **Method:** read-only review of every directory (`ecom_agent/`, `back/`, `front/`, `shared/`, `contracts/`, `OpenWA/`, `landing/`, root infra and docs). The audit itself changed no code.
 - **Features are not listed here.** The feature plan is in [roadmap.md](roadmap.md). This report only lists problems, risks and fixes.
-- **How to read this:** two tracks. Track 1 is the Python agent. Track 2 is everything else. Each track ends with a priority list. Line numbers refer to the current working tree.
+- **How to read this:** two tracks. Track 1 is the Python agent. Track 2 is everything else. Each track ends with a priority list. Line numbers refer to the audit commit and can be off now.
+- **Update 2026-09-30:** Track 1 was checked again against `feat/agent` (`3fde97f`). Fixed items were removed and are listed in the next section. Track 2 was not touched since the audit: `back`, `front`, `OpenWA` and the infra files are unchanged, except the new gRPC call and the order address.
+
+## Fixed since the audit
+
+- The agent asked the customer for an order id. `orderId` is optional now and `back` uses the current order (`b1b3a27`).
+- The agent asked for a street address and threw it away. `createOrder` now takes `address` and saves it on the order (`fe87750`).
+- `check_llm` answered a buy request itself and lost the quantity. Any action now goes to a tool (`1e26315`).
+- The chat history came only from RAM. `hydrate` now loads the last 20 messages from the database, with the merchant's messages (`3fde97f`).
+- The agent did not know the current order, the current product or the customer. `GetConversationContext` gives them at each message (`1ef58f8`, `3fde97f`).
+- The agent's notes (flows, drafts) were lost on restart. `PostgresStore` now saves them, one row per conversation, in the Postgres schema `agent`. The tables are not in `public`, because `prisma db push` drops unknown tables there (checked).
+- An escalation turn sent the old reply again (`8e3211e`).
+- No evals. There are 17 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
 
 ## Read this first — the seven things that matter most
 
@@ -15,7 +27,7 @@
 | 3 | Software | OpenWA admin API on `0.0.0.0:2785` with the public `dev-admin-key`; Postgres, Redis (no password) and Prisma Studio also published (`docker-compose.yml`). | Full WhatsApp session and database exposure on any shared network or VPS. |
 | 4 | Software | Hardcoded `ENCRYPTION_KEY` and plaintext delivery API keys (`back/src/lib/crypto.ts:5`, `delivery.service.ts:19-23`). | Shopify tokens and carrier credentials are effectively plaintext. |
 | 5 | Software | `/uploads` is public and a real customer photo is committed to git. | Customer PII exposure, in prod and in history. |
-| 6 | Agent | Memory lives only in RAM (`graph.py::_compile`), no deadline, no idempotency, no per-conversation lock. | Every restart forgets every customer; retries can duplicate orders. |
+| 6 | Agent | No deadline, no idempotency, no per-conversation lock. | Retries can duplicate orders. Two quick messages race on the same conversation. |
 | 7 | Both | No conversation inbox / takeover, no follow-ups, no agent-owned confirmation step. | The MVP promise in the PRD (§4.4, §4.8, §7) is not implemented on either side. |
 
 ---
@@ -30,29 +42,26 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 - `server.py::ProcessMessage` gets `message_id` + ids from back, reads the row itself with `db.py::get_message`, and runs the LangGraph `app` from `graph.py`.
 - Graph per turn: `hydrate` → `draft_gate` → `check_llm` → `query_tool` → `flow_resolver` → `extract_tool_args` → (`ask_reply` | `calling_tool`) → `reply` → `persist`.
 - Every tool in `tools/registry.py` is a thin wrapper around `tools/grpc.py::call_tool`, which calls back's `ToolService.ExecuteTool`. The agent has no business logic of its own. Good boundary.
-- Memory = `ConversationMemory` (flows, address) stored in a LangGraph `InMemoryStore`; chat history in `InMemorySaver`. Both live only in RAM.
+- Memory = `ConversationMemory` (flows, address), saved in Postgres by a LangGraph `PostgresStore` (`notes_store.py`, schema `agent`). The chat comes from `back`. The graph also keeps a RAM `InMemorySaver`.
 - Two LLM providers with failover (`llm/client.py`): Groq `openai/gpt-oss-120b` first, Gemini 2.5 Flash second. Structured output is done by asking for JSON in the prompt and parsing it by hand (`llm/structured.py::call_json`).
 
 ### 1.1 What is missing or weak
 
 #### A. Memory and state do not survive
 
-- `graph.py::_compile` uses `InMemorySaver()` and `InMemoryStore()`. A container restart wipes every conversation. Two agent replicas would never share state. Memory also grows forever (no eviction), so RAM climbs until the container dies.
+- `graph.py::build_app` still uses `InMemorySaver()`. It keeps every step of every conversation in RAM and never deletes, so RAM climbs until the container dies. Only the fallback when `back` does not answer needs it (the RAM chat history). Consider removing it.
 - The Prisma column `Conversation.memory` (Json) and `Conversation.state` exist for exactly this, but the agent never writes them. The dashboard cannot see what the agent knows.
-- `Flow.order` (`models/domain.py::OrderContext`) is never filled. `nodes/calling.py:135` only captures results of `PRODUCT_TOOLS`, so the `orderId` that `createOrder` returns is dropped by the agent. Back already covers this: `back/src/modules/ai/toolContext.ts:58-65` fills `orderId` from `Conversation.currentOrderId` when it is missing. The real problem is that `contracts/src/generated/tools.json` and `ecom_agent/tools/registry.py` mark `orderId` as required, so the agent may ask the customer for an id.
+- `Flow.order` (`models/domain.py::OrderContext`) is never filled. `nodes/calling.py` only captures results of `PRODUCT_TOOLS`, so the order that `createOrder` returns is dropped by the agent. This is minor now: `back` fills `orderId` from `Conversation.currentOrderId` (`toolContext.ts`) and `orderId` is optional.
 - `FlowState` never changes after creation. `SHIPPING`, `ORDER_TRACKING`, `RETURN`, `COMPLETED`, `CANCELLED` are dead enum values.
-- `nodes/check.py:42` sends the whole message history every turn (`[SystemMessage, *state.messages]`). No trimming, no summary. Cost grows per turn and long chats will overflow the context window.
-- Memory is keyed per conversation only (`memory.py::_store_config`). A returning customer's `wilaya`/`commune` already sit in the `Customer` table, but the agent never reads them. `GlobalInformation.customer_name` is never set anywhere.
-- `memory.py:32` skips the store read when `flows` is non-empty. Harmless with in-memory stores, wrong once a real checkpointer is used.
+- `nodes/check.py` sends the whole message history every turn (`[SystemMessage, *state.messages]`). When `back` answers, `hydrate` keeps it at 20 messages. When `back` does not answer, the RAM history is kept and it has no limit.
+- The customer's `wilaya`, `commune`, name and language come from `back` (`BackendContext.customer`), but only as text for the LLM. They are not copied into `GlobalInformation`, which `flows.py::prereqs_for` reads. `GlobalInformation.customer_name` is never set.
 
 #### B. The core PRD use case (COD confirmation) is not the core flow
 
 - PRD §7.1 is outbound: order webhook → confirmation message → customer answers. The first message is sent by `back` (Shopify path: `sendOrderNotification`; simulated orders: `orderConfirmation.service.ts` via the `order-confirmation` queue), not by the agent. The agent is inbound-only: `AgentService` has one RPC, `ProcessMessage`. There is no follow-up at T+2h/24h/48h and no use of `AgentConfig.followUpDelays` / `maxFollowUps`. The two confirmation paths also differ: only the simulated path sets the conversation state to `WAITING_CONFIRMATION`.
 - `createOrder` needs a `productId` (`tools/registry.py:85`). `nodes/draft.py::extract_tool_args` asks the LLM to pull it from the customer text. Customers never say IDs. The LLM can only fill it when a product is already selected in the flow, because `selected_product` is passed into the prompt. When `flow_resolver` returns `CREATE` for an order flow, `product_discovery` is `None` (`nodes/flow.py:39-41`), so nothing supplies the id and `ask_reply` asks the customer for "productId".
-- `flows.py::prereqs_for` demands `address`, but `createOrder` has no `address` argument. The agent asks for a street address and then throws it away.
 - `ToolCallDraft.attempts` is incremented (`nodes/draft.py:137`) but never checked. The agent can ask for the same missing field forever. `AgentConfig.escalationThreshold` is unused.
 - The deterministic "buy fast-path" (`nodes/query.py:47-58`, used at `:69`) forces `createOrder` with empty args based on English words only.
-- `check_llm` can answer a buy request directly (`needs_tool=false`) and ask for the address itself. No draft is started, so what the customer said in that turn (for example the quantity) is lost, and the agent asks for it again later. Seen in a real Groq run: "I want to buy the Nike Air, 1 piece" → address question → "How many units?".
 
 #### C. Language: Derdja / French / Arabic is not handled
 
@@ -100,7 +109,7 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 - `main.py` does `from __main__ import main` — circular, fails when run directly. `__main__.py` is a dev REPL and pulls `rich` into the production image.
 - `requirements.txt`: `pandas` and `langchain-openai` are never imported; `rich` and `langsmith` are unpinned. `README.md` says `ecom_agent/pyproject.toml` exists. It does not.
 - `tools/registry.py` is a hand copy of `contracts/src/generated/tools.json`, and `TOOL_DESCRIPTIONS` in `tools/__init__.py` is a third copy. Nothing checks they match.
-- No tests, no lint, no type check, no CI for `ecom_agent/`.
+- No unit tests, no lint, no type check, no CI for `ecom_agent/`. Only the evals in `ecom_agent/evals/`, which run by hand.
 - `logging.basicConfig` is called twice with different formats (`config.py:9`, `server.py:14`); the second is a no-op.
 - `graph.py::save_graph_png` and `log_state` are dev helpers shipped in the production module. `log_state` is never called.
 - Six `ecom_agent/**/__pycache__/*.cpython-314.pyc` files are committed, and `ecom_agent/.gitignore` only lists `.env`. Any local run changes or adds cache files in `git status`.
@@ -129,16 +138,16 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 3. Stop logging message text in `server.py`; stop logging the agent context line.
 4. Set `timeout` and `max_retries` on both chat models in `llm/client.py`; add a deadline (about 30 s) in `back/src/grpc/agent.client.ts`.
 5. Cap `text` length and trim history to the last N messages before `check_llm`.
-6. Remove `address` from `flows.py::prereqs_for` (or add it to `createOrder`).
-7. Mark `orderId` optional in `tools.json` and `ecom_agent/tools/registry.py` for the four order tools (back fills it from the conversation). Also capture `createOrder` output into `Flow.order`.
-8. Delete `tool_client.py`, `main.py`; drop `pandas` and `langchain-openai`; pin `rich` and `langsmith`.
-9. Fix the non-draft path in `calling_tool`: bind only the selected tool; never append a `ToolMessage` without a matching tool call.
-10. Add `LANGSMITH_TRACING=true` to `.env.example` if tracing is wanted.
+6. Capture the `createOrder` output into `Flow.order`.
+7. Delete `tool_client.py`, `main.py`; drop `pandas` and `langchain-openai`; pin `rich` and `langsmith`.
+8. Fix the non-draft path in `calling_tool`: bind only the selected tool; never append a `ToolMessage` without a matching tool call.
+9. Add `LANGSMITH_TRACING=true` to `.env.example` if tracing is wanted.
+10. Add `__pycache__/`, `*.pyc` and `.venv/` to `.gitignore` (`ecom_agent/.gitignore` has only `.env`) and remove the tracked `.pyc` files.
 
 **Bigger work**
 
-1. Persistent checkpointer and store (Postgres) and `Conversation.memory` sync.
-2. Router consolidation: merge `draft_gate`, `check_llm` and `query_tool` into one structured call and target three LLM calls or fewer per turn. Add an evaluation suite of test conversations in French, Arabic and Derdja with a fake `ToolService`.
+1. Remove the RAM `InMemorySaver`, and sync `Conversation.memory` (through `back`) so the dashboard can see what the agent knows.
+2. Router consolidation: merge `draft_gate`, `check_llm` and `query_tool` into one structured call and target three LLM calls or fewer per turn. Use the evals to check nothing gets worse. Add Arabic-script cases and an LLM-judge for language and currency.
 3. Idempotency on `message_id`, per-conversation serialization, graceful shutdown, readiness probe.
 4. Generate `tools/registry.py` from `contracts/src/generated/tools.json` in `scripts/gen_stubs.sh`.
 5. Tests, lint, type-check and CI for `ecom_agent/`. Per-turn metrics (LLM calls, tokens, provider, milliseconds, decision).

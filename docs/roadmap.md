@@ -23,25 +23,27 @@ How the system works is in [architecture.md](architecture.md).
 - [x] **Hand over to a human.** The agent escalates when it cannot help.
 - [x] **Two AI providers.** If Groq fails, the agent uses Gemini.
 - [x] **Remember the chat.** The agent remembers what was said while the agent is running.
-- [x] **Agent evals.** 10 test conversations with a fake shop, scored by code checks in LangSmith.
+- [x] **Agent evals.** 17 test conversations with a fake shop, scored by code checks in LangSmith.
+- [x] **Confirm an order from the customer's reply.** The customer says "oui" and the agent confirms the current order. It never asks for an id. (Tested in French. Other languages are in the language item below.)
+- [x] **Keep the agent's working notes after a restart.** The agent's own state (an order in progress, the fields already collected) is saved in Postgres with `PostgresStore`, one row per conversation.
+- [x] **Load what the backend knows at the start of each message.** The agent reads the last 20 chat messages, the current order, the current product and the customer from `back` (`GetConversationContext`).
 
 ### Next
 
 - [ ] **Speak the customer's language.** Detect Derdja, French or Arabic and answer in the same one.
 - [ ] **Use the merchant's settings.** Use the shop name, the tone (formal or friendly) and the default language.
-- [ ] **Confirm an order from the customer's reply.** The customer says yes in any language. The agent confirms the right order without asking for an id.
 - [ ] **Follow-up messages.** If the customer does not answer, the agent writes a reminder in the customer's language. The scheduler that sends them (2h, 24h, 48h) is in the Software list.
 - [ ] **Tell the customer about the human.** When the agent hands over, it says "a person will reply soon".
 - [ ] **Detect an angry customer or a request for a human.** Hand over at once.
-- [ ] **Remember customers for a long time.** Keep name, address and language, even after a restart.
-- [ ] **Load what the backend knows at the start of each message.** The last 20 chat messages from everyone (customer, agent, the confirmation template, the merchant), the current order, the current product, and the customer (name, language, saved wilaya and commune). Through a new gRPC call on `ToolService`. Today the agent only knows what it did itself in this chat, so it can ask "which product?" right after the shop sent the order.
-- [ ] **Keep the agent's working notes after a restart.** Save the agent's own state (an order in progress, the fields already collected) in Postgres with `PostgresSaver` instead of RAM.
+- [ ] **Remember customers for a long time.** Keep name, address and language, even after a restart. Partly done: `back` gives the name, language, wilaya and commune at each message. The agent's own notes (for example the address) now survive a restart. It still does not use the saved wilaya and commune (see "Don't ask what we already know").
+- [ ] **Don't ask what we already know.** Use the wilaya and commune that `back` has for the customer, and skip those questions when the customer orders.
 - [ ] **Lookup tools for older data.** `getOrderHistory` for past orders ("same as last time") and `searchChatHistory` for messages older than the last 20. Add them when a test or a real chat shows the need.
 - [ ] **Check the quality of replies.** An LLM-judge evaluator that checks the reply is in the customer's language and says clearly what happened (for example "cancelled").
 - [ ] **Suggest related products after a confirmation.** Offer one or two products that fit the order.
 
 ### Later
 
+- [ ] **Handle other message types.** Location, video and documents. Today the agent answers them with a fixed greeting or a placeholder text.
 - [ ] **Understand product photos.** The customer sends a photo and the agent finds the product in the catalog.
 - [ ] **Send tracking updates in the customer's language.**
 - [ ] **Reply with a voice note.**
@@ -69,6 +71,7 @@ How the system works is in [architecture.md](architecture.md).
 - [x] **Agent settings.** Language, tone, follow-up delays and message templates are saved.
 - [x] **Dashboard in three languages.** French, English and Arabic.
 - [x] **Start a payment.** The backend creates a Chargily checkout for a plan. There is no billing page yet.
+- [x] **Save the delivery address on the order.** The customer gives a street address and it is stored with the order.
 
 ### Next
 
@@ -81,7 +84,6 @@ How the system works is in [architecture.md](architecture.md).
 - [ ] **Real numbers on the home page.** Confirmation rate, average time to confirm, pending follow-ups, failed orders, and the latest escalations.
 - [ ] **Subscriptions.** Plans, a 14-day free trial, limits, upgrade and downgrade, and the billing page.
 - [ ] **Forgot and reset password pages.**
-- [ ] **Save the delivery address on the order.** The customer gives a street address and it is stored with the order.
 - [ ] **Try the agent before going live.** The merchant chats with the agent on their own catalog.
 - [ ] **Save onboarding progress.** The merchant continues where they stopped.
 

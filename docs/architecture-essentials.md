@@ -150,7 +150,7 @@ These are real. Read [PROJECT_REPORT.md](PROJECT_REPORT.md) before you deploy an
 - Two routes have no login: `/orders/simulate-order` and `/messages/fake-messages`.
 - The WhatsApp webhook signature check is off in development mode.
 - Compose publishes Postgres, Redis, Prisma Studio and the OpenWA admin API to the host.
-- Agent memory is in RAM. A restart forgets every conversation.
+- `back` runs `prisma db push` at every start. It drops any table in the `public` schema that is not in the Prisma schema. Keep other tables in their own schema. The agent keeps its notes in the schema `agent`.
 
 ## 9. What to read next
 
