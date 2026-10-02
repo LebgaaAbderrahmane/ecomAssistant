@@ -1,11 +1,15 @@
+import logging
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
+from pydantic import ValidationError
 
 from models.state import AgentState, ReplaceMessages
 from models.conversation import ConversationMemory
 from tools.grpc import get_conversation_context
+
+logger = logging.getLogger(__name__)
 
 CONTEXT_MESSAGES = 20
 
@@ -45,15 +49,27 @@ def _with_backend(state: AgentState, updates: dict[str, Any]) -> dict[str, Any]:
     return updates
 
 
-def hydrate(state: AgentState, *, store: BaseStore, config: RunnableConfig) -> dict:
-    resets = _fresh_turn()
-    if state.conversation_memory.flows:
-        return _with_backend(state, resets)
+def _load_memory(store: BaseStore, config: RunnableConfig) -> ConversationMemory | None:
     ns, _ = _store_config(config)
     item = store.get(ns, "conversation_memory")
     if item is None:
-        return _with_backend(state, resets)
-    return _with_backend(state, {**resets, "conversation_memory": ConversationMemory(**item.value)})
+        return None
+    try:
+        return ConversationMemory(**item.value)
+    except ValidationError as exc:
+        # Keep the bad row: persist would overwrite it with the empty notes.
+        logger.warning("saved notes of %s cannot be read, starting with empty notes: %s", ns[1], exc)
+        store.put(ns, "conversation_memory_invalid", item.value)
+        return ConversationMemory()
+
+
+def hydrate(state: AgentState, *, store: BaseStore, config: RunnableConfig) -> dict:
+    resets = _fresh_turn()
+    # The store is the truth. The notes in the state can be older, for example when another agent replied last.
+    memory = _load_memory(store, config)
+    if memory is not None:
+        resets["conversation_memory"] = memory
+    return _with_backend(state, resets)
 
 
 def persist(state: AgentState, *, store: BaseStore, config: RunnableConfig) -> dict:

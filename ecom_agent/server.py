@@ -6,7 +6,8 @@ import grpc
 from langchain_core.messages import HumanMessage
 
 from db import get_message
-from graph import app
+from graph import build_app
+from notes_store import open_postgres_store
 from prompts.common import GREETING
 from grpc_gen.agent.v1 import agent_pb2, agent_pb2_grpc
 from tools.grpc import tool_identity
@@ -60,6 +61,9 @@ def _last_reply(state) -> str:
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
+    def __init__(self, app) -> None:
+        self.app = app
+
     # No auth on Health, so the Docker healthcheck works without the key.
     def Health(self, request, context):
         return agent_pb2.HealthResponse(status=agent_pb2.HealthResponse.STATUS_SERVING)
@@ -121,7 +125,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
                 merchant_id=request.merchant_id,
                 customer_id=request.customer_id,
             ):
-                state = app.invoke(
+                state = self.app.invoke(
                     {"messages": [HumanMessage(content=text)]},
                     config=config,
                 )
@@ -153,9 +157,19 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         )
 
 
+def _build_agent_app():
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        #stays on ram
+        log.warning("DATABASE_URL not set: the agent's notes stay in RAM and are lost on restart")
+        return build_app()
+    # If Postgres is down this raises and the container restarts, instead of running without saving.
+    return build_app(open_postgres_store(database_url))
+
+
 def serve(addr: str = AGENT_GRPC_ADDR) -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    agent_pb2_grpc.add_AgentServiceServicer_to_server(AgentService(), server)
+    agent_pb2_grpc.add_AgentServiceServicer_to_server(AgentService(_build_agent_app()), server)
     if server.add_insecure_port(addr) == 0:
         raise RuntimeError(f"could not bind gRPC addr {addr}")
     log.info("AgentService listening on %s", addr)

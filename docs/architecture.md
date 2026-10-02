@@ -82,7 +82,8 @@ flowchart LR
 
 Notes:
 - `back` also calls Gemini. It uses it for voice transcription, image captions, and two catalog tools (`searchProducts`, `suggestProducts`).
-- The agent reads Postgres directly, but only one table (`Message`), with raw SQL (`ecom_agent/db.py`).
+- The agent reads Postgres directly, but only one table of `back` (`Message`), with raw SQL (`ecom_agent/db.py`).
+- The agent also writes its own notes (flows, drafts) to Postgres, in a separate schema named `agent` (`ecom_agent/notes_store.py`). Keep it out of `public`: `back` runs `prisma db push` at every start and drops any table in `public` that is not in the Prisma schema (checked).
 - The agent does not call `openwa`. Only `back` talks to WhatsApp.
 
 ---
@@ -220,7 +221,7 @@ erDiagram
 | `AgentConfig` | Per-merchant settings: language, tone, follow-up delays, templates, `isActive`. |
 | `Product` | Synced catalog item. Price, currency, stock status, category, variants, and an `agentEnabled` flag. |
 | `Customer` | A buyer. Unique on `(merchantId, phone)`. Has `waJid`, `language`, `blocked`, wilaya, commune. |
-| `Order` | A COD order. Product snapshot, quantity, totals, delivery cost, status, tracking number. |
+| `Order` | A COD order. Product snapshot, quantity, totals, delivery cost, wilaya, commune, street address, status, tracking number. |
 | `Conversation` | One per `(merchantId, customerId)`. Holds `state`, `currentOrderId`, `currentProductId`, `takenOverByHuman`, `escalatedAt`, `memory`. |
 | `Message` | One WhatsApp message. Direction `IN` or `OUT`, sender `CUSTOMER`, `AI` or `MERCHANT`, text, media fields. |
 | `WilayaDeliveryCost` | Delivery price per wilaya per merchant. |
@@ -375,7 +376,7 @@ No tests, no linter, no type checker are configured.
 
 ### 6.2 Process
 
-`server.py` starts a gRPC server with 10 threads on `0.0.0.0:50052`. It has two RPCs.
+`server.py` opens the Postgres store (`notes_store.py`), then starts a gRPC server with 10 threads on `0.0.0.0:50052`. If Postgres is down at start, the process exits and Docker restarts it. Without `DATABASE_URL` the agent falls back to RAM and logs a warning. It has two RPCs.
 - `Health`: no auth. It always says `SERVING`.
 - `ProcessMessage(message_id, conversation_id, merchant_id, customer_id)`: checks the bearer key, then:
   1. Loads the `Message` row with `db.py::get_message`.
@@ -443,7 +444,9 @@ Code around the nodes:
 - A `ToolCallDraft` collects the arguments for one tool over several turns. Status: `drafting`, `ready`, `executed`, `cancelled`.
 - `BackendContext` (`models/backend.py`): what `back` knows (customer, current order, current product, last 20 messages). `hydrate` loads it fresh at every message into `AgentState.backend_context`. `check_llm`, `query_tool` and `reply` read it. If `back` does not answer, it is `None` and the agent works with only its own memory.
 - Chat history: at every message `hydrate` replaces it with the last 20 messages from the database (customer, agent, back's templates, merchant). Merchant messages are shown to the LLM with a `[merchant]` prefix. When `back` does not answer, the RAM history is kept.
-- Storage: LangGraph `InMemorySaver` (state, including the working chat history) and `InMemoryStore` (memory). **Both live in RAM only.** After a restart the chat comes back from the database, but the memory (flows, drafts) is lost.
+- Storage: the notes (`ConversationMemory`: flows, drafts, address) are saved in a LangGraph `PostgresStore` (`notes_store.py`). It keeps one row per conversation, in the Postgres schema `agent`. `persist` writes the row at the end of each message and `hydrate` reads it at the start. After a restart the agent continues an order in progress. The store wins over the notes in the state.
+- A row that cannot be read (for example after a model change) is kept under the key `conversation_memory_invalid`, and the conversation starts with empty notes. A new field on `ConversationMemory` needs a default value.
+- `graph.py::build_app(store)` compiles the graph. The graph also has an `InMemorySaver` for the state of the current run. It lives in RAM and is never cleaned up. The evals and the dev REPL use an `InMemoryStore` too, so they need no database.
 - The Prisma column `Conversation.memory` is not used by the agent.
 
 ### 6.5 LLM client (`llm/client.py`)
@@ -712,7 +715,7 @@ Weak (details in the report):
 
 - Queue jobs retry with backoff, but there is no deduplication and no order per conversation. Two fast messages from one customer can be processed at the same time.
 - No deadline on the agent call. A slow model holds a worker.
-- Agent memory is RAM only.
+- Agent notes are saved in Postgres. The RAM saver still grows with every conversation.
 - The webhook does slow work (transcription) before it answers OpenWA.
 - Outbound sends have no retry.
 
@@ -729,7 +732,7 @@ Weak (details in the report):
 - `ecom_agent` has evals in `ecom_agent/evals/`, not unit tests. They run test
   conversations through the graph with a fake shop instead of `back` (they swap
   `tools.registry.call_tool`), then score each case with code-only checks as a
-  LangSmith experiment.
+  LangSmith experiment. They keep the notes in RAM, so they need no database.
   - Run: from `ecom_agent/`, `python -m evals.run` (all cases) or
     `python -m evals.run --cases 6,7`.
   - No-LLM self test: `python -m evals.selfcheck`.
@@ -755,7 +758,7 @@ Grouped by what they block.
 | No follow-ups | `followUpDelays` stored, no queue | [roadmap.md](roadmap.md) |
 | Confirmed orders are not shipped | `confirmOrder` only changes status | [roadmap.md](roadmap.md) |
 | Delivery price table cannot be edited | placeholder tab, no routes | [roadmap.md](roadmap.md) |
-| Memory and messages are not durable or idempotent | RAM store, no dedupe, no deadline | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
+| Messages are not idempotent | no dedupe, no deadline, no lock per conversation | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
 | Not deployable | dev-mode images, `db push`, no CI, no tests | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
 | The agent cannot match a product photo to the catalog | back only writes a text caption | [roadmap.md](roadmap.md) |
 | Real billing, KPIs, WooCommerce, official WhatsApp API | stubs and placeholders | [roadmap.md](roadmap.md) |
