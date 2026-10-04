@@ -3,7 +3,6 @@ import logging
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from config import model
 from prompts.common import ASK_MORE_INFO, JSON_RETRY
 from text.json_parse import parse_json_dict, parse_json_obj
 from text.messages import content_text
@@ -27,7 +26,7 @@ def call_json(model, schema: type[BaseModel], fallback: BaseModel, messages: lis
     return fallback
 
 
-def ask_json_dict(system: str, human: str, fail_log: str) -> dict:
+def ask_json_dict(model, system: str, human: str, fail_log: str) -> dict:
     """One call that returns a JSON dict, or {} on error or bad JSON."""
     try:
         msg = model.invoke([SystemMessage(content=system), HumanMessage(content=human)])
@@ -37,7 +36,7 @@ def ask_json_dict(system: str, human: str, fail_log: str) -> dict:
         return {}
 
 
-def llm_phrase(system: str, human: str) -> str:
+def llm_phrase(model, system: str, human: str) -> str:
     try:
         msg = model.invoke([SystemMessage(content=system), HumanMessage(content=human)])
         text = content_text(msg).strip()

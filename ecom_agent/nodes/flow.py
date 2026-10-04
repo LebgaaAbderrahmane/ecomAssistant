@@ -6,10 +6,11 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+import drafts
 from config import model
 from flows import active_flow
 from llm.structured import call_json
-from models.domain import Filter, Flow, FlowState, ProductDiscoveryContext, ProductDiscoveryInput, ToolCallDraft
+from models.domain import Filter, Flow, FlowState, ProductDiscoveryContext, ProductDiscoveryInput
 from models.state import AgentState, FlowResolution
 from prompts.common import struct_schema_hint
 from prompts.flow import FLOW_RULES
@@ -46,8 +47,7 @@ def _new_flow(tool_name: str, result: FlowResolution, now: datetime) -> Flow:
         updated_at=now,
         product_discovery=product_discovery,
     )
-    if tool_name:
-        new_flow.tool_draft = ToolCallDraft(tool_name=tool_name)
+    drafts.start(new_flow, tool_name)
     return new_flow
 
 
@@ -90,11 +90,7 @@ def flow_resolver(state: AgentState) -> dict:
         resolved_flow_id = result.flow_id
         flow = active_flow(mem, resolved_flow_id)
         if flow is not None:
-            draft = flow.tool_draft
-            if tool_name and (
-                draft is None or draft.status in ("executed", "cancelled") or draft.tool_name != tool_name
-            ):
-                flow.tool_draft = ToolCallDraft(tool_name=tool_name)
+            drafts.start(flow, tool_name)
             flow.updated_at = now
     elif result.action in NO_FLOW_ACTIONS:
         resolved_flow_id = None

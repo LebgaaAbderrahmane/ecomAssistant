@@ -29,12 +29,12 @@ def _summarize_flows(state: AgentState) -> str:
             s["product"] = {"name": p.product_name, "price": p.price, "id": p.product_id}
         if f.order:
             s["order"] = f.order.model_dump(exclude_none=True)
-        if f.shipping:
-            ship = {k: v for k, v in f.shipping.model_dump().items() if v}
-            if ship:
-                s["shipping"] = ship
         summaries.append(s)
-    return json.dumps(summaries, indent=2, ensure_ascii=False)
+    text = json.dumps(summaries, indent=2, ensure_ascii=False)
+    address = state.conversation_memory.global_information.model_dump(exclude={"customer_name"}, exclude_none=True)
+    if address:
+        text += "\nSaved delivery address: " + json.dumps(address, ensure_ascii=False)
+    return text
 
 
 def _backend_hint(state: AgentState) -> str:

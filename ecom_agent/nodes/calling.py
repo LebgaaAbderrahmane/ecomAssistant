@@ -1,13 +1,13 @@
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
+import drafts
 from config import model
-from flows import active_flow, sync_shipping
+from flows import active_flow
 from models.domain import Product, ProductDiscoveryContext
 from models.state import AgentState
 from prompts.calling import calling_system
@@ -77,31 +77,18 @@ def _pick_product(called_name: str, call_args: dict[str, Any], prods: list[Produ
 def calling_tool(state: AgentState) -> dict:
     mem = state.conversation_memory.model_copy(deep=True)
     flow = active_flow(mem, state.resolved_flow_id)
-    draft = flow.tool_draft if flow is not None else None
 
     ai_msg: Any = None
     tool_messages: list[Any] = []
     called_name = ""
     call_args: dict[str, Any] = {}
 
-    if flow is not None:
-        gi = mem.global_information
-        if (gi.wilaya or gi.commune or gi.address) and (
-            flow.shipping is None
-            or flow.shipping.wilaya != gi.wilaya
-            or flow.shipping.commune != gi.commune
-            or flow.shipping.address != gi.address
-        ):
-            sync_shipping(flow, gi)
-
-    if draft is not None and draft.status == "ready":
-        t = tool_for(draft.tool_name)
+    ready = drafts.ready_call(mem, state.resolved_flow_id)
+    if ready is not None:
+        t = tool_for(ready.tool_name)
         if t is None:
             return {}
-        args = dict(draft.args)
-        # The street is collected as a prereq into memory, not as a draft arg.
-        if t.name == "createOrder" and not args.get("address") and mem.global_information.address:
-            args["address"] = mem.global_information.address
+        args = ready.args
         tool_call_id = "draft-" + uuid.uuid4().hex[:8]
         ai_msg = AIMessage(
             content="",
@@ -115,8 +102,7 @@ def calling_tool(state: AgentState) -> dict:
         tool_messages = _run_tools(ai_msg, name=t.name, tool_call_id=tool_call_id)
         called_name = t.name
         call_args = args
-        flow.tool_draft = None
-        flow.updated_at = datetime.now(timezone.utc)
+        drafts.close(mem, state.resolved_flow_id)
         logger.info("calling_tool executed ready draft -> %s %s", called_name, call_args)
     else:
         # No ready draft: let the model choose the tool call itself.

@@ -1,4 +1,4 @@
-from flows import flow_draft
+from drafts import state_of
 from models.state import AgentState
 
 
@@ -11,8 +11,7 @@ def draft_route(state: AgentState) -> str:
 
 
 def after_extract(state: AgentState) -> str:
-    _, draft = flow_draft(state)
-    if draft is not None and draft.status == "ready":
+    if state_of(state.conversation_memory, state.resolved_flow_id) == "ready":
         return "calling_tool"
     return "ask_reply"
 
@@ -27,7 +26,6 @@ def flow_route(state: AgentState) -> str:
         return "calling_tool"
     if state.flow_action in ("CLARIFY", "INVALID_ACTION"):
         return "reply"
-    _, draft = flow_draft(state)
-    if draft is not None and draft.status == "drafting":
+    if state_of(state.conversation_memory, state.resolved_flow_id) == "collecting":
         return "extract_tool_args"
     return "calling_tool"

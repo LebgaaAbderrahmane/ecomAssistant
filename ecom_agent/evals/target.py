@@ -5,8 +5,8 @@ import uuid
 
 from langchain_core.messages import HumanMessage
 
+from drafts import state_of
 from evals import fake_backend, fake_tools
-from flows import flow_draft
 from graph import app
 from models.state import AgentState
 from server import _last_reply
@@ -37,8 +37,7 @@ def last_turn_reply(messages: list) -> str:
 def outcome_of(state: AgentState) -> str:
     if state.escalation:
         return "escalate"
-    _, draft = flow_draft(state)
-    if draft is not None and draft.status == "drafting":
+    if state_of(state.conversation_memory, state.resolved_flow_id) == "collecting":
         return "ask_info"
     return "reply"
 
