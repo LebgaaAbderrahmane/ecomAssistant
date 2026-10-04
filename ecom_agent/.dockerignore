@@ -17,3 +17,8 @@ __pycache__/
 graph.mmd
 graph.png
 *.md
+
+# Tests are not needed in the image
+tests/
+pytest.ini
+requirements-dev.txt

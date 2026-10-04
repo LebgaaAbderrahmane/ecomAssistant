@@ -1,0 +1,22 @@
+[
+ [
+  "args",
+  "{\"tool\": \"searchProducts\", \"already_collected\": {}, \"missing_so_far\": [], \"selected_product\": null, \"customer_message\": \"3andkom Nike Air Max?\"}"
+ ],
+ [
+  "args",
+  "{\"tool\": \"createOrder\", \"already_collected\": {}, \"missing_so_far\": [], \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"nheb nchriha\"}"
+ ],
+ [
+  "address",
+  "{\"customer_message\": \"nheb nchriha\", \"already_known\": {\"wilaya\": null, \"commune\": null, \"address\": null}}"
+ ],
+ [
+  "ask",
+  "{\"task_tool\": \"createOrder\", \"missing_items\": [\"wilaya: The wilaya (province) the order ships to.\", \"commune: The commune (city/town) the order ships to.\", \"wilaya: The wilaya (province) the order ships to.\", \"commune: The commune (city/town) the order ships to.\", \"address: The street, building or neighborhood for home delivery. Never a quantity, a yes/no, or the wilaya/commune.\", \"wilaya: the wilaya (province) to ship to\", \"commune: the commune (city/town) to ship to\", \"address: the street or detailed delivery address\"], \"already_known\": {\"productId\": \"p1\", \"quantity\": 1}, \"known_address\": {\"wilaya\": null, \"commune\": null, \"address\": null}, \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"nheb nchriha\"}"
+ ],
+ [
+  "cancel",
+  "Cancelling step (createOrder). Customer said: khaleh"
+ ]
+]

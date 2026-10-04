@@ -55,18 +55,10 @@ class OrderContext(BaseModel):
     quantity: int | None = None
 
 
-class ShippingContext(BaseModel):
-    wilaya: str | None = None
-    commune: str | None = None
-    address: str | None = None
-    shipping_cost: float | None = None
-
-
 class ToolCallDraft(BaseModel):
     tool_name: str
     args: dict[str, Any] = Field(default_factory=dict)
-    prereqs: dict[str, Any] = Field(default_factory=dict)
-    status: Literal["drafting", "ready", "executed", "cancelled"] = "drafting"
+    status: Literal["drafting", "ready"] = "drafting"
     attempts: int = 0
     missing: list[str] = Field(default_factory=list)
 
@@ -78,5 +70,4 @@ class Flow(BaseModel):
     updated_at: datetime
     product_discovery: ProductDiscoveryContext | None = None
     order: OrderContext | None = None
-    shipping: ShippingContext | None = None
     tool_draft: ToolCallDraft | None = None

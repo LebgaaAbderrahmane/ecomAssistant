@@ -5,6 +5,7 @@ from concurrent import futures
 import grpc
 from langchain_core.messages import HumanMessage
 
+from config import get_model
 from db import get_message
 from graph import build_app
 from notes_store import open_postgres_store
@@ -158,6 +159,9 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
 
 
 def _build_agent_app():
+    # Without an LLM provider every message would fail. Stop at start, so the container restarts.
+    if not get_model().configured:
+        raise RuntimeError("no LLM provider is configured: set GROQ_API_KEY or GOOGLE_API_KEY (see LLM_PROVIDER)")
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         #stays on ram

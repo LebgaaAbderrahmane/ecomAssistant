@@ -387,7 +387,7 @@ The merchant's reply does not change the agent: it is not enqueued and it does n
 
 Python 3.12, LangGraph 1.2, LangChain, `langchain-groq`, `langchain-google-genai`, gRPC (`grpcio` 1.66), `psycopg` 3, pydantic 2.
 The Docker image runs as a non-root user. `entrypoint.sh` runs `python -m server`.
-No tests, no linter, no type checker are configured.
+Tests: pytest, for the Draft only (see 12.5). No linter and no type checker are configured.
 
 ### 6.2 Process
 
@@ -429,12 +429,12 @@ What each node does:
 | Node | File | Job |
 |---|---|---|
 | `hydrate` | `nodes/memory.py` | Resets per-turn fields. Loads saved memory from the store. Calls `GetConversationContext` and replaces the chat history with the last 20 messages from the database. |
-| `draft_gate` | `nodes/draft.py` | If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. |
-| `check_llm` | `nodes/check.py` | Classifies the message: answer directly (only for reading what is in memory), or use a tool (any action, and anything that changes over time). |
+| `draft_gate` | `nodes/draft.py` | Calls `drafts.gate`. If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. |
+| `check_llm` | `nodes/check.py` | Classifies the message: answer directly (only for reading what is in memory), or use a tool (any action, and anything that changes over time). Its prompt has a summary of the flows and the saved delivery address. |
 | `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. Picks the tool even when arguments are missing (later nodes ask the customer). May decide to escalate. |
 | `flow_resolver` | `nodes/flow.py` | Decides which flow the tool applies to: continue one, create one, or ask the customer to clarify. |
-| `extract_tool_args` | `nodes/draft.py` | Asks the LLM to pull arguments (and the delivery address) out of the customer's text. Marks the draft `ready` when nothing is missing. |
-| `ask_reply` | `nodes/draft.py` | Writes a question for the missing arguments. |
+| `extract_tool_args` | `nodes/draft.py` | Calls `drafts.collect`. Asks the LLM to pull arguments (and the delivery address) out of the customer's text. Marks the draft `ready` when nothing is missing. |
+| `ask_reply` | `nodes/draft.py` | Calls `drafts.ask`. Writes a question for the missing arguments. |
 | `calling_tool` | `nodes/calling.py` | Runs the tool through LangGraph's `ToolNode`. Stores product results in the flow. |
 | `reply` | `nodes/reply.py` | Writes the answer from the tool result, or uses the direct answer. |
 | `escalate` | `nodes/reply.py` | Calls `escalateConversation`. Produces no text. |
@@ -446,17 +446,18 @@ Code around the nodes:
 |---|---|
 | `routing.py` | Every router: `route`, `draft_route`, `after_extract`, `query_escalate_route`, `flow_route`. |
 | `prompts/` | Every prompt, one file per node. `common.py` has the JSON schema hint and the fixed fallback texts. |
-| `flows.py` | Memory helpers: active flow and draft, selected product, address prerequisites, shipping sync. |
+| `drafts.py` | The Draft. Owns its rules and its LLM calls: `gate`, `collect`, `ask`, `ready_call`, `close`, `state_of`, `start`. It receives the LLM as an argument and does not know the graph. See [CONTEXT.md](../CONTEXT.md). |
+| `flows.py` | Notes helpers: active flow and selected product. |
 | `text/` | Regexes (`patterns.py`), message text helpers (`messages.py`), JSON extraction (`json_parse.py`). |
-| `llm/structured.py` | `call_json`, `ask_json_dict`, `llm_phrase`: the ways nodes call the LLM. |
+| `llm/structured.py` | `call_json`, `ask_json_dict`, `llm_phrase`: the ways code calls the LLM. Each takes the model as an argument. |
 | `tools/schema.py` | Reads a tool's args schema: required fields, type casting, missing fields. |
 
 ### 6.4 State and memory
 
 - `AgentState` (`models/state.py`): messages, chosen tool, tool output, flags.
 - `ConversationMemory` (`models/conversation.py`): a `GlobalInformation` (name, wilaya, commune, address) and a list of `Flow` objects.
-- A `Flow` (`models/domain.py`) is one topic in the chat, such as "looking at product X". It holds product discovery results, an optional order context, shipping info and a `ToolCallDraft`.
-- A `ToolCallDraft` collects the arguments for one tool over several turns. Status: `drafting`, `ready`, `executed`, `cancelled`.
+- A `Flow` (`models/domain.py`) is one topic in the chat, such as "looking at product X". It holds product discovery results, an optional order context and a `ToolCallDraft`.
+- A `ToolCallDraft` (the Draft) collects the arguments for one tool over several turns. Status: `drafting` or `ready`. A draft that has run or was cancelled is removed from its flow. `drafts.py` owns it.
 - `BackendContext` (`models/backend.py`): what `back` knows (customer, current order, current product, last 20 messages). `hydrate` loads it fresh at every message into `AgentState.backend_context`. `check_llm`, `query_tool` and `reply` read it. If `back` does not answer, it is `None` and the agent works with only its own memory.
 - Chat history: at every message `hydrate` replaces it with the last 20 messages from the database (customer, agent, back's templates, merchant). Merchant messages are shown to the LLM with a `[merchant]` prefix. When `back` does not answer, the RAM history is kept.
 - Storage: the notes (`ConversationMemory`: flows, drafts, address) are saved in a LangGraph `PostgresStore` (`notes_store.py`). It keeps one row per conversation, in the Postgres schema `agent`. `persist` writes the row at the end of each message and `hydrate` reads it at the start. After a restart the agent continues an order in progress. The store wins over the notes in the state.
@@ -746,17 +747,23 @@ Weak (details in the report):
 ### 12.5 Testing and delivery
 
 - `back` has 7 test files. `front`, `shared`, `contracts` have none.
-- `ecom_agent` has evals in `ecom_agent/evals/`, not unit tests. They run test
-  conversations through the graph with a fake shop instead of `back` (they swap
-  `tools.registry.call_tool`), then score each case with code-only checks as a
-  LangSmith experiment. They keep the notes in RAM, so they need no database.
-  - Run: from `ecom_agent/`, `python -m evals.run` (all cases) or
-    `python -m evals.run --cases 6,7`.
-  - No-LLM self test: `python -m evals.selfcheck`.
-  - One turn costs about 3.4K tokens. The free Groq tier allows 8K tokens per
-    minute and 200K per day, so `--pause` (default 30 s) waits before each turn.
-  - A row with `llm_clean = 0` hit an LLM provider failure. Don't trust its
-    other scores.
+- `ecom_agent` has pytest tests in `ecom_agent/tests/` and evals in `ecom_agent/evals/`.
+  - Tests: from `ecom_agent/`, `uv pip install -r requirements-dev.txt`, then `pytest`.
+    `requirements-dev.txt` adds pytest to `requirements.txt`; the Docker image installs only `requirements.txt`.
+    The Draft tests run the real graph with a scripted LLM and the fake shop from the evals.
+    They need no key and no network. They switch LangSmith tracing off, even when `.env` turns it on. Files in `tests/golden/` hold the exact text the Draft sends to the LLM;
+    rewrite them with `UPDATE_GOLDEN=1 pytest` only when that text should change.
+  - The evals run test conversations through the graph with a fake shop instead
+    of `back` (they swap `tools.registry.call_tool`), then score each case with
+    code-only checks as a LangSmith experiment. They keep the notes in RAM, so
+    they need no database.
+    - Run: from `ecom_agent/`, `python -m evals.run` (all cases) or
+      `python -m evals.run --cases 6,7`.
+    - No-LLM self test: `python -m evals.selfcheck`.
+    - One turn costs about 3.4K tokens. The free Groq tier allows 8K tokens per
+      minute and 200K per day, so `--pause` (default 30 s) waits before each turn.
+    - A row with `llm_clean = 0` hit an LLM provider failure. Don't trust its
+      other scores.
 - `lint` scripts are `echo 'lint ok'`.
 - No CI. No GitHub Actions.
 - Git: `dev` is the default branch and `main` is for releases. Work goes in `feat/<name>` and `fix/<name>` branches and merges to `dev` by pull request.
@@ -776,7 +783,7 @@ Grouped by what they block.
 | Confirmed orders are not shipped | `confirmOrder` only changes status | [roadmap.md](roadmap.md) |
 | Delivery price table cannot be edited | placeholder tab, no routes | [roadmap.md](roadmap.md) |
 | Messages are not idempotent | no dedupe, no deadline, no lock per conversation | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
-| Not deployable | dev-mode images, `db push`, no CI, no tests | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
+| Not deployable | dev-mode images, `db push`, no CI, tests run by hand | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
 | The agent cannot match a product photo to the catalog | back only writes a text caption | [roadmap.md](roadmap.md) |
 | Real billing, KPIs, WooCommerce, official WhatsApp API | stubs and placeholders | [roadmap.md](roadmap.md) |
 
@@ -785,20 +792,11 @@ Grouped by what they block.
 
 ## 14. Glossary
 
+The domain words (Merchant, Customer, Conversation, Flow, Draft, Escalation and others) are in [CONTEXT.md](../CONTEXT.md).
+Technical terms:
+
 | Term | Meaning |
 |---|---|
-| COD | Cash on delivery. The customer pays the driver. |
-| Wilaya | An Algerian province. There are 58. |
-| Commune | A town inside a wilaya. |
-| Derdja / Darija | Algerian Arabic. Often written in Latin letters, mixed with French. |
-| Merchant | Our customer. The shop owner. |
-| Customer | The shop's buyer. The person on WhatsApp. |
-| Conversation | One chat per merchant and customer. |
-| Takeover | A human owns the conversation. The agent stays silent. |
-| Escalation | The agent hands the conversation to a human. It turns takeover on. |
-| Tool | A backend function the agent can call, such as `createOrder`. |
-| Flow | One topic in a chat, in the agent's memory. |
-| Draft | A tool call whose arguments are still being collected. |
 | Thread id | The LangGraph key for one conversation's history. It equals the conversation id. |
 | JID | A WhatsApp address, for example `2137...@c.us`. |
 | LID | A privacy id WhatsApp uses instead of a phone number in some chats. |

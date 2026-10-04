@@ -1,0 +1,74 @@
+[
+ [
+  "args",
+  "{\"tool\": \"searchProducts\", \"already_collected\": {}, \"missing_so_far\": [], \"selected_product\": null, \"customer_message\": \"3andkom Nike Air Max?\"}"
+ ],
+ [
+  "args",
+  "{\"tool\": \"createOrder\", \"already_collected\": {}, \"missing_so_far\": [], \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"nheb nchriha\"}"
+ ],
+ [
+  "address",
+  "{\"customer_message\": \"nheb nchriha\", \"already_known\": {\"wilaya\": null, \"commune\": null, \"address\": null}}"
+ ],
+ [
+  "ask",
+  "{\"task_tool\": \"createOrder\", \"missing_items\": [\"wilaya: The wilaya (province) the order ships to.\", \"commune: The commune (city/town) the order ships to.\", \"wilaya: The wilaya (province) the order ships to.\", \"commune: The commune (city/town) the order ships to.\", \"address: The street, building or neighborhood for home delivery. Never a quantity, a yes/no, or the wilaya/commune.\", \"wilaya: the wilaya (province) to ship to\", \"commune: the commune (city/town) to ship to\", \"address: the street or detailed delivery address\"], \"already_known\": {\"productId\": \"p1\", \"quantity\": 1}, \"known_address\": {\"wilaya\": null, \"commune\": null, \"address\": null}, \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"nheb nchriha\"}"
+ ],
+ [
+  "gate",
+  "{\"pending_tool\": \"createOrder\", \"missing_arguments\": [\"wilaya\", \"commune\", \"wilaya\", \"commune\", \"address\"], \"already_collected\": {\"productId\": \"p1\", \"quantity\": 1}, \"customer_message\": \"Oran\"}"
+ ],
+ [
+  "args",
+  "{\"tool\": \"createOrder\", \"already_collected\": {\"productId\": \"p1\", \"quantity\": 1}, \"missing_so_far\": [\"wilaya\", \"commune\", \"wilaya\", \"commune\", \"address\"], \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"Oran\"}"
+ ],
+ [
+  "address",
+  "{\"customer_message\": \"Oran\", \"already_known\": {\"wilaya\": null, \"commune\": null, \"address\": null}}"
+ ],
+ [
+  "ask",
+  "{\"task_tool\": \"createOrder\", \"missing_items\": [\"commune: The commune (city/town) the order ships to.\", \"commune: The commune (city/town) the order ships to.\", \"address: The street, building or neighborhood for home delivery. Never a quantity, a yes/no, or the wilaya/commune.\", \"commune: the commune (city/town) to ship to\", \"address: the street or detailed delivery address\"], \"already_known\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\"}, \"known_address\": {\"wilaya\": \"Oran\", \"commune\": null, \"address\": null}, \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"Oran\"}"
+ ],
+ [
+  "gate",
+  "{\"pending_tool\": \"createOrder\", \"missing_arguments\": [\"commune\", \"commune\", \"address\"], \"already_collected\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\"}, \"customer_message\": \"Bir El Djir\"}"
+ ],
+ [
+  "args",
+  "{\"tool\": \"createOrder\", \"already_collected\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\"}, \"missing_so_far\": [\"commune\", \"commune\", \"address\"], \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"Bir El Djir\"}"
+ ],
+ [
+  "address",
+  "{\"customer_message\": \"Bir El Djir\", \"already_known\": {\"wilaya\": \"Oran\", \"commune\": null, \"address\": null}}"
+ ],
+ [
+  "ask",
+  "{\"task_tool\": \"createOrder\", \"missing_items\": [\"address: The street, building or neighborhood for home delivery. Never a quantity, a yes/no, or the wilaya/commune.\", \"address: the street or detailed delivery address\"], \"already_known\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\"}, \"known_address\": {\"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\", \"address\": null}, \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"Bir El Djir\"}"
+ ],
+ [
+  "gate",
+  "{\"pending_tool\": \"createOrder\", \"missing_arguments\": [\"address\"], \"already_collected\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\"}, \"customer_message\": \"wa7da\"}"
+ ],
+ [
+  "args",
+  "{\"tool\": \"createOrder\", \"already_collected\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\"}, \"missing_so_far\": [\"address\"], \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"wa7da\"}"
+ ],
+ [
+  "address",
+  "{\"customer_message\": \"wa7da\", \"already_known\": {\"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\", \"address\": null}}"
+ ],
+ [
+  "ask",
+  "{\"task_tool\": \"createOrder\", \"missing_items\": [\"address: The street, building or neighborhood for home delivery. Never a quantity, a yes/no, or the wilaya/commune.\", \"address: the street or detailed delivery address\"], \"already_known\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\"}, \"known_address\": {\"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\", \"address\": null}, \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"wa7da\"}"
+ ],
+ [
+  "args",
+  "{\"tool\": \"createOrder\", \"already_collected\": {\"productId\": \"p1\", \"quantity\": 1, \"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\"}, \"missing_so_far\": [\"address\"], \"selected_product\": {\"product_id\": \"p1\", \"product_name\": \"Nike Air Max\", \"price\": 12000.0, \"variants\": []}, \"customer_message\": \"Cité 200 logements\"}"
+ ],
+ [
+  "address",
+  "{\"customer_message\": \"Cité 200 logements\", \"already_known\": {\"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\", \"address\": null}}"
+ ]
+]

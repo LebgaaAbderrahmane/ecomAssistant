@@ -3,7 +3,6 @@ import logging
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import CONFIG_KEY_RUNTIME, DEFAULT_RUNTIME
 
-from config import model
 from tools.registry import (
     searchProducts,
     selectProduct,
@@ -36,7 +35,6 @@ TOOLS = [
 
 tool_node = ToolNode(TOOLS)
 TOOL_NODE_CONFIG: dict = {"configurable": {CONFIG_KEY_RUNTIME: DEFAULT_RUNTIME}}
-tool_model = model.bind_tools(TOOLS)
 
 TOOL_NAMES = tuple(t.name for t in TOOLS)
 PRODUCT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "selectProduct"}
