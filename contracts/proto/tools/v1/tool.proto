@@ -24,6 +24,10 @@ message ExecuteToolRequest {
   string tool_name = 1;
   string entities_json = 2;
   Identity identity = 3;
+  // Same value on every try of the same customer message (the agent sends the
+  // message id). Empty means the caller has none. createOrder uses it to make
+  // one order per key, even when the call is repeated.
+  string idempotency_key = 4;
 }
 
 message Identity {

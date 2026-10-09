@@ -18,6 +18,7 @@
 - An escalation turn sent the old reply again (`8e3211e`).
 - Software: a repeated inbound webhook with a known id is ignored, and `whatsappMessageId` is saved. Messages the merchant types on the phone are stored as `MERCHANT` messages, so the agent sees them (`205d135`).
 - No evals. There are 17 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
+- A repeated message ran the whole Turn again and could make a second order. Now a Turn is safe to repeat: one Turn at a time per Conversation (Postgres advisory lock), one saved result per `message_id`, one order per message (idempotency key to `createOrder`), and a time limit on every LLM call. See [architecture.md](architecture.md) section 6.2.1.
 
 ## Read this first — the seven things that matter most
 
@@ -28,7 +29,7 @@
 | 3 | Software | OpenWA admin API on `0.0.0.0:2785` with the public `dev-admin-key`; Postgres, Redis (no password) and Prisma Studio also published (`docker-compose.yml`). | Full WhatsApp session and database exposure on any shared network or VPS. |
 | 4 | Software | Hardcoded `ENCRYPTION_KEY` and plaintext delivery API keys (`back/src/lib/crypto.ts:5`, `delivery.service.ts:19-23`). | Shopify tokens and carrier credentials are effectively plaintext. |
 | 5 | Software | `/uploads` is public and a real customer photo is committed to git. | Customer PII exposure, in prod and in history. |
-| 6 | Agent | No deadline, no idempotency, no per-conversation lock. | Retries can duplicate orders. Two quick messages race on the same conversation. |
+| 6 | Agent | `back` sets no deadline on the agent call, and the agent has no graceful shutdown. | A hung call still holds a `back` worker slot, and a restart can cut a Turn in the middle. (The agent side of retries is fixed: lock, saved result, idempotency key.) |
 | 7 | Both | No conversation inbox / takeover, no follow-ups, no agent-owned confirmation step. | The MVP promise in the PRD (§4.4, §4.8, §7) is not implemented on either side. |
 
 ---
@@ -87,7 +88,6 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 
 - Structured output is prompt-only JSON plus a hand-written extractor (`text/json_parse.py`, `llm/structured.py::call_json`). Every parse miss costs a second LLM call. Both Groq and Gemini support native JSON / structured output through `with_structured_output`.
 - Up to seven sequential LLM calls per turn: `draft_gate`, `check_llm`, `query_tool`, `flow_resolver`, `extract_tool_args` (twice: args + address), `ask_reply` or `reply`. Each is up to 2 attempts × 2 providers. PRD asks for p95 < 8 s.
-- No timeouts or `max_retries` set on `ChatGroq` / `ChatGoogleGenerativeAI` (`llm/client.py:71-86`).
 - Failover catches every `Exception` (`llm/client.py:17`). A 400 caused by a bad message history is retried on every provider, every turn.
 - `nodes/calling.py:110-126` (non-draft path) binds all eleven tools and does not enforce the tool `query_tool` picked. The model can call a different tool with invented args. On "no tool call" it appends `ToolMessage(tool_call_id="no_tool_call")` with no matching AI tool call, which OpenAI-format providers (Groq) reject on later turns. Those messages stay in the thread and are sent again on every later turn.
 - No token or cost accounting per merchant. No model choice per plan.
@@ -95,9 +95,7 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 
 #### G. Reliability under load
 
-- No per-conversation lock. `server.py:153` runs 10 threads and `back/src/workers/relay.worker.ts:11` runs 5 jobs in parallel. Two quick messages from one customer race on the same `thread_id`; `persist` is last-writer-wins.
-- No idempotency on `message_id`. Back retries the job 5 times with backoff (`back/src/queues/messageQueueOptions.ts`) and rethrows on any RPC error (`agentBridgeCore.ts:31`). A retry re-runs the graph: duplicate `HumanMessage` in history and possibly a second `createOrder`.
-- No deadline anywhere. `back/src/grpc/agent.client.ts::agentProcessMessage` sets none; the agent never checks `context.is_active()`. A slow LLM blocks a worker slot for as long as it likes.
+- No deadline from `back`. `back/src/grpc/agent.client.ts::agentProcessMessage` sets none; the agent never checks `context.is_active()`. The agent now limits each LLM call to 20 s, but a whole Turn can still run for minutes and hold a worker slot.
 - `db.py::get_message` opens a new `psycopg` connection per message. No pool.
 - No graceful shutdown: `server.py:159` `wait_for_termination()` with no SIGTERM handler. Docker kills in-flight turns after 10 s.
 - `healthcheck.py` is liveness only. It reports `SERVING` with zero LLM providers and with back unreachable.
@@ -137,7 +135,7 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 1. Remove `la` from `CANCEL_RE` and audit the other Latin-only regexes in `text/patterns.py`. Stop `NUM_RE` from auto-continuing a draft.
 2. `server.py::_authorized` and `tools/grpc.py`: use `hmac.compare_digest`; refuse to start when `INTERNAL_API_KEY` is unset or equals the default.
 3. Stop logging message text in `server.py`; stop logging the agent context line.
-4. Set `timeout` and `max_retries` on both chat models in `llm/client.py`; add a deadline (about 30 s) in `back/src/grpc/agent.client.ts`.
+4. Add a deadline (about 30 s) in `back/src/grpc/agent.client.ts`. The agent does not stop a Turn when `back` cuts the call. The retry waits for the lock and then gets the saved result, so this is safe.
 5. Cap `text` length and trim history to the last N messages before `check_llm`.
 6. Capture the `createOrder` output into `Flow.order`.
 7. Delete `tool_client.py`, `main.py`; drop `pandas` and `langchain-openai`; pin `rich` and `langsmith`.
@@ -149,7 +147,7 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 
 1. Remove the RAM `InMemorySaver`, and sync `Conversation.memory` (through `back`) so the dashboard can see what the agent knows.
 2. Router consolidation: merge `draft_gate`, `check_llm` and `query_tool` into one structured call and target three LLM calls or fewer per turn. Use the evals to check nothing gets worse. Add Arabic-script cases and an LLM-judge for language and currency.
-3. Idempotency on `message_id`, per-conversation serialization, graceful shutdown, readiness probe.
+3. Graceful shutdown and a readiness probe.
 4. Generate `tools/registry.py` from `contracts/src/generated/tools.json` in `scripts/gen_stubs.sh`.
 5. Tests, lint, type-check and CI for `ecom_agent/`. Per-turn metrics (LLM calls, tokens, provider, milliseconds, decision).
 
@@ -224,7 +222,7 @@ Scope: `back/`, `front/`, `shared/`, `contracts/`, `OpenWA/` (as deployed here),
 #### F. Contracts and proto
 
 - Tool names are in sync across `contracts/src/tools.ts`, `generated/tools.json`, and `ecom_agent/tools/__init__.py` (11 each). But Python never reads `tools.json`; descriptions already differ (e.g. `suggestProducts`). `contract.test.ts` only guards the TS side. `back/scripts/export-contract.ts` is run by hand.
-- `ProcessMessageRequest` (`agent.proto:21-26`) carries four ids only. No text, media, language, merchant config, history, trace id or deadline hint. The real contract is "shared DB + ids", which the proto hides. `DECISION_UNAVAILABLE = 3` is undocumented in `docs/grpc-contract.md`. `entities_json`/`data_json` are stringly typed. `contracts/package.json` version `0.1.0` never bumped despite the README rule.
+- `ProcessMessageRequest` (`agent.proto:21-26`) carries four ids only. No text, media, language, merchant config, history, trace id or deadline hint. The real contract is "shared DB + ids", which the proto hides. `DECISION_UNAVAILABLE = 3` is undocumented in `docs/grpc-contract.md`. `entities_json`/`data_json` are stringly typed. The contracts version was `0.1.0` until the `idempotency_key` field; it is `0.2.0` now.
 
 #### G. Infra, repo hygiene, docs
 

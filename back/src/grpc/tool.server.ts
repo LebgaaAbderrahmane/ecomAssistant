@@ -36,6 +36,7 @@ export interface ExecuteToolRequest {
   toolName: string;
   entitiesJson: string;
   identity: IdentityInput;
+  idempotencyKey?: string;
 }
 
 export interface ExecuteToolResponse {
@@ -296,7 +297,10 @@ async function executeToolHandler(
       source
     );
 
-    const result = await executeTool(typedToolName, toolEntities);
+    // An empty key means the caller has none.
+    const result = await executeTool(typedToolName, toolEntities, {
+      idempotencyKey: call.request.idempotencyKey || undefined,
+    });
 
     // Read-tool navigation state is owned by the transport: apply the tool's
     // transition (+ currentProductId) after a successful run, as the internal

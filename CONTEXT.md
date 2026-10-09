@@ -59,3 +59,7 @@ A Draft is ready when every piece it needs is known, so the agent can run the to
 **Conversation notes**:
 What the agent remembers about one Conversation: its Flows, its Draft and the customer's Delivery address.
 _Avoid_: state
+
+**Turn**:
+One run of the agent for one customer message. It ends with a reply or an Escalation.
+_Avoid_: request, job

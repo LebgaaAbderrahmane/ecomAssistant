@@ -32,13 +32,23 @@ def _auth_metadata() -> tuple[tuple[str, str], ...]:
 
 
 @contextmanager
-def tool_identity(*, conversation_id: str, merchant_id: str | None = None, customer_id: str | None = None):
-    """Tool calls made inside this block run for this conversation."""
+def tool_identity(
+    *,
+    conversation_id: str,
+    merchant_id: str | None = None,
+    customer_id: str | None = None,
+    message_id: str | None = None,
+):
+    """Tool calls made inside this block run for this conversation.
+
+    message_id is the idempotency key: back makes one order per message, even if the Turn runs twice.
+    """
     token = _identity_var.set(
         {
             "conversation_id": conversation_id,
             "merchant_id": merchant_id or "",
             "customer_id": customer_id or "",
+            "message_id": message_id or "",
         }
     )
     try:
@@ -72,6 +82,7 @@ def call_tool(tool_name: str, entities: dict) -> str:
                     merchant_id=identity.get("merchant_id") or "",
                     customer_id=identity.get("customer_id") or "",
                 ),
+                idempotency_key=identity.get("message_id") or "",
             ),
             metadata=_auth_metadata(),
         )

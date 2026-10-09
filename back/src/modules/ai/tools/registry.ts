@@ -1,4 +1,5 @@
-import type { Product } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { Order, Product } from '@prisma/client';
 import type { ReadToolName, WriteToolName, ToolName } from '../schemas/intents.schemas';
 import prisma from '../../../config/db.config';
 import {
@@ -16,6 +17,7 @@ import {
   EscalateConversationArgsSchema,
 } from '../schemas/intents.schemas';
 import { enqueueOrderJob } from '../../../queues/order.queue';
+import { createOrderOnce } from './createOrderOnce';
 import {
   buildProductCatalog,
   fetchProductsByIds,
@@ -88,7 +90,14 @@ export interface ToolResult {
 }
 
 type ToolEntities = Record<string, string | number | boolean | null>;
-type ToolHandler = (entities: ToolEntities) => Promise<ToolResult>;
+
+// Facts about the call that are not tool arguments, so they stay out of the argument schemas.
+export interface ToolCallContext {
+  // Same value on every try of the same customer message. Only createOrder reads it.
+  idempotencyKey?: string;
+}
+
+type ToolHandler = (entities: ToolEntities, ctx?: ToolCallContext) => Promise<ToolResult>;
 
 function parseOptionalJson<T>(value: string | null | undefined): T | undefined {
   if (value === undefined || value === null || value === '') return undefined;
@@ -443,95 +452,121 @@ const suggestProducts: ToolHandler = async (entities) => {
   };
 };
 
-const createOrder: ToolHandler = async (entities) => {
+const createOrder: ToolHandler = async (entities, ctx) => {
   const parsedArgs = CreateOrderArgsSchema.safeParse(entities);
   if (!parsedArgs.success) {
     const missing = parsedArgs.error.issues.map(i => i.path.join('.')).join(', ');
     return { success: false, error: `Missing required fields: ${missing}` };
   }
 
-  const { productId, quantity, wilaya, address } = parsedArgs.data;
+  const { productId, quantity, wilaya, address, merchantId, customerId, conversationId } = parsedArgs.data;
   const communeInput = parsedArgs.data.commune;
 
-  // Validate commune exists
-  const communeCheck = await validateCommune(communeInput, wilaya);
-  if (!communeCheck.valid) {
-    if (communeCheck.suggestions?.length) {
-      const list = communeCheck.suggestions.join(', ');
-      return {
-        success: false,
-        error: `Baladia "${communeInput}" makanach. Chno khatrek? ${list}`,
-      };
-    }
-    return {
-      success: false,
-      error: `Baladia "${communeInput}" makanach f l'wilaya dyal ${wilaya}.`,
-    };
-  }
-  const commune = communeCheck.commune!;
+  // With a key, the order id on the platform comes from the key: a repeated call finds the first order.
+  // The unique index (merchantId, platformOrderId) also stops two parallel calls.
+  const idempotencyKey = ctx?.idempotencyKey;
+  const platformOrderId = idempotencyKey ? `AGENT-${idempotencyKey}` : `FAKE-${Date.now()}`;
 
-  const product = await prisma.product.findFirst({
-    where: { id: productId, merchantId: parsedArgs.data.merchantId },
-  });
-  if (!product) {
-    return { success: false, error: `Product not found. Choose a product first.` };
-  }
+  const once = await createOrderOnce<Order, ToolResult>({
+    findExisting: async () =>
+      // The customer is in the filter, so a key never gives back another customer's order.
+      idempotencyKey ? prisma.order.findFirst({ where: { merchantId, customerId, platformOrderId } }) : null,
+    create: async () => {
+      // Validate commune exists
+      const communeCheck = await validateCommune(communeInput, wilaya);
+      if (!communeCheck.valid) {
+        if (communeCheck.suggestions?.length) {
+          const list = communeCheck.suggestions.join(', ');
+          return {
+            ok: false,
+            failure: {
+              success: false,
+              error: `Baladia "${communeInput}" makanach. Chno khatrek? ${list}`,
+            },
+          };
+        }
+        return {
+          ok: false,
+          failure: { success: false, error: `Baladia "${communeInput}" makanach f l'wilaya dyal ${wilaya}.` },
+        };
+      }
+      const commune = communeCheck.commune!;
 
-  if (product.stockStatus === 'out_of_stock') {
-    return { success: false, error: `Product "${product.name}" is out of stock` };
-  }
+      const product = await prisma.product.findFirst({
+        where: { id: productId, merchantId },
+      });
+      if (!product) {
+        return { ok: false, failure: { success: false, error: `Product not found. Choose a product first.` } };
+      }
 
-  const deliveryCostRow = await prisma.wilayaDeliveryCost.findFirst({
-    where: { merchantId: parsedArgs.data.merchantId, wilaya: { equals: wilaya, mode: 'insensitive' } },
-  });
-  if (!deliveryCostRow) {
-    console.warn(`[createOrder] no delivery cost configured for wilaya "${wilaya}" — defaulting to 0`);
-  }
-  const deliveryCostValue = deliveryCostRow?.cost ?? 0;
-  const totalAmount = product.price * quantity + deliveryCostValue;
+      if (product.stockStatus === 'out_of_stock') {
+        return { ok: false, failure: { success: false, error: `Product "${product.name}" is out of stock` } };
+      }
 
-  const platformOrderId = `FAKE-${Date.now()}`;
+      const deliveryCostRow = await prisma.wilayaDeliveryCost.findFirst({
+        where: { merchantId, wilaya: { equals: wilaya, mode: 'insensitive' } },
+      });
+      if (!deliveryCostRow) {
+        console.warn(`[createOrder] no delivery cost configured for wilaya "${wilaya}" — defaulting to 0`);
+      }
+      const deliveryCostValue = deliveryCostRow?.cost ?? 0;
+      const totalAmount = product.price * quantity + deliveryCostValue;
 
-  const order = await prisma.order.create({
-    data: {
-      merchantId: parsedArgs.data.merchantId,
-      customerId: parsedArgs.data.customerId,
-      platformOrderId,
-      wilaya,
-      commune,
-      address,
-      productId: product.id,
-      productName: product.name,
-      quantity,
-      totalAmount,
-      deliveryCost: deliveryCostValue,
+      // One transaction: a call that dies in the middle leaves no order without its conversation link.
+      const order = await prisma.$transaction(async (tx) => {
+        const created = await tx.order.create({
+          data: {
+            merchantId,
+            customerId,
+            platformOrderId,
+            wilaya,
+            commune,
+            address,
+            productId: product.id,
+            productName: product.name,
+            quantity,
+            totalAmount,
+            deliveryCost: deliveryCostValue,
+          },
+        });
+
+        // Save delivery info to customer record for future orders
+        await tx.customer.update({
+          where: { id: customerId },
+          data: { wilaya, commune },
+        });
+
+        await tx.conversation.update({
+          where: { id: conversationId },
+          data: { currentOrderId: created.id, state: 'WAITING_CONFIRMATION' },
+        });
+
+        return created;
+      });
+      return { ok: true, order };
     },
+    isDuplicateError: (err) => err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002',
+    enqueue: enqueueOrderJob,
   });
 
-  // Save delivery info to customer record for future orders
-  await prisma.customer.update({
-    where: { id: parsedArgs.data.customerId },
-    data: { wilaya, commune },
-  });
-
-  await prisma.conversation.update({
-    where: { id: parsedArgs.data.conversationId },
-    data: { currentOrderId: order.id, state: 'WAITING_CONFIRMATION' },
-  });
-
-  await enqueueOrderJob(order.id);
+  if (!once.ok) return once.failure;
+  const { order } = once;
+  if (!once.created) {
+    console.log(`[createOrder] key ${idempotencyKey} already made order ${order.id}, returning it`);
+  }
 
   return {
     success: true,
     data: {
       orderId: order.id,
-      productName: product.name,
-      quantity,
-      price: product.price,
-      totalAmount,
-      deliveryCost: deliveryCostValue,
-      wilaya,
-      commune,
+      productName: order.productName,
+      quantity: order.quantity,
+      // Read from the order, so the first call and a repeat return the same data.
+      price: Math.round(((order.totalAmount - order.deliveryCost) / order.quantity) * 100) / 100,
+      totalAmount: order.totalAmount,
+      deliveryCost: order.deliveryCost,
+      wilaya: order.wilaya,
+      commune: order.commune,
       address: order.address,
     },
   };
@@ -720,6 +755,7 @@ export const toolRegistry: Record<ToolName, ToolHandler> = {
 export const executeTool = async (
   toolName: ToolName,
   entities: ToolEntities,
+  ctx?: ToolCallContext,
 ): Promise<ToolResult> => {
   const parsed = toolSchemas[toolName].safeParse(entities);
   if (!parsed.success) {
@@ -727,7 +763,7 @@ export const executeTool = async (
     return { success: false, error: issue?.message ?? 'Invalid tool arguments' };
   }
   try {
-    return await toolRegistry[toolName](parsed.data as ToolEntities);
+    return await toolRegistry[toolName](parsed.data as ToolEntities, ctx);
   } catch (err) {
     console.error(`[tools] "${toolName}" threw an unexpected error`, err);
     return { success: false, error: 'Tool execution failed unexpectedly' };
