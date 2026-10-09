@@ -18,7 +18,7 @@
 - An escalation turn sent the old reply again (`8e3211e`).
 - Software: a repeated inbound webhook with a known id is ignored, and `whatsappMessageId` is saved. Messages the merchant types on the phone are stored as `MERCHANT` messages, so the agent sees them (`205d135`).
 - No evals. There are 17 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
-- Small agent cleanup (branch `fix/agent-cleanup`): the internal key is compared with `hmac.compare_digest`; customer text is no longer logged; the unused `tool_client.py`, `main.py` and `log_state` are gone; `pandas` and `langchain-openai` are dropped and `rich` and `langsmith` are pinned; the second `logging.basicConfig` is gone; the tracked `.pyc` files are untracked and `ecom_agent/.gitignore` ignores them; `nodes/reply.py` uses the shared `last_user_text`; the README agent tree is correct.
+- Small agent cleanup (branch `fix/agent-cleanup`): the internal key is compared with `hmac.compare_digest`; `server.py` no longer logs the message text (other logs still carry customer data, see the vulnerability table); the unused `tool_client.py`, `main.py` and `log_state` are gone; `pandas` and `langchain-openai` are dropped and `rich` and `langsmith` are pinned; the second `logging.basicConfig` is gone; the tracked `.pyc` files are untracked and `ecom_agent/.gitignore` ignores them; `nodes/reply.py` uses the shared `last_user_text`; the README agent tree is correct.
 - A repeated message ran the whole Turn again and could make a second order. Now a Turn is safe to repeat: one Turn at a time per Conversation (Postgres advisory lock), one saved result per `message_id`, one order per message (idempotency key to `createOrder`), and a time limit on every LLM call. See [architecture.md](architecture.md) section 6.2.1.
 
 ## Read this first — the seven things that matter most
@@ -122,6 +122,7 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 | 5 | Medium | `prompts/reply.py:1-8`, `prompts/check.py:3-13` | Only one narrow rule ("never invent data", `prompts/check.py:9`) protects direct answers. `reply` for `needs_tool=False` returns the classifier's free text as is, and nothing forbids invented products or prices in plain chat. PRD §4.4 requires "no hallucinated products, no invented prices". |
 | 6 | Low | `nodes/reply.py:38` | Escalation reason embeds raw customer text and is stored/shown to the merchant. Safe only while the dashboard escapes it. |
 | 7 | Low | `db.py`, `.env` | The agent holds the full read/write `DATABASE_URL` to run one `SELECT`. A read-only DB role, or carrying `text` in `ProcessMessageRequest`, removes that. |
+| 8 | Medium | `server.py::_run_turn` (reply, first 200 chars), `drafts.py:144,186` (address and Draft arguments), `nodes/calling.py:106` (call arguments), `llm/structured.py:25` (first 200 chars of an unparsed LLM answer) | Customer data (address, reply text) is still written to the logs at INFO or WARNING. `server.py` no longer logs the incoming message text. |
 
 ### 1.3 Priority list
 
