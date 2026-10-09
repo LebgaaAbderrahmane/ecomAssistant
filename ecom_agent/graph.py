@@ -1,6 +1,4 @@
-import json
 import logging
-from typing import Any
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
@@ -79,21 +77,6 @@ def build_app(store=None):
 
 
 app = build_app()
-
-
-def to_serializable(value: Any) -> Any:
-    from langchain_core.messages import message_to_dict
-    if isinstance(value, list):
-        return [to_serializable(m) for m in value]
-    if hasattr(value, "type"):
-        return message_to_dict(value)
-    return value
-
-
-def log_state(state: Any) -> None:
-    data = state if isinstance(state, dict) else state.model_dump()
-    payload = {k: to_serializable(v) for k, v in data.items()}
-    logger.info("Final AgentState:\n%s", json.dumps(payload, indent=2, default=str))
 
 
 def save_graph_png(path: str = "graph.png") -> str:
