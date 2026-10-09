@@ -257,10 +257,16 @@ front/
 └── package.json
 
 ecom_agent/
-├── ecom_agent/           # Python package (agent loop, tools, LLM clients)
+├── server.py             # AgentService gRPC server (Health, ProcessMessage)
+├── turn_guard.py         # lock per conversation + saved answers, so a retried message is safe
+├── graph.py              # LangGraph graph (nodes in nodes/, routers in routing.py)
+├── drafts.py             # the Draft: a tool call the agent is still filling in
+├── prompts/ llm/ tools/ models/ text/   # prompts, LLM client, tools, models, text helpers
+├── grpc_gen/             # generated gRPC stubs (committed)
+├── tests/ evals/         # pytest tests, and the eval runner
 ├── healthcheck.py        # gRPC AgentService.Health probe (container healthcheck)
-├── Dockerfile
-└── pyproject.toml
+├── requirements.txt
+└── Dockerfile
 
 contracts/
 ├── proto/
