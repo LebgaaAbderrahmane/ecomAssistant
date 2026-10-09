@@ -1,3 +1,4 @@
+import hmac
 import logging
 import os
 from concurrent import futures
@@ -15,10 +16,6 @@ from grpc_gen.agent.v1 import agent_pb2, agent_pb2_grpc
 from tools.grpc import tool_identity
 from turn_guard import TurnBusy, TurnGuard, TurnResult
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[ecom_agent] %(levelname)s %(message)s",
-)
 log = logging.getLogger("ecom_agent.server")
 
 AGENT_GRPC_ADDR = os.environ.get("AGENT_GRPC_ADDR", "0.0.0.0:50052")
@@ -28,7 +25,8 @@ INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
 def _authorized(metadata) -> bool:
     expected = f"Bearer {INTERNAL_API_KEY}"
     for key, value in metadata or []:
-        if key.lower() == "authorization" and value == expected:
+        # compare_digest takes the same time for a right or a wrong key.
+        if key.lower() == "authorization" and hmac.compare_digest(value.encode(), expected.encode()):
             return True
     return False
 
@@ -90,26 +88,12 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         )
         message = get_message(request.message_id)
         if message is not None:
-            log.info(
-                "loaded message role=%s text=%r (conversation=%s)",
-                message["role"],
-                message["text"],
-                message["conversationId"],
-            )
+            log.info("loaded message role=%s (conversation=%s)", message["role"], message["conversationId"])
         else:
             log.warning("message %s not found in Postgres", request.message_id)
 
         role = message["role"] if message else "unknown"
         text = (message["text"] or "").strip() if message else ""
-        agent_context = {
-            "message_id": request.message_id,
-            "conversation_id": request.conversation_id,
-            "merchant_id": request.merchant_id,
-            "customer_id": request.customer_id,
-            "role": role,
-            "text": text,
-        }
-        log.info("agent context: %s", agent_context)
 
         if role != "customer" or not text:
             return agent_pb2.ProcessMessageResponse(

@@ -489,7 +489,6 @@ Code around the nodes:
 - `tools/registry.py` declares the 11 tools as LangChain tools. Each one calls `tools/grpc.py::call_tool`.
 - `call_tool` reads the conversation identity from a context variable set by `tool_identity(...)` in `server.py`. It sends `ExecuteTool` with the bearer key.
 - Recoverable results (not found, takeover) come back as a JSON string. Hard errors raise `ToolCallError`.
-- `tool_client.py` is a second, unused client.
 
 ### 6.7 What the agent does not do
 
