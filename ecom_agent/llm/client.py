@@ -68,12 +68,23 @@ class LLMClient:
         return _BoundModel(binds)
 
 
+def _timeout_seconds() -> float:
+    return float(os.environ.get("LLM_TIMEOUT_SECONDS", "20"))
+
+
+def _max_retries() -> int:
+    # Failover to the next provider is already our retry. A library retry on top only adds time.
+    return int(os.environ.get("LLM_MAX_RETRIES", "0"))
+
+
 def _build_gemini() -> Any:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     return ChatGoogleGenerativeAI(
         model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
         temperature=0,
+        timeout=_timeout_seconds(),
+        max_retries=_max_retries(),
     )
 
 
@@ -83,6 +94,8 @@ def _build_groq() -> Any:
     return ChatGroq(
         model=os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"),
         temperature=0,
+        timeout=_timeout_seconds(),
+        max_retries=_max_retries(),
     )
 
 

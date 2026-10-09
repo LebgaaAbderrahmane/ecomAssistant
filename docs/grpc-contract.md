@@ -57,6 +57,7 @@ currently emits it (liveness, not readiness).
 | `tool_name` | string | One of the 11 contract tools (below). |
 | `entities_json` | string | JSON object of agent-supplied arguments. |
 | `identity` | Identity | `conversation_id` (required), `merchant_id`, `customer_id`. |
+| `idempotency_key` | string | Same value on every try of the same customer message. The agent sends the message id. Empty means the caller has none. Only `createOrder` reads it: it makes one order per key and returns the first order on a repeat. |
 
 `identity` selects the conversation row, which is the **authoritative scope**:
 merchant/customer are materialized from the row, and a mismatched
@@ -186,6 +187,10 @@ are missing.
 | `DECISION_ESCALATE` | Agent wants a human (empty reply text, graph error, or non-customer message); backend sets `takenOverByHuman`. |
 
 Auth failure → `UNAUTHENTICATED` (code 16); empty `message_id` → `NOT_FOUND` (5).
+
+Busy conversation → gRPC status `UNAVAILABLE` (14): another Turn of the same conversation did not finish within `TURN_LOCK_TIMEOUT_SECONDS`. `back` should retry. This is a status code, not the decision `DECISION_UNAVAILABLE` (which `back` treats as an escalation). Do not mix them: a busy conversation must not go to a human.
+
+The same `message_id` twice gives the same decision and text. The agent saves the result of the first Turn and returns it on a repeat, without running the graph again. See [architecture.md](architecture.md) section 6.2.1.
 
 ## Observability
 

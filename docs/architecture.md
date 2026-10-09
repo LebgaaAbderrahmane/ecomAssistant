@@ -280,7 +280,7 @@ Rules the layer enforces:
 - Read tools change the conversation state after they succeed (search moves it to `PRODUCT_DISCOVERY`, select moves it to `PRODUCT_SELECTED`). Write tools change state inside the handler.
 - While a human owns the conversation, read tools are refused and write tools still run.
 - `escalateConversation` sets `takenOverByHuman` and `escalatedAt`, and creates a notification. Calling it twice does nothing the second time.
-- Delivery cost is found by wilaya **name**, ignoring case. If no row matches, `calculateShipping` returns "not found". `createOrder` and `ingestOrder` instead use a cost of 0 and log a warning.
+- Delivery cost is found by wilaya **name**, ignoring case. If no row matches, `calculateShipping` returns "not found". `createOrder` and `ingestOrder` instead use a cost of 0 and log a warning. `createOrder` builds `platformOrderId` as `AGENT-<idempotency key>` when the agent sends a key (otherwise `FAKE-<time>`), and writes the order, the customer and the conversation in one transaction. A repeated call returns the first order. The order's confirmation job uses the order id as its job id, so adding it twice does nothing.
 
 ### 4.10 Store connections (Shopify)
 
@@ -387,7 +387,7 @@ The merchant's reply does not change the agent: it is not enqueued and it does n
 
 Python 3.12, LangGraph 1.2, LangChain, `langchain-groq`, `langchain-google-genai`, gRPC (`grpcio` 1.66), `psycopg` 3, pydantic 2.
 The Docker image runs as a non-root user. `entrypoint.sh` runs `python -m server`.
-Tests: pytest, for the Draft only (see 12.5). No linter and no type checker are configured.
+Tests: pytest, for the Draft and for safe retries (see 12.5). No linter and no type checker are configured.
 
 ### 6.2 Process
 
@@ -396,8 +396,19 @@ Tests: pytest, for the Draft only (see 12.5). No linter and no type checker are 
 - `ProcessMessage(message_id, conversation_id, merchant_id, customer_id)`: checks the bearer key, then:
   1. Loads the `Message` row with `db.py::get_message`.
   2. If the message is not from a customer, or has no text, it replies with a fixed greeting.
-  3. Otherwise it runs the graph with `thread_id = conversation_id`, inside `tool_identity(...)`.
-  4. It takes the last AI message of this turn (after the latest customer message) as the reply. If the graph raised an error, or produced no reply, it answers `DECISION_ESCALATE`.
+  3. Otherwise it runs the Turn through `turn_guard.py` (see 6.2.1).
+  4. The Turn runs the graph with `thread_id = conversation_id`, inside `tool_identity(...)`. The `message_id` goes with every tool call as the idempotency key.
+  5. It takes the last AI message of this turn (after the latest customer message) as the reply. If the graph raised an error, or produced no reply, it answers `DECISION_ESCALATE`.
+
+#### 6.2.1 Retries (`turn_guard.py`)
+
+`back` sends the same message again when the call fails (BullMQ, up to 5 tries). The Turn must be safe to repeat.
+
+- **One Turn at a time per Conversation.** The guard takes a Postgres advisory lock on the `conversation_id` (`pg_advisory_lock(hashtextextended(...))`). It uses its own connection, not the pool. Postgres frees the lock when the connection closes, so a crash cannot leave it stuck. Without `DATABASE_URL` (bare mode) it uses a lock in the process instead.
+- **Wait limit.** A Turn waits up to `TURN_LOCK_TIMEOUT_SECONDS` (60). Then `ProcessMessage` answers the gRPC status `UNAVAILABLE`, and `back` retries later.
+- **One result per message.** After the lock is taken, the guard looks for a saved result for `message_id`. If there is one, it returns it and the graph does not run. If not, it runs the graph and saves the result (reply or escalate) in the agent store, namespace `("turns", conversation_id)`, key `message_id`. Nothing deletes these rows yet. Each row is small.
+- **One order per message.** The graph can still die after `createOrder` and before the result is saved. So `call_tool` sends the `message_id` as `idempotency_key`. `back` builds the order's `platformOrderId` from it, and the unique index `(merchantId, platformOrderId)` makes a repeated call return the first order. See [grpc-contract.md](grpc-contract.md).
+- A connection is held for the whole Turn, so at most 10 are open (one per server thread), next to the pool.
 
 ### 6.3 The graph (`graph.py`, `routing.py`, `nodes/`)
 
@@ -471,7 +482,7 @@ Code around the nodes:
 - `LLMClient.invoke` tries each provider in order and moves on at any exception.
 - The graph asks for JSON in the prompt and parses it by hand (`llm/structured.py::call_json`, up to two tries per call).
 - A turn can make up to seven sequential LLM calls.
-- No timeouts or retry limits are set on the models.
+- Each model call has a time limit, `LLM_TIMEOUT_SECONDS` (20), and no library retries, `LLM_MAX_RETRIES` (0). Failing over to the next provider is the retry. One Turn can still take a long time: about 7 calls × 2 providers × 20 s is 280 s in the worst case, more than the 60 s lock wait. That is accepted: a Turn that waits too long for the lock answers `UNAVAILABLE` and `back` retries it.
 
 ### 6.6 Tools (`tools/`)
 
@@ -503,7 +514,7 @@ Two services, defined in `contracts/proto/`.
 - **Transport.** Plain text (insecure channels). Safe only because the ports stay on the Compose network.
 - **Codegen.** The Python side uses generated stubs in `ecom_agent/grpc_gen/`, committed to git. The TypeScript side loads the `.proto` files at runtime with `@grpc/proto-loader`, so it has no generated code. See [grpc-ts-loading.md](grpc-ts-loading.md).
 - **Regenerate.** After a `.proto` change run `ecom_agent/scripts/gen_stubs.sh`. Commit the `.proto` and `grpc_gen/` together.
-- **Payloads.** `ProcessMessageRequest` has only four ids. The agent reads the message text from Postgres itself. `ExecuteTool` sends and returns JSON strings. `GetConversationContext` returns typed fields: the customer, the current order, the current product and the last messages. The agent calls it at the start of every message (`hydrate`).
+- **Payloads.** `ProcessMessageRequest` has only four ids. The agent reads the message text from Postgres itself. `ExecuteTool` sends and returns JSON strings, plus an `idempotency_key` (the message id) that only `createOrder` uses. `GetConversationContext` returns typed fields: the customer, the current order, the current product and the last messages. The agent calls it at the start of every message (`hydrate`).
 - **Decisions.** `DECISION_REPLY` and `DECISION_ESCALATE` are used. `DECISION_UNAVAILABLE` exists, and `back` treats it like escalate, but the agent never sends it.
 - **Deadlines.** None are set on either side.
 - **Tool list.** `contracts/src/generated/tools.json` is generated from the backend registry by `back/scripts/export-contract.ts`. `back` has a test that fails if it drifts. The Python tool definitions are a hand copy and no test covers them.
@@ -691,7 +702,8 @@ Variables by owner:
 | Internal gRPC | `INTERNAL_API_KEY` | back and agent (must match) |
 | gRPC addresses | `AGENT_GRPC_ADDR` (back to agent), `TOOLS_GRPC_ADDR` (back bind), `BACK_TOOLS_GRPC_ADDR` (agent to back), `TOOLS_GRPC_ENABLED` | back and agent |
 | WhatsApp | `OPENWA_URL`, `OPENWA_API_KEY`, `OPENWA_WEBHOOK_SECRET`, `INTERNAL_URL` | back |
-| LLM (agent) | `LLM_PROVIDER`, `GROQ_API_KEY`, `GROQ_MODEL`, `GOOGLE_API_KEY`, `GEMINI_MODEL` | agent |
+| LLM (agent) | `LLM_PROVIDER`, `GROQ_API_KEY`, `GROQ_MODEL`, `GOOGLE_API_KEY`, `GEMINI_MODEL`, `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` | agent |
+| Turn lock (agent) | `TURN_LOCK_TIMEOUT_SECONDS` | agent |
 | LLM (back) | `GEMINI_API_KEY_1..6` | back media and catalog tools |
 | Shopify | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_SCOPES` | back |
 | Billing | `CHARGILY_*` | back |
@@ -731,8 +743,10 @@ Weak (details in the report):
 
 ### 12.3 Reliability
 
-- Queue jobs retry with backoff, but there is no deduplication and no order per conversation. Two fast messages from one customer can be processed at the same time.
-- No deadline on the agent call. A slow model holds a worker.
+- Queue jobs retry with backoff. The agent side is safe to repeat: one Turn at a time per Conversation, one saved result per message, and one order per message (see 6.2.1). `back` still has no queue-level order per conversation.
+- No deadline on the agent call from `back`. The agent limits each LLM call to 20 s, so a stuck model no longer holds a thread forever. A whole Turn can still run for minutes.
+- A Turn that waits for the conversation lock holds one of the 5 worker slots of `back` for up to 60 s. A customer who sends many quick messages can slow other merchants. If all 5 tries answer busy, `relay.worker` only logs it and the message is lost. The real fix is an order per conversation in `back`'s queue.
+- No graceful shutdown on the agent, and `Health` only says the process is alive.
 - Agent notes are saved in Postgres. The RAM saver still grows with every conversation.
 - The webhook does slow work (transcription) before it answers OpenWA.
 - Outbound sends have no retry.
@@ -753,6 +767,7 @@ Weak (details in the report):
     The Draft tests run the real graph with a scripted LLM and the fake shop from the evals.
     They need no key and no network. They switch LangSmith tracing off, even when `.env` turns it on. Files in `tests/golden/` hold the exact text the Draft sends to the LLM;
     rewrite them with `UPDATE_GOLDEN=1 pytest` only when that text should change.
+    The retry tests (`test_turn_guard.py`, `test_server_retry.py`, `test_retry_settings.py`) need no database. The Postgres lock cases in `test_turn_guard.py` are skipped unless `TEST_DATABASE_URL` is set. They only call `pg_advisory_lock` and create no table.
   - The evals run test conversations through the graph with a fake shop instead
     of `back` (they swap `tools.registry.call_tool`), then score each case with
     code-only checks as a LangSmith experiment. They keep the notes in RAM, so
@@ -782,7 +797,7 @@ Grouped by what they block.
 | No follow-ups | `followUpDelays` stored, no queue | [roadmap.md](roadmap.md) |
 | Confirmed orders are not shipped | `confirmOrder` only changes status | [roadmap.md](roadmap.md) |
 | Delivery price table cannot be edited | placeholder tab, no routes | [roadmap.md](roadmap.md) |
-| Messages are not idempotent | no dedupe, no deadline, no lock per conversation | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
+| `back` does not limit the agent call | no gRPC deadline, no graceful shutdown on the agent (the agent side of retries is safe, see 6.2.1) | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
 | Not deployable | dev-mode images, `db push`, no CI, tests run by hand | [PROJECT_REPORT.md](PROJECT_REPORT.md) |
 | The agent cannot match a product photo to the catalog | back only writes a text caption | [roadmap.md](roadmap.md) |
 | Real billing, KPIs, WooCommerce, official WhatsApp API | stubs and placeholders | [roadmap.md](roadmap.md) |

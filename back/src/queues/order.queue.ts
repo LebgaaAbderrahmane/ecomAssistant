@@ -14,5 +14,6 @@ export const orderQueue = new Queue('order-confirmation', {
 export type OrderJobData = { orderId: string };
 
 export const enqueueOrderJob = async (orderId: string) => {
-  await orderQueue.add('send-confirmation', { orderId } satisfies OrderJobData);
+  // The job id is the order id, so adding the same order again is ignored.
+  await orderQueue.add('send-confirmation', { orderId } satisfies OrderJobData, { jobId: orderId });
 };

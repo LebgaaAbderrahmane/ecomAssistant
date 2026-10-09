@@ -4,6 +4,7 @@ from concurrent import futures
 
 import grpc
 from langchain_core.messages import HumanMessage
+from langgraph.store.memory import InMemoryStore
 
 from config import get_model
 from db import get_message
@@ -12,6 +13,7 @@ from notes_store import open_postgres_store
 from prompts.common import GREETING
 from grpc_gen.agent.v1 import agent_pb2, agent_pb2_grpc
 from tools.grpc import tool_identity
+from turn_guard import TurnBusy, TurnGuard, TurnResult
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,8 +64,9 @@ def _last_reply(state) -> str:
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
-    def __init__(self, app) -> None:
+    def __init__(self, app, guard: TurnGuard) -> None:
         self.app = app
+        self.guard = guard
 
     # No auth on Health, so the Docker healthcheck works without the key.
     def Health(self, request, context):
@@ -114,6 +117,28 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
                 text=GREETING,
             )
 
+        try:
+            result = self.guard.run_once(
+                request.conversation_id,
+                request.message_id,
+                lambda: self._run_turn(request, text),
+            )
+        except TurnBusy:
+            # back sees an error and sends the message again later.
+            log.warning("conversation %s is busy, message %s will be retried", request.conversation_id, request.message_id)
+            context.set_code(grpc.StatusCode.UNAVAILABLE)
+            context.set_details("another Turn of this conversation is still running")
+            return agent_pb2.ProcessMessageResponse()
+        if result.escalate:
+            return agent_pb2.ProcessMessageResponse(
+                decision=agent_pb2.ProcessMessageResponse.DECISION_ESCALATE,
+            )
+        return agent_pb2.ProcessMessageResponse(
+            decision=agent_pb2.ProcessMessageResponse.DECISION_REPLY,
+            text=result.text,
+        )
+
+    def _run_turn(self, request, text: str) -> TurnResult:
         config = {
             "configurable": {
                 "thread_id": request.conversation_id,
@@ -125,6 +150,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
                 conversation_id=request.conversation_id,
                 merchant_id=request.merchant_id,
                 customer_id=request.customer_id,
+                message_id=request.message_id,
             ):
                 state = self.app.invoke(
                     {"messages": [HumanMessage(content=text)]},
@@ -137,9 +163,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
                 exc,
                 exc_info=True,
             )
-            return agent_pb2.ProcessMessageResponse(
-                decision=agent_pb2.ProcessMessageResponse.DECISION_ESCALATE,
-            )
+            return TurnResult(escalate=True)
 
         reply_text = _last_reply(state)
         log.info(
@@ -149,16 +173,11 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             "reply" if reply_text.strip() else "escalate",
         )
         if reply_text.strip():
-            return agent_pb2.ProcessMessageResponse(
-                decision=agent_pb2.ProcessMessageResponse.DECISION_REPLY,
-                text=reply_text,
-            )
-        return agent_pb2.ProcessMessageResponse(
-            decision=agent_pb2.ProcessMessageResponse.DECISION_ESCALATE,
-        )
+            return TurnResult(escalate=False, text=reply_text)
+        return TurnResult(escalate=True)
 
 
-def _build_agent_app():
+def _build_agent_service() -> AgentService:
     # Without an LLM provider every message would fail. Stop at start, so the container restarts.
     if not get_model().configured:
         raise RuntimeError("no LLM provider is configured: set GROQ_API_KEY or GOOGLE_API_KEY (see LLM_PROVIDER)")
@@ -166,14 +185,17 @@ def _build_agent_app():
     if not database_url:
         #stays on ram
         log.warning("DATABASE_URL not set: the agent's notes stay in RAM and are lost on restart")
-        return build_app()
-    # If Postgres is down this raises and the container restarts, instead of running without saving.
-    return build_app(open_postgres_store(database_url))
+        store = InMemoryStore()
+    else:
+        # If Postgres is down this raises and the container restarts, instead of running without saving.
+        store = open_postgres_store(database_url)
+    lock_timeout = float(os.environ.get("TURN_LOCK_TIMEOUT_SECONDS", "60"))
+    return AgentService(build_app(store), TurnGuard(store, database_url, lock_timeout))
 
 
 def serve(addr: str = AGENT_GRPC_ADDR) -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    agent_pb2_grpc.add_AgentServiceServicer_to_server(AgentService(_build_agent_app()), server)
+    agent_pb2_grpc.add_AgentServiceServicer_to_server(_build_agent_service(), server)
     if server.add_insecure_port(addr) == 0:
         raise RuntimeError(f"could not bind gRPC addr {addr}")
     log.info("AgentService listening on %s", addr)
