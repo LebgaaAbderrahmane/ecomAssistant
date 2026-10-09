@@ -18,12 +18,7 @@ def reply(state: AgentState) -> dict:
         text = state.reply if state.reply.strip() else DEFAULT_REPLY
     else:
         tool_result = state.tool_outputs[-1] if state.tool_outputs else "No tool output available."
-        user_text = ""
-        for m in reversed(state.messages):
-            content = getattr(m, "content", "")
-            if getattr(m, "type", "") == "human" and content:
-                user_text = content if isinstance(content, str) else str(content)
-                break
+        user_text = last_user_text(state.messages)
         backend = ""
         if state.backend_context is not None:
             backend = json.dumps(state.backend_context.summary(), ensure_ascii=False)
