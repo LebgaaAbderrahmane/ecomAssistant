@@ -2,7 +2,7 @@
 
 Status: done (branch `fix/address-rule`, with issue 05)
 
-Decided: the latest wilaya and commune win. A change in the args updates the notes. Fixed in `drafts.py::_save_place`.
+Decided: the latest wilaya and commune win. A change in the args updates the notes. Fixed in `drafts.py::_sync_address`.
 
 I found this by reading the code. I did not run it. It may be a bug.
 

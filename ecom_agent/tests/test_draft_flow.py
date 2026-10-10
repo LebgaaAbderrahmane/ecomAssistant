@@ -202,7 +202,7 @@ def test_second_order_still_asks_for_wilaya_and_commune_when_args_miss_them(chat
     golden("second_order_missing_args")
 
 
-def test_second_order_to_a_new_place_asks_for_the_street(chat, llm, shop):
+def test_second_order_to_a_new_commune_asks_for_the_street(chat, llm, shop):
     place_first_order(chat, llm)
     llm.script("check", {"needs_tool": True, "tool_name": "createOrder", "reply": ""})
     llm.script("query", {"tool": "createOrder", "arguments": {}})

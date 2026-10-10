@@ -131,7 +131,7 @@ class TestCollect:
         gi = notes.global_information
         assert (gi.wilaya, gi.commune, gi.address) == ("Oran", "Bir El Djir", "Cité 200 logements")
 
-    def test_a_new_place_makes_the_saved_street_missing(self, model):
+    def test_a_new_wilaya_and_commune_make_the_saved_street_missing(self, model):
         notes, flow = notes_with(args={"productId": "p1", "quantity": 1}, wilaya="Oran", commune="Bir El Djir",
                                  address="Cité 200 logements")
         model.script("args", {"wilaya": "Alger", "commune": "Bab Ezzouar"})
@@ -142,16 +142,24 @@ class TestCollect:
         assert flow.tool_draft.status == "drafting"
         assert flow.tool_draft.missing == ["address"]
 
-    def test_the_same_place_keeps_the_saved_street(self, model):
+    def test_the_same_wilaya_and_commune_keep_the_saved_street(self, model):
         notes, flow = notes_with(args={"productId": "p1", "quantity": 1}, wilaya="Béjaïa", commune="Bir El Djir",
                                  address="Cité 200 logements")
         model.script("args", {"wilaya": " bejaia", "commune": "bir el  djir"})
-        drafts.collect(notes, None, "same place", model)
+        drafts.collect(notes, None, "same address", model)
         gi = notes.global_information
         assert (gi.wilaya, gi.commune, gi.address) == ("Béjaïa", "Bir El Djir", "Cité 200 logements")
         assert flow.tool_draft.status == "ready"
 
-    def test_a_new_place_and_a_street_in_one_message(self, model):
+    def test_dashes_and_apostrophes_do_not_make_a_new_commune(self, model):
+        notes, flow = notes_with(args={"productId": "p1", "quantity": 1}, wilaya="Bordj Bou Arréridj",
+                                 commune="M'sila", address="Cité 200 logements")
+        model.script("args", {"wilaya": "Bordj-Bou-Arreridj", "commune": "M’sila"})
+        drafts.collect(notes, None, "same", model)
+        assert notes.global_information.address == "Cité 200 logements"
+        assert flow.tool_draft.status == "ready"
+
+    def test_a_new_wilaya_commune_and_street_in_one_message(self, model):
         notes, flow = notes_with(args={"productId": "p1", "quantity": 1}, wilaya="Oran", commune="Bir El Djir",
                                  address="Cité 200 logements")
         model.script("args", {"wilaya": "Alger", "commune": "Bab Ezzouar"})
@@ -159,6 +167,27 @@ class TestCollect:
         drafts.collect(notes, None, "Alger, Bab Ezzouar, Rue 5", model)
         assert flow.tool_draft.status == "ready"
         assert drafts.ready_call(notes, None).args["address"] == "Rue 5"
+
+    def test_an_old_street_in_the_arguments_does_not_follow_a_new_commune(self, model):
+        notes, flow = notes_with(args={**ORDER, "address": "Rue Old"}, wilaya="Oran", commune="Bir El Djir",
+                                 address="Rue Old")
+        model.script("args", {"wilaya": "Alger", "commune": "Bab Ezzouar"})
+        model.script("address", {})
+        drafts.collect(notes, None, "ship it to Alger, Bab Ezzouar", model)
+        assert "address" not in flow.tool_draft.args
+        assert flow.tool_draft.missing == ["address"]
+
+        model.script("args", {})
+        model.script("address", {"address": "Rue New"})
+        drafts.collect(notes, None, "Rue New", model)
+        assert drafts.ready_call(notes, None).args["address"] == "Rue New"
+
+    def test_a_street_in_the_arguments_is_saved_in_the_notes(self, model):
+        notes, flow = notes_with(args=ORDER, wilaya="Oran", commune="Bir El Djir", address="Rue Old")
+        model.script("args", {"address": "Rue New"})
+        drafts.collect(notes, None, "no, Rue New", model)
+        assert notes.global_information.address == "Rue New"
+        assert drafts.ready_call(notes, None).args["address"] == "Rue New"
 
     def test_a_corrected_wilaya_is_saved_in_the_notes(self, model):
         notes, flow = notes_with(args=ORDER, wilaya="Oran", commune="Bir El Djir")
@@ -168,7 +197,7 @@ class TestCollect:
         assert notes.global_information.wilaya == "Alger"
         assert flow.tool_draft.args["wilaya"] == "Alger"
 
-    def test_a_first_place_is_saved_without_dropping_anything(self, model):
+    def test_a_first_wilaya_and_commune_drop_nothing(self, model):
         notes, _ = notes_with(args={"productId": "p1", "quantity": 1}, address="Cité 200 logements")
         model.script("args", {"wilaya": "Oran", "commune": "Bir El Djir"})
         drafts.collect(notes, None, "Oran, Bir El Djir", model)
