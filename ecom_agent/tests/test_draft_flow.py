@@ -202,6 +202,33 @@ def test_second_order_still_asks_for_wilaya_and_commune_when_args_miss_them(chat
     golden("second_order_missing_args")
 
 
+def test_second_order_to_a_new_place_asks_for_the_street(chat, llm, shop):
+    place_first_order(chat, llm)
+    llm.script("check", {"needs_tool": True, "tool_name": "createOrder", "reply": ""})
+    llm.script("query", {"tool": "createOrder", "arguments": {}})
+    llm.script("flow", _continue_flow)
+    llm.script("args", {"productId": "p1", "quantity": 1, "wilaya": "Alger", "commune": "Bab Ezzouar"})
+    llm.script("address", {})
+    llm.script("ask", "ask: address")
+
+    turn = chat.say("nheb nzid wa7da khra, livraison l Alger Bab Ezzouar")
+    assert turn.reply == "ask: address"
+    assert draft_of(turn)["status"] == "drafting"
+    assert draft_of(turn)["missing"] == ["address"]
+    assert address_of(turn) == ("Alger", "Bab Ezzouar", None)
+    assert tools_called(shop) == ["searchProducts", "createOrder"]
+
+    llm.script("args", {})
+    llm.script("address", {"address": "Rue 5"})
+    llm.script("reply", "second order created")
+    street = chat.say("Rue 5")  # a number continues the Draft without asking the gate
+    assert street.reply == "second order created"
+    assert address_of(street) == ("Alger", "Bab Ezzouar", "Rue 5")
+    assert shop.calls[-1]["args"] == {
+        "productId": "p1", "quantity": 1, "wilaya": "Alger", "commune": "Bab Ezzouar", "address": "Rue 5",
+    }
+
+
 def test_llm_errors_keep_the_draft_and_use_the_fallback_question(chat, llm, shop):
     search_then_buy(chat, llm)
     llm.script("gate", {"decision": "continue_draft"})

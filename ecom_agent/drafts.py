@@ -5,6 +5,7 @@ The LLM is an argument. The graph step names are not known here.
 """
 import json
 import logging
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Literal, NamedTuple
 
@@ -72,6 +73,29 @@ def _missing_address(tool_name: str, notes: ConversationMemory) -> list[str]:
         return []
     gi = notes.global_information
     return [f for f in ADDRESS_FIELD_DESCS if not getattr(gi, f, None)]
+
+
+def _plain(place: str) -> str:
+    """Lower case, no accents, one space between words. "Béjaïa " and "bejaia" are the same place."""
+    decomposed = unicodedata.normalize("NFKD", place)
+    return " ".join("".join(c for c in decomposed if not unicodedata.combining(c)).casefold().split())
+
+
+def _save_place(notes: ConversationMemory, draft: ToolCallDraft) -> None:
+    """The latest wilaya and commune win. A new place makes the saved street wrong, so it is dropped and asked again."""
+    if draft.tool_name != "createOrder":
+        return
+    gi = notes.global_information
+    moved = False
+    for field in ("wilaya", "commune"):
+        new = str(draft.args.get(field) or "").strip()
+        old = getattr(gi, field)
+        if not new or (old and _plain(old) == _plain(new)):
+            continue
+        moved = moved or bool(old)
+        setattr(gi, field, new)
+    if moved:
+        gi.address = None
 
 
 def state_of(notes: ConversationMemory, flow_id: str | None) -> State:
@@ -170,6 +194,7 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) ->
     before_args_missing = missing_fields(draft.args, draft.tool_name)
     before_address_missing = _missing_address(draft.tool_name, notes)
     draft.args.update(extracted)
+    _save_place(notes, draft)
 
     address_missing = _missing_address(draft.tool_name, notes)
     if address_missing:
