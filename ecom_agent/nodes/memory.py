@@ -23,6 +23,7 @@ def _store_config(config: RunnableConfig) -> tuple[tuple[str, str], str]:
 def _fresh_turn() -> dict[str, Any]:
     return {
         "escalation": False,
+        "escalation_reason": None,
         "proposed_intent": None,
         "needs_tool": False,
         "reply": "",

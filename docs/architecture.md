@@ -428,6 +428,7 @@ flowchart TD
     FR -->|"unclear"| RP
     EX -->|"all args found"| CT
     EX -->|"args missing"| AR["ask_reply"]
+    EX -->|"3 stalled turns"| ES
     AR --> RP
     CT --> RP
     ES --> PS["persist"]
@@ -444,7 +445,7 @@ What each node does:
 | `check_llm` | `nodes/check.py` | Classifies the message: answer directly (only for reading what is in memory), or use a tool (any action, and anything that changes over time). Its prompt has a summary of the flows and the saved delivery address. |
 | `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. Picks the tool even when arguments are missing (later nodes ask the customer). May decide to escalate. |
 | `flow_resolver` | `nodes/flow.py` | Decides which flow the tool applies to: continue one, create one, or ask the customer to clarify. |
-| `extract_tool_args` | `nodes/draft.py` | Calls `drafts.collect`. Asks the LLM to pull arguments (and the delivery address) out of the customer's text. Marks the draft `ready` when nothing is missing. |
+| `extract_tool_args` | `nodes/draft.py` | Calls `drafts.collect`. Asks the LLM to pull arguments (and the delivery address) out of the customer's text. Marks the draft `ready` when nothing is missing. After `MAX_STALLED_TURNS` (3) stalled Turns in a row (`attempts`), `drafts.give_up` removes the draft and the node sets `escalation`, so `after_extract` routes to `escalate`. |
 | `ask_reply` | `nodes/draft.py` | Calls `drafts.ask`. Writes a question for the missing arguments. |
 | `calling_tool` | `nodes/calling.py` | Runs the tool through LangGraph's `ToolNode`. Stores product results in the flow. |
 | `reply` | `nodes/reply.py` | Writes the answer from the tool result, or uses the direct answer. |
@@ -605,8 +606,9 @@ Confirming an order does not create a shipment.
 
 ### 8.4 Escalation
 
-Escalation happens in three ways:
+Escalation happens in four ways:
 - The agent picks `escalateConversation` (nothing else fits).
+- The customer gives a Draft nothing new for 3 Turns in a row (stalled Turns). The agent removes the Draft and escalates. The reason names the tool and the missing fields.
 - The agent graph fails, or produces no text. `ProcessMessage` answers `DECISION_ESCALATE`.
 - The merchant puts a conversation on hold (`PATCH /orders/bulk-hold`). This sets only `takenOverByHuman`.
 

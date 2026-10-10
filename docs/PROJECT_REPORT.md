@@ -16,6 +16,7 @@
 - The agent did not know the current order, the current product or the customer. `GetConversationContext` gives them at each message (`1ef58f8`, `3fde97f`).
 - The agent's notes (flows, drafts) were lost on restart. `PostgresStore` now saves them, one row per conversation, in the Postgres schema `agent`. The tables are not in `public`, because `prisma db push` drops unknown tables there (checked).
 - An escalation turn sent the old reply again (`8e3211e`).
+- The agent could ask for the same missing field forever. After 3 stalled Turns in a row it removes the Draft and escalates (`drafts.py::give_up`).
 - Software: a repeated inbound webhook with a known id is ignored, and `whatsappMessageId` is saved. Messages the merchant types on the phone are stored as `MERCHANT` messages, so the agent sees them (`205d135`).
 - No evals. There are 17 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
 - Small agent cleanup (branch `fix/agent-cleanup`): the internal key is compared with `hmac.compare_digest`; `server.py` no longer logs the message text (other logs still carry customer data, see the vulnerability table); the unused `tool_client.py`, `main.py` and `log_state` are gone; `pandas` and `langchain-openai` are dropped and `rich` and `langsmith` are pinned; the second `logging.basicConfig` is gone; the tracked `.pyc` files are untracked and `ecom_agent/.gitignore` ignores them; `nodes/reply.py` uses the shared `last_user_text`; the README agent tree is correct.
@@ -63,7 +64,7 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 
 - PRD §7.1 is outbound: order webhook → confirmation message → customer answers. The first message is sent by `back` (Shopify path: `sendOrderNotification`; simulated orders: `orderConfirmation.service.ts` via the `order-confirmation` queue), not by the agent. The agent is inbound-only: `AgentService` has one RPC, `ProcessMessage`. There is no follow-up at T+2h/24h/48h and no use of `AgentConfig.followUpDelays` / `maxFollowUps`. The two confirmation paths also differ: only the simulated path sets the conversation state to `WAITING_CONFIRMATION`.
 - `createOrder` needs a `productId` (`tools/registry.py:85`). `drafts.py::collect` asks the LLM to pull it from the customer text. Customers never say IDs. The LLM can only fill it when a product is already selected in the flow, because `selected_product` is passed into the prompt. When `flow_resolver` returns `CREATE` for an order flow, `product_discovery` is `None` (`nodes/flow.py:40-42`), so nothing supplies the id and `ask_reply` asks the customer for "productId".
-- `ToolCallDraft.attempts` is incremented (`drafts.py::collect`) but never checked. The agent can ask for the same missing field forever. `AgentConfig.escalationThreshold` is unused.
+- `AgentConfig.escalationThreshold` is unused. The stalled-Draft hand-over uses a constant, `MAX_STALLED_TURNS = 3` in `drafts.py` (issue 11).
 - The deterministic "buy fast-path" (`nodes/query.py:47-58`, used at `:69`) forces `createOrder` with empty args based on English words only.
 
 #### C. Language: Derdja / French / Arabic is not handled

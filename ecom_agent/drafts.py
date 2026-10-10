@@ -34,6 +34,9 @@ ADDRESS_FIELD_DESCS = {
     "address": "the street or detailed delivery address",
 }
 
+# Stalled Turns in a row before the agent hands over to a human.
+MAX_STALLED_TURNS = 3
+
 
 class Gate(NamedTuple):
     direction: Direction
@@ -235,3 +238,17 @@ def close(notes: ConversationMemory, flow_id: str | None) -> None:
         flow = found[0]
         flow.tool_draft = None
         flow.updated_at = datetime.now(timezone.utc)
+
+
+def give_up(notes: ConversationMemory, flow_id: str | None) -> str | None:
+    """Changes `notes`, so pass a copy. When the customer stalled the Draft too often, removes it
+    and returns the reason for the human. Otherwise None."""
+    found = _find(notes, flow_id)
+    if found is None:
+        return None
+    draft = found[1]
+    if _state(draft) != "collecting" or draft.attempts < MAX_STALLED_TURNS:
+        return None
+    missing = ", ".join(dict.fromkeys(draft.missing))
+    close(notes, flow_id)
+    return f"[stalledDraft] {draft.tool_name} is stuck after {draft.attempts} turns with nothing new. Missing: {missing}"
