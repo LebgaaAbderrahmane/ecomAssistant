@@ -72,7 +72,7 @@ class TurnGuard:
             conn.execute("SELECT set_config('lock_timeout', %s, false)", (f"{wait_ms}ms",))
             try:
                 # Postgres makes the number from the text. Python's hash() differs between processes.
-                conn.execute("SELECT pg_advisnexory_lock(hashtextextended(%s, 0))", (LOCK_PREFIX + conversation_id,))
+                conn.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (LOCK_PREFIX + conversation_id,))
             except errors.LockNotAvailable as exc:
                 raise TurnBusy(f"conversation {conversation_id} is busy") from exc
             yield

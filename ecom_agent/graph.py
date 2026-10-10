@@ -45,7 +45,7 @@ def _build_graph() -> StateGraph:
     graph.add_conditional_edges(
         "extract_tool_args",
         after_extract,
-        {"calling_tool": "calling_tool", "ask_reply": "ask_reply"},
+        {"calling_tool": "calling_tool", "ask_reply": "ask_reply", "escalate": "escalate"},
     )
     graph.add_edge("ask_reply", "reply")
     graph.add_conditional_edges("check_llm", route, {"query_tool": "query_tool", "reply": "reply"})

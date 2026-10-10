@@ -50,7 +50,7 @@ One topic in a Conversation, for example "looking at product X". It is kept in t
 _Avoid_: thread, topic
 
 **Draft**:
-A tool call the agent is still filling in. A Flow holds at most one. It is removed when the tool has run or the customer cancels.
+A tool call the agent is still filling in. A Flow holds at most one. It is removed when the tool has run, the customer cancels, or the agent hands over because the Draft is stuck.
 _Avoid_: pending call
 
 **Ready**:
@@ -63,3 +63,7 @@ _Avoid_: state
 **Turn**:
 One run of the agent for one customer message. It ends with a reply or an Escalation.
 _Avoid_: request, job
+
+**Stalled Turn**:
+A Turn where the customer gave the Draft nothing new. A Turn that adds anything resets the count.
+_Avoid_: failed attempt

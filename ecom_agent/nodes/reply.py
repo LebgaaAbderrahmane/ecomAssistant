@@ -34,7 +34,7 @@ def reply(state: AgentState) -> dict:
 def escalate(state: AgentState) -> dict:
     intent = state.proposed_intent or "unsupported"
     user_text = last_user_text(state.messages)
-    reason = f"[{intent}] Customer request: {user_text[:200]}"
+    reason = state.escalation_reason or f"[{intent}] Customer request: {user_text[:200]}"
     result = None
     try:
         result = escalateConversation.invoke({"reason": reason})

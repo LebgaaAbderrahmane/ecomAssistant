@@ -18,7 +18,11 @@ def extract_tool_args(state: AgentState) -> dict:
     mem = state.conversation_memory.model_copy(deep=True)
     if not drafts.collect(mem, state.resolved_flow_id, last_user_text(state.messages), model):
         return {}
-    return {"conversation_memory": mem}
+    updates: dict[str, Any] = {"conversation_memory": mem}
+    reason = drafts.give_up(mem, state.resolved_flow_id)
+    if reason:
+        updates.update({"escalation": True, "escalation_reason": reason})
+    return updates
 
 
 def ask_reply(state: AgentState) -> dict:

@@ -29,6 +29,7 @@ class AgentState(BaseModel):
     flow_direction: str = "normal"
     flow_action: str | None = None
     escalation: bool = False
+    escalation_reason: str | None = None
     proposed_intent: str | None = None
     # Read-only: what back knows, loaded fresh by hydrate at every message.
     backend_context: BackendContext | None = None

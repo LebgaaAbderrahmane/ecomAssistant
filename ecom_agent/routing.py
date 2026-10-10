@@ -11,6 +11,8 @@ def draft_route(state: AgentState) -> str:
 
 
 def after_extract(state: AgentState) -> str:
+    if state.escalation:
+        return "escalate"
     if state_of(state.conversation_memory, state.resolved_flow_id) == "ready":
         return "calling_tool"
     return "ask_reply"
