@@ -1,6 +1,10 @@
 # The old saved street is used with a new wilaya and commune
 
-Status: needs-triage
+Status: done (branch `fix/address-rule`, with issue 04)
+
+Decided: a new wilaya or commune drops the saved street, so the agent asks for it. The same wilaya and commune keep the street, silently. The notes keep the latest address. Fixed in `drafts.py::_sync_address`.
+The wilaya and commune are compared without case, accents, dashes or extra spaces. "Alger" and "16" count as different, so the agent asks once more.
+Not fixed (it was already so): after a wilaya change, the old commune stays in the args and the notes.
 
 I found this by reading the code and by asking "what if the customer is not at home?". I did not run it. It may be a bug.
 

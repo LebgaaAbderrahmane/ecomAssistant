@@ -29,7 +29,7 @@
  ],
  [
   "address",
-  "{\"customer_message\": \"Oran\", \"already_known\": {\"wilaya\": null, \"commune\": null, \"address\": null}}"
+  "{\"customer_message\": \"Oran\", \"already_known\": {\"wilaya\": \"Oran\", \"commune\": null, \"address\": null}}"
  ],
  [
   "ask",

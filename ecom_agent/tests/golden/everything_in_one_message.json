@@ -21,6 +21,6 @@
  ],
  [
   "address",
-  "{\"customer_message\": \"Oran, Bir El Djir, wa7da, Cité 200 logements\", \"already_known\": {\"wilaya\": null, \"commune\": null, \"address\": null}}"
+  "{\"customer_message\": \"Oran, Bir El Djir, wa7da, Cité 200 logements\", \"already_known\": {\"wilaya\": \"Oran\", \"commune\": \"Bir El Djir\", \"address\": null}}"
  ]
 ]

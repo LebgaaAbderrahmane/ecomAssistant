@@ -35,7 +35,7 @@ A town inside a wilaya.
 _Avoid_: city, town
 
 **Delivery address**:
-The wilaya, commune and street where an order is sent. The Conversation notes keep the one the customer gave.
+The wilaya, commune and street where an order is sent. The Conversation notes keep the latest one the customer gave. A new wilaya or commune drops the saved street, so the agent asks for it again.
 
 **Derdja**:
 Algerian Arabic. Often written in Latin letters and mixed with French.
