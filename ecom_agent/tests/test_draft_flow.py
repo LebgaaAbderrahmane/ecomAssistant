@@ -4,6 +4,10 @@ These tests describe what the agent does with a Draft. They were first run on th
 into drafts.py, and they passed on both.
 Each turn is checked on: the reply, the Draft in the notes, the saved address, and the exact LLM input.
 """
+import json
+
+import tools.registry
+from flows import shown_products
 from prompts.common import ASK_MORE_INFO
 
 
@@ -227,6 +231,120 @@ def test_second_order_to_a_new_commune_asks_for_the_street(chat, llm, shop):
     assert shop.calls[-1]["args"] == {
         "productId": "p1", "quantity": 1, "wilaya": "Alger", "commune": "Bab Ezzouar", "address": "Rue 5",
     }
+
+
+def test_an_order_in_a_new_flow_still_gets_the_chosen_product(chat, llm, shop):
+    # The real E2E run: the flow LLM opens a new flow for the order, and the args LLM finds nothing.
+    llm.script("check", {"needs_tool": True, "tool_name": "searchProducts", "reply": ""},
+               {"needs_tool": True, "tool_name": "createOrder", "reply": ""})
+    llm.script("query", {"tool": "searchProducts", "arguments": {"product": "Nike Air Max"}},
+               {"tool": "createOrder", "arguments": {}})
+    llm.script("flow", {"action": "CREATE", "product_name": "Nike Air Max"}, {"action": "CREATE"})
+    llm.script("args", {"product": "Nike Air Max"}, {})
+    llm.script("address", {})
+    llm.script("ask", "ask: quantity, wilaya, commune, address")
+    llm.script("reply", "found nike")
+
+    chat.say("vous avez des Nike Air Max ?")
+    turn = chat.say("je veux commander le Nike Air Max")
+    assert draft_of(turn)["args"] == {"productId": "p1"}
+    assert "productId" not in draft_of(turn)["missing"]
+    assert llm.calls_of("args")[-1].payload()["selected_product"]["product_id"] == "p1"
+
+
+def chosen_products(turn):
+    return [f.product_discovery.selected_product.product_id
+            for f in turn.notes.flows if f.product_discovery and f.product_discovery.selected_product]
+
+
+def search_two_then_buy(chat, llm):
+    """Turn 1: a search shows two products. Turn 2: "I want to order", with no product named."""
+    llm.script("check", {"needs_tool": True, "tool_name": "searchProducts", "reply": ""},
+               {"needs_tool": True, "tool_name": "createOrder", "reply": ""})
+    llm.script("query", {"tool": "searchProducts", "arguments": {"product": "nike montre"}},
+               {"tool": "createOrder", "arguments": {}})
+    llm.script("flow", {"action": "CREATE", "product_name": "nike montre"}, _continue_flow)
+    llm.script("args", {"product": "nike montre"}, {})
+    llm.script("address", {})
+    llm.script("ask", "ask: which product?")
+    llm.script("reply", "found 2")
+    return chat.say("vous avez des nike ou des montres ?"), chat.say("je veux commander")
+
+
+def test_a_list_of_products_is_not_a_choice(chat, llm, shop):
+    search, buy = search_two_then_buy(chat, llm)
+    assert chosen_products(search) == []
+    assert "productId" not in draft_of(buy)["args"]
+    assert "productId" in draft_of(buy)["missing"]
+    shown = llm.calls_of("args")[-1].payload()["products_shown"]
+    assert {p["product_id"] for p in shown} == {"p1", "p2"}
+
+
+def test_the_customer_picks_from_the_list_by_name(chat, llm, shop):
+    search_two_then_buy(chat, llm)
+    llm.script("gate", {"decision": "continue_draft"})
+    llm.script("args", {"productId": "p2"})
+    llm.script("address", {})
+    llm.script("ask", "ask: quantity")
+    turn = chat.say("je prends Montre Casio")
+    assert draft_of(turn)["args"]["productId"] == "p2"
+
+
+def test_a_product_id_that_was_never_shown_is_dropped(chat, llm, shop):
+    search_two_then_buy(chat, llm)
+    llm.script("gate", {"decision": "continue_draft"})
+    llm.script("args", {"productId": "Casio"})
+    llm.script("address", {})
+    llm.script("ask", "ask: which product?")
+    turn = chat.say("je prends Casio")
+    assert "productId" not in draft_of(turn)["args"]
+    assert "productId" in draft_of(turn)["missing"]
+
+
+def test_the_choice_is_forgotten_after_an_order(chat, llm, shop):
+    turn = place_first_order(chat, llm)
+    assert chosen_products(turn) == []
+
+
+def search_two(chat, llm):
+    llm.script("check", {"needs_tool": True, "tool_name": "searchProducts", "reply": ""})
+    llm.script("query", {"tool": "searchProducts", "arguments": {"product": "nike montre"}})
+    llm.script("flow", {"action": "CREATE", "product_name": "nike montre"})
+    llm.script("args", {"product": "nike montre"})
+    llm.script("reply", "found 2")
+    return chat.say("vous avez des nike ou des montres ?")
+
+
+def ask_details(chat, llm, name, flow):
+    llm.script("check", {"needs_tool": True, "tool_name": "getProductDetails", "reply": ""})
+    llm.script("query", {"tool": "getProductDetails", "arguments": {"productName": name}})
+    llm.script("flow", flow)
+    llm.script("args", {"productName": name})
+    llm.script("reply", f"details {name}")
+    return chat.say(f"details {name} ?")
+
+
+def test_details_select_one_product_and_keep_the_list(chat, llm, shop):
+    search_two(chat, llm)
+    casio = ask_details(chat, llm, "Montre Casio", _continue_flow)
+    assert chosen_products(casio) == ["p2"]
+    assert {p["product_id"] for p in shown_products(casio.notes)} == {"p1", "p2"}
+
+    nike = ask_details(chat, llm, "Nike Air Max", {"action": "CREATE", "product_name": "Nike Air Max"})
+    assert chosen_products(nike) == ["p1"]  # only one product is selected at a time
+
+
+def test_a_failed_order_keeps_the_selected_product(chat, llm, shop, monkeypatch):
+    fake = tools.registry.call_tool
+
+    def create_order_fails(name, entities):
+        if name == "createOrder":
+            return json.dumps({"outcome": 0, "error": "commune not found"})
+        return fake(name, entities)
+
+    monkeypatch.setattr(tools.registry, "call_tool", create_order_fails)
+    turn = place_first_order(chat, llm)
+    assert chosen_products(turn) == ["p1"]
 
 
 def test_llm_errors_keep_the_draft_and_use_the_fallback_question(chat, llm, shop):

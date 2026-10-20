@@ -7,8 +7,9 @@ import config
 import drafts
 from fake_llm import ScriptedLLM
 from models.conversation import ConversationMemory, GlobalInformation
-from models.domain import Flow, FlowState, ToolCallDraft
+from models.domain import Flow, FlowState, Product, ProductDiscoveryContext, ToolCallDraft
 from prompts.common import ASK_MORE_INFO
+from prompts.draft import PRODUCT_QUESTION
 
 NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
 
@@ -31,7 +32,10 @@ def model():
 
 def notes_with(tool: str | None = "createOrder", args=None, status="drafting", missing=None, **address):
     draft = ToolCallDraft(tool_name=tool, args=args or {}, status=status, missing=missing or []) if tool else None
-    flow = Flow(flow_id="f1", state=FlowState.ORDER, created_at=NOW, updated_at=NOW, tool_draft=draft)
+    # p1 was shown to the customer, so it is a real product id for the draft.
+    shown = ProductDiscoveryContext(tool_results=[Product(product_id="p1", product_name="Nike Air Max", price=12000)])
+    flow = Flow(flow_id="f1", state=FlowState.ORDER, created_at=NOW, updated_at=NOW, tool_draft=draft,
+                product_discovery=shown)
     notes = ConversationMemory(
         flows=[flow], active_flow_id="f1", global_information=GlobalInformation(**address),
     )
@@ -222,6 +226,65 @@ class TestCollect:
         assert flow.tool_draft.attempts == 0
 
 
+class TestProduct:
+    NIKE = Product(product_id="p1", product_name="Nike Air Max", price=12000)
+    NIKE_KIDS = Product(product_id="p4", product_name="Nike Air Max Kids", price=8000)
+    CASIO = Product(product_id="p2", product_name="Montre Casio", price=4500)
+
+    def notes_after_search(self, results, selected):
+        notes, flow = notes_with(args={"quantity": 1})
+        flow.product_discovery = ProductDiscoveryContext(tool_results=results, selected_product=selected)
+        return notes, flow
+
+    def test_a_real_product_id_is_kept(self, model):
+        notes, flow = self.notes_after_search([self.NIKE, self.CASIO], self.NIKE)
+        model.script("args", {"productId": "p2"})
+        model.script("address", {})
+        drafts.collect(notes, None, "plutot la Casio", model)
+        assert flow.tool_draft.args["productId"] == "p2"
+
+    def test_a_product_name_gives_the_customers_choice(self, model):
+        notes, flow = self.notes_after_search([self.NIKE, self.NIKE_KIDS], self.NIKE)
+        model.script("args", {"productId": "Air Max"})
+        model.script("address", {})
+        drafts.collect(notes, None, "le Air Max", model)
+        assert flow.tool_draft.args["productId"] == "p1"
+
+    def test_the_product_comes_from_the_flow_where_it_was_chosen(self, model):
+        notes, order_flow = notes_with(args={"quantity": 1})
+        product_flow = Flow(flow_id="f0", state=FlowState.PRODUCT_DISCOVERY, created_at=NOW, updated_at=NOW,
+                            product_discovery=ProductDiscoveryContext(selected_product=self.CASIO))
+        notes.flows.insert(0, product_flow)
+        model.script("args", {})
+        model.script("address", {})
+        drafts.collect(notes, None, "je la prends", model)
+        assert order_flow.tool_draft.args["productId"] == "p2"
+
+    def test_a_real_id_that_was_never_shown_is_dropped(self, model):
+        notes, flow = self.notes_after_search([self.NIKE, self.CASIO], None)
+        model.script("args", {"productId": "p3"})
+        model.script("address", {})
+        drafts.collect(notes, None, "le hoodie", model)
+        assert "productId" not in flow.tool_draft.args
+
+    def test_the_product_already_in_the_draft_stays_when_another_is_selected(self, model):
+        # A side search found only the Casio, so the Nike is no longer in the list.
+        notes, flow = self.notes_after_search([self.CASIO], self.CASIO)
+        flow.tool_draft.args["productId"] = "p1"
+        model.script("args", {"wilaya": "Oran"})
+        model.script("address", {})
+        drafts.collect(notes, None, "Oran", model)
+        assert flow.tool_draft.args["productId"] == "p1"
+
+    def test_an_unknown_product_is_dropped_when_nothing_is_chosen(self, model):
+        notes, flow = self.notes_after_search([self.NIKE, self.CASIO], None)
+        model.script("args", {"productId": "Hydrogen"})
+        model.script("address", {})
+        drafts.collect(notes, None, "le Hydrogen", model)
+        assert "productId" not in flow.tool_draft.args
+        assert "productId" in flow.tool_draft.missing
+
+
 class TestAsk:
     def test_no_question_without_a_draft(self, model):
         assert drafts.ask(notes_with(None)[0], None, "hi", model) is None
@@ -230,6 +293,13 @@ class TestAsk:
         notes, _ = notes_with(args={"productId": "p1", "quantity": 1}, missing=["wilaya", "commune"])
         model.script("ask", "Quelle wilaya ?")
         assert drafts.ask(notes, None, "nheb nchriha", model) == "Quelle wilaya ?"
+
+    def test_a_missing_product_is_asked_by_name_never_by_id(self, model):
+        notes, _ = notes_with(args={"quantity": 1}, missing=["productId"])
+        model.script("ask", "Quel produit ?")
+        drafts.ask(notes, None, "je veux commander", model)
+        items = model.calls_of("ask")[-1].payload()["missing_items"]
+        assert items[0] == "productId: " + PRODUCT_QUESTION
 
     def test_an_empty_answer_gives_the_fallback_question(self, model):
         notes, _ = notes_with(missing=["wilaya"])

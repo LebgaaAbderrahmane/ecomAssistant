@@ -38,6 +38,8 @@ TOOL_NODE_CONFIG: dict = {"configurable": {CONFIG_KEY_RUNTIME: DEFAULT_RUNTIME}}
 
 TOOL_NAMES = tuple(t.name for t in TOOLS)
 PRODUCT_TOOLS = {"searchProducts", "getProductDetails", "suggestProducts", "selectProduct"}
+# They return a list to choose from, not one product the customer picked.
+LIST_TOOLS = {"searchProducts", "suggestProducts"}
 # They act on the customer's current order, which back knows (conversation.currentOrderId).
 ORDER_TOOLS = {"confirmOrder", "cancelOrder", "modifyOrder", "getOrderStatus"}
 TOOL_DESCRIPTIONS = {
