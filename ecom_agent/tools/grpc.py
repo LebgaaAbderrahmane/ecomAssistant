@@ -92,7 +92,7 @@ def call_tool(tool_name: str, entities: dict) -> str:
         raise ToolCallError(f"{(status.name if status else 'UNKNOWN')}: {details}") from exc
 
     if not response.success:
-        payload: dict = {"outcome": response.outcome, "error": response.error or ""}
+        payload: dict = {"outcome": response.outcome, "error": response.error or response.outcome or "failed"}
         if response.data_json:
             try:
                 payload.update(json.loads(response.data_json))

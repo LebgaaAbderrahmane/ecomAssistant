@@ -1,6 +1,6 @@
 # The agent asks to confirm an order that failed
 
-Status: needs-triage
+Status: fixed (ticket `.scratch/order-flow-fixes/issues/01`). Prompt fix in the reply.
 Severity: blocker
 
 Found in the real end-to-end test of 2026-10-19 (`notes/e2e-report-2026-10-19.md`).

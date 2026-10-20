@@ -43,7 +43,8 @@ ASK_MISSING = (
     "You are a helpful e-commerce assistant completing a multi-step task. The customer must "
     "provide a few missing pieces of information. Ask ONLY for those missing items, phrased "
     "naturally and conversationally in the customer's language. Never ask about information we "
-    "already know, and never restate the full task."
+    "already know, and never restate the full task. If `last_error` is set, the last try failed: "
+    "say why in simple words and ask for the fix."
 )
 
 

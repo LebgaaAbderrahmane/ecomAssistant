@@ -5,7 +5,10 @@ REPLY_FROM_TOOL = (
     "bulleted list with name and price in the given currency, and note stock availability "
     "if relevant. If the result says no products were found, acknowledge that politely. "
     "Always use the exact currency code from the tool result (DZD for orders); never "
-    "invent or substitute a currency symbol."
+    "invent or substitute a currency symbol. "
+    "If the tool result has an error or success false, the action did NOT happen: say so briefly, "
+    "say why in simple words, and ask for what is needed to fix it. Never sum up or ask to confirm "
+    "an order that failed."
 )
 
 

@@ -130,6 +130,10 @@ def _fill_selected_product(notes: ConversationMemory, draft: ToolCallDraft) -> N
         draft.args["productId"] = selected["product_id"]
 
 
+def _error_context(draft: ToolCallDraft) -> dict[str, str]:
+    return {"last_error": draft.error} if draft.error else {}
+
+
 def _field_question(name: str, props: dict[str, Any]) -> str:
     if name == "productId":
         return PRODUCT_QUESTION
@@ -158,6 +162,7 @@ def _direction(draft: ToolCallDraft, text: str, model) -> Direction:
         "pending_tool": draft.tool_name,
         "missing_arguments": draft.missing,
         "already_collected": draft.args,
+        **_error_context(draft),
         "customer_message": text,
     })
     dec = call_json(
@@ -229,8 +234,7 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) ->
         model, EXTRACT_ARGS + struct_schema_hint(tool.args_schema), human, "extract_tool_args call failed (%s)",
     )
     extracted = coerce_args(raw, draft.tool_name)
-    before_args_missing = missing_fields(draft.args, draft.tool_name)
-    before_address_missing = _missing_address(draft.tool_name, notes)
+    before = (dict(draft.args), notes.global_information.model_dump())
     _drop_unknown_product(notes, draft.tool_name, extracted)
     draft.args.update(extracted)
     _fill_selected_product(notes, draft)
@@ -242,13 +246,14 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) ->
 
     missing_args = missing_fields(draft.args, draft.tool_name)
     missing_now = _missing_address(draft.tool_name, notes)
-    # Reset the counter whenever this turn made progress.
-    if missing_args != before_args_missing or missing_now != before_address_missing or extracted:
+    # The LLM often sends back values the Draft already has, so only a real change is progress (and a fix).
+    if (draft.args, notes.global_information.model_dump()) != before:
         draft.attempts = 0
+        draft.error = ""
     else:
         draft.attempts += 1
     draft.missing = missing_args + missing_now
-    if not draft.missing:
+    if not draft.missing and not draft.error:
         draft.status = "ready"
     flow.updated_at = datetime.now(timezone.utc)
     logger.info(
@@ -279,6 +284,7 @@ def ask(notes: ConversationMemory, flow_id: str | None, text: str, model) -> str
         "already_known": draft.args,
         "known_address": {f: getattr(known, f, None) for f in ADDRESS_FIELD_DESCS},
         **_product_context(notes),
+        **_error_context(draft),
         "customer_message": text,
     })
     return llm_phrase(model, ASK_MISSING, human)
@@ -295,6 +301,16 @@ def ready_call(notes: ConversationMemory, flow_id: str | None) -> ReadyCall | No
     if draft.tool_name == "createOrder" and not args.get("address") and address:
         args["address"] = address
     return ReadyCall(draft.tool_name, args)
+
+
+def reopen(notes: ConversationMemory, flow_id: str | None, error: str) -> None:
+    """The call failed. The Draft keeps what the customer gave and waits for the fix."""
+    found = _find(notes, flow_id)
+    if found is not None:
+        flow, draft = found
+        draft.status = "drafting"
+        draft.error = error
+        flow.updated_at = datetime.now(timezone.utc)
 
 
 def close(notes: ConversationMemory, flow_id: str | None) -> None:

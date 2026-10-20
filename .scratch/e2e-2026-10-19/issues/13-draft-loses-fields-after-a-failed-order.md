@@ -1,6 +1,6 @@
 # The Draft loses fields after a failed createOrder
 
-Status: needs-triage
+Status: fixed (ticket `.scratch/order-flow-fixes/issues/01`). The Draft is reopened, not closed.
 Severity: major
 
 Found in the real end-to-end test of 2026-10-19 (re-run after the product fix).
