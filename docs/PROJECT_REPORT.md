@@ -15,6 +15,9 @@
 - The chat history came only from RAM. `hydrate` now loads the last 20 messages from the database, with the merchant's messages (`3fde97f`).
 - The agent did not know the current order, the current product or the customer. `GetConversationContext` gives them at each message (`1ef58f8`, `3fde97f`).
 - The agent asked the customer for a "product ID" and never created the order. The code now fills `productId` from the selected product, drops an id that was never shown, and asks "which product" by name (branch `fix/order-product-id`).
+- A failed `createOrder` threw the Draft away, and the reply asked the customer to confirm an order that did not exist. The Draft now stays with back's error, the reply says what failed, and only the fix is asked (branch `fix/order-flow`).
+- The args LLM put a street number into the quantity ("Cité 200 logements" gave `quantity: 200`). The extraction prompts now say a number in a street stays in the street (prompt fix, checked in a real French and Derdja run).
+- The args LLM filled the commune with the wilaya name when the customer said one place ("Oran"). The prompts now say one place name is the wilaya, or the commune when the wilaya is known. Partly fixed: in a real run, a commune said alone ("Bir El Djir") became the wilaya when the wilaya was given outside the order. A fixed list of the 58 wilayas would let the code check it.
 - The agent's notes (flows, drafts) were lost on restart. `PostgresStore` now saves them, one row per conversation, in the Postgres schema `agent`. The tables are not in `public`, because `prisma db push` drops unknown tables there (checked).
 - An escalation turn sent the old reply again (`8e3211e`).
 - The agent could ask for the same missing field forever. After 3 stalled Turns in a row it removes the Draft and escalates (`drafts.py::give_up`).

@@ -1,6 +1,6 @@
 # The commune is filled with the wilaya name
 
-Status: needs-triage
+Status: partly fixed (ticket `.scratch/order-flow-fixes/issues/02`). Prompt fix; a commune said alone can become the wilaya.
 Severity: major
 
 Found in the real end-to-end test of 2026-10-19 (re-run after the product fix).

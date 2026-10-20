@@ -13,8 +13,11 @@ CANCEL_STEP = (
 )
 
 _CUSTOMER_LANGUAGE = (
-    "The customer writes in Algerian Darja, French or Arabic, often mixed. Number words in any of "
-    "these languages are quantities, never part of the address.\n"
+    "The customer writes in Algerian Darja, French or Arabic, often mixed. A number said alone or "
+    "with the product (\"jouj\", \"2 pieces\") is the quantity. A number inside a street or building "
+    "name (\"Cité 200 logements\") is part of the address: keep it there, and never use it as the quantity.\n"
+    "If the message names only one place and no wilaya is known yet, it is the wilaya: leave commune out. "
+    "If a wilaya is already known, one place name is the commune.\n"
 )
 
 EXTRACT_ARGS = (
