@@ -12,14 +12,14 @@ from typing import Any, Literal, NamedTuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from flows import active_flow, selected_product
+from flows import active_flow, current_selected_product, shown_products
 from llm.structured import ask_json_dict, call_json, llm_phrase
 from models.conversation import ConversationMemory
 from models.domain import Flow, ToolCallDraft
 from models.state import AddressFields, DraftRoute
 from prompts.common import struct_schema_hint
 from prompts.draft import (
-    ASK_MISSING, CANCEL_STEP, DRAFT_GATE, EXTRACT_ADDRESS, EXTRACT_ARGS, cancel_step_input,
+    ASK_MISSING, CANCEL_STEP, DRAFT_GATE, EXTRACT_ADDRESS, EXTRACT_ARGS, PRODUCT_QUESTION, cancel_step_input,
 )
 from text.patterns import AFFIRM_RE, CANCEL_RE, NUM_RE
 from tools import tool_for
@@ -105,6 +105,35 @@ def _sync_address(notes: ConversationMemory, draft: ToolCallDraft, extracted: di
     street = str(extracted.get("address") or "").strip()
     if street:
         gi.address = street
+
+
+def _product_context(notes: ConversationMemory) -> dict[str, Any]:
+    return {"selected_product": current_selected_product(notes), "products_shown": shown_products(notes)}
+
+
+def _drop_unknown_product(notes: ConversationMemory, tool_name: str, extracted: dict[str, Any]) -> None:
+    """The LLM sometimes writes a product name, or an id it made up, as productId. back would reject it."""
+    if tool_name != "createOrder" or "productId" not in extracted:
+        return
+    known = {p["product_id"] for p in shown_products(notes)}
+    selected = current_selected_product(notes)
+    if selected:
+        known.add(selected["product_id"])
+    if extracted["productId"] not in known:
+        del extracted["productId"]
+
+
+def _fill_selected_product(notes: ConversationMemory, draft: ToolCallDraft) -> None:
+    """The LLM often leaves productId out, even when the customer already selected the product."""
+    selected = current_selected_product(notes)
+    if draft.tool_name == "createOrder" and not draft.args.get("productId") and selected:
+        draft.args["productId"] = selected["product_id"]
+
+
+def _field_question(name: str, props: dict[str, Any]) -> str:
+    if name == "productId":
+        return PRODUCT_QUESTION
+    return props.get(name, {}).get("description") or name
 
 
 def state_of(notes: ConversationMemory, flow_id: str | None) -> State:
@@ -193,7 +222,7 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) ->
         "tool": draft.tool_name,
         "already_collected": draft.args,
         "missing_so_far": draft.missing,
-        "selected_product": selected_product(flow),
+        **_product_context(notes),
         "customer_message": text,
     })
     raw = ask_json_dict(
@@ -202,7 +231,9 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) ->
     extracted = coerce_args(raw, draft.tool_name)
     before_args_missing = missing_fields(draft.args, draft.tool_name)
     before_address_missing = _missing_address(draft.tool_name, notes)
+    _drop_unknown_product(notes, draft.tool_name, extracted)
     draft.args.update(extracted)
+    _fill_selected_product(notes, draft)
     _sync_address(notes, draft, extracted)
 
     address_missing = _missing_address(draft.tool_name, notes)
@@ -235,7 +266,7 @@ def ask(notes: ConversationMemory, flow_id: str | None, text: str, model) -> str
     _, props = tool_schema_info(draft.tool_name)
     missing = draft.missing or missing_fields(draft.args, draft.tool_name)
     fields = [
-        f"{name}: {props.get(name, {}).get('description') or name}"
+        f"{name}: {_field_question(name, props)}"
         for name in missing
         if name in props
     ]
@@ -247,7 +278,7 @@ def ask(notes: ConversationMemory, flow_id: str | None, text: str, model) -> str
         "missing_items": fields,
         "already_known": draft.args,
         "known_address": {f: getattr(known, f, None) for f in ADDRESS_FIELD_DESCS},
-        "selected_product": selected_product(flow),
+        **_product_context(notes),
         "customer_message": text,
     })
     return llm_phrase(model, ASK_MISSING, human)

@@ -7,12 +7,12 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 import drafts
 from config import model
-from flows import active_flow
+from flows import active_flow, clear_selected_product
 from models.domain import Product, ProductDiscoveryContext
 from models.state import AgentState
 from prompts.calling import calling_system
 from text.messages import last_user_text
-from tools import PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, tool_for, tool_node
+from tools import LIST_TOOLS, PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, tool_for, tool_node
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,14 @@ def _tool_result_products(content: str) -> list[Product] | None:
             continue
         products.append(Product(product_id=str(pid), product_name=str(name), price=float(price)))
     return products or None
+
+
+def _order_created(tool_messages: list) -> bool:
+    try:
+        data = json.loads(getattr(tool_messages[0], "content", "")) if tool_messages else None
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(data, dict) and not data.get("error")
 
 
 def _run_tools(ai_msg: AIMessage, **error_fields: Any) -> list:
@@ -127,8 +135,14 @@ def calling_tool(state: AgentState) -> dict:
         if prods and flow is not None:
             if flow.product_discovery is None:
                 flow.product_discovery = ProductDiscoveryContext()
-            flow.product_discovery.tool_results = prods
-            flow.product_discovery.selected_product = _pick_product(called_name, call_args, prods)
+            if called_name in LIST_TOOLS:
+                flow.product_discovery.tool_results = prods
+            clear_selected_product(mem)
+            # Showing a list of several products is not a choice.
+            if called_name not in LIST_TOOLS or len(prods) == 1:
+                flow.product_discovery.selected_product = _pick_product(called_name, call_args, prods)
+    if called_name == "createOrder" and _order_created(tool_messages):
+        clear_selected_product(mem)
 
     return {
         "messages": [ai_msg, *tool_messages],

@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 import drafts
 from config import model
-from flows import active_flow
+from flows import active_flow, selected_product
 from llm.structured import call_json
 from models.domain import Filter, Flow, FlowState, ProductDiscoveryContext, ProductDiscoveryInput
 from models.state import AgentState, FlowResolution
@@ -27,6 +27,7 @@ def _flow_summary(f: Flow) -> dict[str, Any]:
         "flow_id": f.flow_id,
         "state": f.state.value if isinstance(f.state, FlowState) else f.state,
         "product": f.product_discovery.input.product_name if f.product_discovery and f.product_discovery.input else None,
+        "selected_product": (selected_product(f) or {}).get("product_name"),
         "order": f.order.model_dump(exclude_none=True) if f.order else None,
     }
 

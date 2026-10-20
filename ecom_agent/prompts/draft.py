@@ -22,8 +22,13 @@ EXTRACT_ARGS = (
     "schema are given. Output ONLY a JSON object with the fields you can confidently determine "
     "from the customer message; leave every other field OUT. Do not invent values, do not repeat "
     "the schema itself.\n"
+    "productId must be the product_id of a product in `products_shown` or `selected_product`. "
+    "Never put a product name in productId.\n"
     + _CUSTOMER_LANGUAGE
 )
+
+# Used in place of the productId schema text, so the customer is never asked for an id.
+PRODUCT_QUESTION = "which product the customer wants (ask by name, using products_shown; never ask for an id)"
 
 EXTRACT_ADDRESS = (
     "You extract a shipping address from an e-commerce customer message. The address is a street, "
