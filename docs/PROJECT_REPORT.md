@@ -11,18 +11,22 @@
 
 - The agent asked the customer for an order id. `orderId` is optional now and `back` uses the current order (`b1b3a27`).
 - The agent asked for a street address and threw it away. `createOrder` now takes `address` and saves it on the order (`fe87750`).
+- After a search, the query LLM saw the first result as the "selected" product, even when the customer had not chosen. It now sees a selected product only when the customer chose one.
 - `check_llm` answered a buy request itself and lost the quantity. Any action now goes to a tool (`1e26315`).
 - The chat history came only from RAM. `hydrate` now loads the last 20 messages from the database, with the merchant's messages (`3fde97f`).
 - The agent did not know the current order, the current product or the customer. `GetConversationContext` gives them at each message (`1ef58f8`, `3fde97f`).
+- The cancel reply showed the tool name to the customer ("Nous annulons l'étape en cours (createOrder)"). The cancel LLM now gets a plain name for the step ("the order") and its prompt says never to write a tool name. The `ask` LLM input still holds `task_tool` (see the open note in `.scratch/e2e-2026-10-19/issues/06-internal-tool-name-shown.md`).
 - The agent asked the customer for a "product ID" and never created the order. The code now fills `productId` from the selected product, drops an id that was never shown, and asks "which product" by name (branch `fix/order-product-id`).
 - A failed `createOrder` threw the Draft away, and the reply asked the customer to confirm an order that did not exist. The Draft now stays with back's error, the reply says what failed, and only the fix is asked (branch `fix/order-flow`).
+- After a failed order, fixing the commune made the agent ask for the street again. A new commune in the same wilaya now keeps the street when the Draft waits for a fix. A new wilaya still drops it.
 - The args LLM put a street number into the quantity ("Cité 200 logements" gave `quantity: 200`). The extraction prompts now say a number in a street stays in the street (prompt fix, checked in a real French and Derdja run).
 - The args LLM filled the commune with the wilaya name when the customer said one place ("Oran"). The prompts now say one place name is the wilaya, or the commune when the wilaya is known. Partly fixed: in a real run, a commune said alone ("Bir El Djir") became the wilaya when the wilaya was given outside the order. A fixed list of the 58 wilayas would let the code check it.
 - The agent's notes (flows, drafts) were lost on restart. `PostgresStore` now saves them, one row per conversation, in the Postgres schema `agent`. The tables are not in `public`, because `prisma db push` drops unknown tables there (checked).
 - An escalation turn sent the old reply again (`8e3211e`).
+- A French "la" ("je veux la rouge", "la Montre Casio") cancelled the open order, because `la` (Derdja "no") was in `CANCEL_RE`. `la` now cancels only when it is the whole message (`NO_ALONE_RE`). A longer message with `la` goes to the gate LLM like any other.
 - The agent could ask for the same missing field forever. After 3 stalled Turns in a row it removes the Draft and escalates (`drafts.py::give_up`).
 - Software: a repeated inbound webhook with a known id is ignored, and `whatsappMessageId` is saved. Messages the merchant types on the phone are stored as `MERCHANT` messages, so the agent sees them (`205d135`).
-- No evals. There are 17 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
+- No evals. There are 23 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
 - Small agent cleanup (branch `fix/agent-cleanup`): the internal key is compared with `hmac.compare_digest`; `server.py` no longer logs the message text (other logs still carry customer data, see the vulnerability table); the unused `tool_client.py`, `main.py` and `log_state` are gone; `pandas` and `langchain-openai` are dropped and `rich` and `langsmith` are pinned; the second `logging.basicConfig` is gone; the tracked `.pyc` files are untracked and `ecom_agent/.gitignore` ignores them; `nodes/reply.py` uses the shared `last_user_text`; the README agent tree is correct.
 - A repeated message ran the whole Turn again and could make a second order. Now a Turn is safe to repeat: one Turn at a time per Conversation (Postgres advisory lock), one saved result per `message_id`, one order per message (idempotency key to `createOrder`), and a time limit on every LLM call. See [architecture.md](architecture.md) section 6.2.1.
 
@@ -73,7 +77,6 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 #### C. Language: Derdja / French / Arabic is not handled
 
 - Every prompt is English. No language detection. `AgentConfig.defaultLanguage`, `Conversation.language`, `Customer.language` are never read.
-- `text/patterns.py:8` `CANCEL_RE` contains `la`. In French `la` is the article ("la wilaya d'Alger"). `draft_gate` checks cancel first (`drafts.py::_direction`), so a French answer to a pending question cancels the draft.
 - `text/patterns.py:3` `NUM_RE` = any digit → "continue draft". "je veux 2 autres produits" is treated as an answer to the pending question.
 - The keyword lists in `text/patterns.py` (`AFFIRM_RE`, `CANCEL_RE`, `BUY_RE`) contain only Latin words, so Arabic script never matches. The `[a-z]{3,}` tokenizer (`text/patterns.py:17` `WORD_RE`) skips Arabic script and cuts accented French words.
 - Three hardcoded fallback strings in three languages, all in `prompts/common.py:11-13`: `DEFAULT_REPLY` ("I understood your request."), `ASK_MORE_INFO` ("Could you provide some more information, please?"), `GREETING` ("Bonjour, comment puis-je vous aider ?").
@@ -132,7 +135,7 @@ Scope: `ecom_agent/` plus the two files on the back side that call it
 
 **Quick fixes (under one hour each)**
 
-1. Remove `la` from `CANCEL_RE` and audit the other Latin-only regexes in `text/patterns.py`. Stop `NUM_RE` from auto-continuing a draft.
+1. Audit the other Latin-only regexes in `text/patterns.py`. Stop `NUM_RE` from auto-continuing a draft.
 2. Refuse to start when `INTERNAL_API_KEY` is unset or equals the default (the comparison already uses `hmac.compare_digest`).
 3. Add a deadline (about 30 s) in `back/src/grpc/agent.client.ts`. The agent does not stop a Turn when `back` cuts the call. The retry waits for the lock and then gets the saved result, so this is safe.
 4. Cap `text` length and trim history to the last N messages before `check_llm`.

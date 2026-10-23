@@ -21,7 +21,7 @@ from prompts.common import struct_schema_hint
 from prompts.draft import (
     ASK_MISSING, CANCEL_STEP, DRAFT_GATE, EXTRACT_ADDRESS, EXTRACT_ARGS, PRODUCT_QUESTION, cancel_step_input,
 )
-from text.patterns import AFFIRM_RE, CANCEL_RE, NUM_RE
+from text.patterns import AFFIRM_RE, CANCEL_RE, LA_ALONE_RE, NUM_RE
 from tools import tool_for
 from tools.schema import coerce_args, missing_fields, tool_schema_info
 
@@ -86,19 +86,22 @@ def _name_key(name: str) -> str:
 
 def _sync_address(notes: ConversationMemory, draft: ToolCallDraft, extracted: dict[str, Any]) -> None:
     """The notes keep the latest delivery address from this turn's arguments.
-    A new wilaya or commune makes the saved street wrong, so the street is dropped and asked again."""
+    A new wilaya or commune makes the saved street wrong, so the street is dropped and asked again.
+    Exception: a failed order fixed with a new commune in the same wilaya. The customer typed that street
+    seconds ago, in this same order."""
     if draft.tool_name != "createOrder":
         return
     gi = notes.global_information
-    moved = False
-    for field in ("wilaya", "commune"):
+    moved_fields = {"wilaya": False, "commune": False}
+    for field in moved_fields:
         new = str(extracted.get(field) or "").strip()
         old = getattr(gi, field)
         if not new or (old and _name_key(old) == _name_key(new)):
             continue
-        moved = moved or bool(old)
+        moved_fields[field] = bool(old)
         setattr(gi, field, new)
-    if moved:
+    fixes_failed_order = bool(draft.error) and moved_fields["commune"] and not moved_fields["wilaya"]
+    if any(moved_fields.values()) and not fixes_failed_order:
         gi.address = None
         if not extracted.get("address"):
             draft.args.pop("address", None)
@@ -154,7 +157,7 @@ def start(flow: Flow, tool_name: str) -> None:
 
 def _direction(draft: ToolCallDraft, text: str, model) -> Direction:
     low = text.lower()
-    if CANCEL_RE.search(low):
+    if CANCEL_RE.search(low) or LA_ALONE_RE.match(low):
         return "cancel"
     if NUM_RE.search(low) or AFFIRM_RE.search(low):
         return "continue"

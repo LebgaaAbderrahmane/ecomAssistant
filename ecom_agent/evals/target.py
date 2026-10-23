@@ -64,8 +64,10 @@ def run_conversation(inputs: dict) -> dict:
     finally:
         llm_logger.removeHandler(counter)
     state = AgentState.model_validate(result)
+    saved = state.conversation_memory.global_information
     return {
         "tools_called": list(fake_tools.calls),
+        "address": {"wilaya": saved.wilaya, "commune": saved.commune, "address": saved.address},
         "outcome": outcome_of(state),
         "reply": last_turn_reply(state.messages),
         "server_reply": _last_reply(state),

@@ -21,8 +21,6 @@ def _flow_context(state: AgentState) -> dict | None:
     if active is None:
         return None
     selected = selected_product(active)
-    if selected is None and active.product_discovery and active.product_discovery.tool_results:
-        selected = active.product_discovery.tool_results[0].model_dump()
     return {
         "flow_id": active.flow_id,
         "state": active.state.value if isinstance(active.state, type) else active.state,

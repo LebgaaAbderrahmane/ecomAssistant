@@ -1,6 +1,6 @@
 # French "la" cancels the Draft
 
-Status: needs-triage
+Status: fixed (ticket `.scratch/order-flow-hardening/issues/01`, branch `fix/french-la-cancel`)
 Severity: blocker
 
 Found while writing tests for issue 01 (2026-10-19).

@@ -441,11 +441,11 @@ What each node does:
 | Node | File | Job |
 |---|---|---|
 | `hydrate` | `nodes/memory.py` | Resets per-turn fields. Loads saved memory from the store. Calls `GetConversationContext` and replaces the chat history with the last 20 messages from the database. |
-| `draft_gate` | `nodes/draft.py` | Calls `drafts.gate`. If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. |
+| `draft_gate` | `nodes/draft.py` | Calls `drafts.gate`. If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. A lone "la" (Derdja "no") cancels; "la" inside a sentence is French and does not. |
 | `check_llm` | `nodes/check.py` | Classifies the message: answer directly (only for reading what is in memory), or use a tool (any action, and anything that changes over time). Its prompt has a summary of the flows and the saved delivery address. |
-| `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. Picks the tool even when arguments are missing (later nodes ask the customer). May decide to escalate. |
+| `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. Picks the tool even when arguments are missing (later nodes ask the customer). May decide to escalate. It sees a selected product only when the customer chose one, never the first search result. |
 | `flow_resolver` | `nodes/flow.py` | Decides which flow the tool applies to: continue one, create one, or ask the customer to clarify. |
-| `extract_tool_args` | `nodes/draft.py` | Calls `drafts.collect`. Asks the LLM to pull arguments (and the delivery address) out of the customer's text. For `createOrder`, `productId` must be the id of a product the customer was shown; otherwise the code uses the selected product, or leaves it missing so the agent asks which product (by name). Saves the latest wilaya and commune in the notes. A new wilaya or commune drops the saved street, so the agent asks for it again. Marks the draft `ready` when nothing is missing and no failed call waits for a fix. A Turn is stalled when the Draft arguments and the saved address did not change (the LLM often repeats values the Draft already has). After `MAX_STALLED_TURNS` (3) stalled Turns in a row (`attempts`), `drafts.give_up` removes the draft and the node sets `escalation`, so `after_extract` routes to `escalate`. |
+| `extract_tool_args` | `nodes/draft.py` | Calls `drafts.collect`. Asks the LLM to pull arguments (and the delivery address) out of the customer's text. For `createOrder`, `productId` must be the id of a product the customer was shown; otherwise the code uses the selected product, or leaves it missing so the agent asks which product (by name). Saves the latest wilaya and commune in the notes. A new wilaya or commune drops the saved street, so the agent asks for it again. The exception is a failed order fixed with a new commune in the same wilaya: the street stays. Marks the draft `ready` when nothing is missing and no failed call waits for a fix. A Turn is stalled when the Draft arguments and the saved address did not change (the LLM often repeats values the Draft already has). After `MAX_STALLED_TURNS` (3) stalled Turns in a row (`attempts`), `drafts.give_up` removes the draft and the node sets `escalation`, so `after_extract` routes to `escalate`. |
 | `ask_reply` | `nodes/draft.py` | Calls `drafts.ask`. Writes a question for the missing arguments. |
 | `calling_tool` | `nodes/calling.py` | Runs the tool through LangGraph's `ToolNode`. Stores product results in the flow. Only one product is selected at a time. A picked product (details, select, or a search with one result) becomes the selected product; a search with several results selects nothing. A created order clears the selection. Only a search or a suggestion replaces the list of shown products. After a ready Draft runs, the Draft is closed; a failed `createOrder` reopens it instead (`drafts.reopen`), with back's error saved on the Draft, so the customer only gives the fix. |
 | `reply` | `nodes/reply.py` | Writes the answer from the tool result, or uses the direct answer. |
@@ -775,6 +775,10 @@ Weak (details in the report):
     they need no database.
     - Run: from `ecom_agent/`, `python -m evals.run` (all cases) or
       `python -m evals.run --cases 6,7`.
+    - `python -m evals.run --local` scores the cases here and prints pass or fail per case. It makes no LangSmith
+      client and turns tracing off, so it works when the LangSmith trace limit is reached. It still calls the real LLM.
+    - Cases 18 to 23 are the order-flow bugs of the real end-to-end test. The fake shop refuses a commune that is not
+      in the wilaya (like `back`), and `correct_address` checks the address saved in the notes.
     - No-LLM self test: `python -m evals.selfcheck`.
     - One turn costs about 3.4K tokens. The free Groq tier allows 8K tokens per
       minute and 200K per day, so `--pause` (default 30 s) waits before each turn.
