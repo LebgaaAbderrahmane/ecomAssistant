@@ -21,7 +21,7 @@ from prompts.common import struct_schema_hint
 from prompts.draft import (
     ASK_MISSING, CANCEL_STEP, DRAFT_GATE, EXTRACT_ADDRESS, EXTRACT_ARGS, PRODUCT_QUESTION, cancel_step_input,
 )
-from text.patterns import AFFIRM_RE, CANCEL_RE, NUM_RE
+from text.patterns import AFFIRM_RE, CANCEL_RE, NO_ALONE_RE, NUM_RE
 from tools import tool_for
 from tools.schema import coerce_args, missing_fields, tool_schema_info
 
@@ -154,7 +154,7 @@ def start(flow: Flow, tool_name: str) -> None:
 
 def _direction(draft: ToolCallDraft, text: str, model) -> Direction:
     low = text.lower()
-    if CANCEL_RE.search(low):
+    if CANCEL_RE.search(low) or NO_ALONE_RE.match(low):
         return "cancel"
     if NUM_RE.search(low) or AFFIRM_RE.search(low):
         return "continue"
