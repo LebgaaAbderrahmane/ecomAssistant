@@ -37,7 +37,7 @@ def run_local(wanted: set[int] | None) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run ecom_agent evals on LangSmith.")
+    parser = argparse.ArgumentParser(description="Run ecom_agent evals on LangSmith.", allow_abbrev=False)
     parser.add_argument("--cases", help="only these case numbers, e.g. 6,7,9")
     parser.add_argument("--local", action="store_true", help="no LangSmith: print pass or fail per case")
     parser.add_argument(
