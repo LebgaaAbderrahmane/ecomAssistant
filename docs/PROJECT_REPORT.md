@@ -14,6 +14,7 @@
 - `check_llm` answered a buy request itself and lost the quantity. Any action now goes to a tool (`1e26315`).
 - The chat history came only from RAM. `hydrate` now loads the last 20 messages from the database, with the merchant's messages (`3fde97f`).
 - The agent did not know the current order, the current product or the customer. `GetConversationContext` gives them at each message (`1ef58f8`, `3fde97f`).
+- The cancel reply showed the tool name to the customer ("Nous annulons l'étape en cours (createOrder)"). The cancel LLM now gets a plain name for the step ("the order") and its prompt says never to write a tool name. The `ask` LLM input still holds `task_tool` (see the open note in `.scratch/e2e-2026-10-19/issues/06-internal-tool-name-shown.md`).
 - The agent asked the customer for a "product ID" and never created the order. The code now fills `productId` from the selected product, drops an id that was never shown, and asks "which product" by name (branch `fix/order-product-id`).
 - A failed `createOrder` threw the Draft away, and the reply asked the customer to confirm an order that did not exist. The Draft now stays with back's error, the reply says what failed, and only the fix is asked (branch `fix/order-flow`).
 - The args LLM put a street number into the quantity ("Cité 200 logements" gave `quantity: 200`). The extraction prompts now say a number in a street stays in the street (prompt fix, checked in a real French and Derdja run).
