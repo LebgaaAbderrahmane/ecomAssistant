@@ -22,7 +22,7 @@
 - An escalation turn sent the old reply again (`8e3211e`).
 - The agent could ask for the same missing field forever. After 3 stalled Turns in a row it removes the Draft and escalates (`drafts.py::give_up`).
 - Software: a repeated inbound webhook with a known id is ignored, and `whatsappMessageId` is saved. Messages the merchant types on the phone are stored as `MERCHANT` messages, so the agent sees them (`205d135`).
-- No evals. There are 17 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
+- No evals. There are 23 eval cases with a fake shop (`1ca2f72`, `83d8b93`). See [architecture.md](architecture.md) section 12.5.
 - Small agent cleanup (branch `fix/agent-cleanup`): the internal key is compared with `hmac.compare_digest`; `server.py` no longer logs the message text (other logs still carry customer data, see the vulnerability table); the unused `tool_client.py`, `main.py` and `log_state` are gone; `pandas` and `langchain-openai` are dropped and `rich` and `langsmith` are pinned; the second `logging.basicConfig` is gone; the tracked `.pyc` files are untracked and `ecom_agent/.gitignore` ignores them; `nodes/reply.py` uses the shared `last_user_text`; the README agent tree is correct.
 - A repeated message ran the whole Turn again and could make a second order. Now a Turn is safe to repeat: one Turn at a time per Conversation (Postgres advisory lock), one saved result per `message_id`, one order per message (idempotency key to `createOrder`), and a time limit on every LLM call. See [architecture.md](architecture.md) section 6.2.1.
 
