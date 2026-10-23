@@ -1,6 +1,6 @@
 # The order loses the chosen product
 
-Status: fixed, not committed (branch `fix/order-product-id`). One selected product per conversation; a list is not a choice; cleared after an order.
+Status: fixed (PR #52). One selected product per conversation; a list is not a choice; cleared after an order.
 Severity: blocker
 
 Found in the real end-to-end test of 2026-10-19 (`notes/e2e-report-2026-10-19.md`).

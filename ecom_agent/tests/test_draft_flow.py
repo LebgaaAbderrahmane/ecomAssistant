@@ -347,6 +347,72 @@ def test_a_failed_order_keeps_the_selected_product(chat, llm, shop, monkeypatch)
     assert chosen_products(turn) == ["p1"]
 
 
+def first_order_fails(monkeypatch, error):
+    """createOrder fails once with `error`, then the fake shop answers as usual."""
+    fake = tools.registry.call_tool
+    failed = []
+
+    def create_order(name, entities):
+        if name == "createOrder" and not failed:
+            failed.append(entities)
+            return json.dumps({"outcome": 0, "error": error})
+        return fake(name, entities)
+
+    monkeypatch.setattr(tools.registry, "call_tool", create_order)
+    return failed
+
+
+def test_a_failed_order_keeps_what_the_customer_gave(chat, llm, shop, monkeypatch):
+    first_order_fails(monkeypatch, "only 1 left in stock")
+    turn = place_first_order(chat, llm)
+    assert draft_of(turn) == {
+        "tool": "createOrder", "status": "drafting",
+        "args": {"productId": "p1", "quantity": 1, "wilaya": "Oran", "commune": "Bir El Djir"},
+        "missing": [], "attempts": 0,
+    }
+    assert address_of(turn) == ("Oran", "Bir El Djir", "Cité 200 logements")
+
+    llm.script("gate", {"decision": "continue_draft"})
+    llm.script("args", {"quantity": 2})
+    llm.script("reply", "order created")
+    fixed = chat.say("jouj")
+    assert fixed.reply == "order created"
+    assert draft_of(fixed) is None
+    assert shop.calls[-1]["args"] == {
+        "productId": "p1", "quantity": 2, "wilaya": "Oran", "commune": "Bir El Djir",
+        "address": "Cité 200 logements",
+    }
+
+
+def test_a_failed_order_is_not_sent_again_without_a_fix(chat, llm, shop, monkeypatch):
+    failed = first_order_fails(monkeypatch, "only 1 left in stock")
+    place_first_order(chat, llm)
+    # The real LLM often sends back values the Draft already has. That is not a fix.
+    llm.script("args", {"productId": "p1", "quantity": 1})
+    llm.script("ask", "how many do you want?")
+    turn = chat.say("ok")
+    assert turn.reply == "how many do you want?"
+    assert len(failed) == 1
+    assert "createOrder" not in tools_called(shop)
+    assert draft_of(turn)["attempts"] == 1
+    # The LLM that asks sees why the order failed.
+    assert llm.calls_of("ask")[-1].payload()["last_error"] == "only 1 left in stock"
+
+
+def test_a_new_commune_after_a_failed_order_asks_the_street_again(chat, llm, shop, monkeypatch):
+    first_order_fails(monkeypatch, "commune not found")
+    place_first_order(chat, llm)
+    llm.script("gate", {"decision": "continue_draft"})
+    llm.script("args", {"commune": "Es Senia"})
+    llm.script("address", {})
+    llm.script("ask", "ask: address")
+    turn = chat.say("Es Senia")
+    # The address rule: a new commune makes the saved street wrong.
+    assert turn.reply == "ask: address"
+    assert draft_of(turn)["missing"] == ["address"]
+    assert address_of(turn) == ("Oran", "Es Senia", None)
+
+
 def test_llm_errors_keep_the_draft_and_use_the_fallback_question(chat, llm, shop):
     search_then_buy(chat, llm)
     llm.script("gate", {"decision": "continue_draft"})

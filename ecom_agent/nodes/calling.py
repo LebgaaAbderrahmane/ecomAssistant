@@ -49,12 +49,16 @@ def _tool_result_products(content: str) -> list[Product] | None:
     return products or None
 
 
-def _order_created(tool_messages: list) -> bool:
+def _call_error(tool_messages: list) -> str:
+    """Empty when the call worked."""
+    content = str(getattr(tool_messages[0], "content", "")) if tool_messages else ""
     try:
-        data = json.loads(getattr(tool_messages[0], "content", "")) if tool_messages else None
+        data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
-        return False
-    return isinstance(data, dict) and not data.get("error")
+        return content or "no answer"
+    if isinstance(data, dict):
+        return str(data.get("error") or "")
+    return content
 
 
 def _run_tools(ai_msg: AIMessage, **error_fields: Any) -> list:
@@ -110,7 +114,11 @@ def calling_tool(state: AgentState) -> dict:
         tool_messages = _run_tools(ai_msg, name=t.name, tool_call_id=tool_call_id)
         called_name = t.name
         call_args = args
-        drafts.close(mem, state.resolved_flow_id)
+        error = _call_error(tool_messages) if called_name == "createOrder" else ""
+        if error:
+            drafts.reopen(mem, state.resolved_flow_id, error)
+        else:
+            drafts.close(mem, state.resolved_flow_id)
         logger.info("calling_tool executed ready draft -> %s %s", called_name, call_args)
     else:
         # No ready draft: let the model choose the tool call itself.
@@ -141,7 +149,7 @@ def calling_tool(state: AgentState) -> dict:
             # Showing a list of several products is not a choice.
             if called_name not in LIST_TOOLS or len(prods) == 1:
                 flow.product_discovery.selected_product = _pick_product(called_name, call_args, prods)
-    if called_name == "createOrder" and _order_created(tool_messages):
+    if called_name == "createOrder" and not _call_error(tool_messages):
         clear_selected_product(mem)
 
     return {

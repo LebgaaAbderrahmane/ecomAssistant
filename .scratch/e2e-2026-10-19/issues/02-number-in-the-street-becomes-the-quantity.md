@@ -1,6 +1,6 @@
 # A number in the street becomes the quantity
 
-Status: needs-triage
+Status: fixed (ticket `.scratch/order-flow-fixes/issues/03`). Prompt fix.
 Severity: blocker
 
 Found in the real end-to-end test of 2026-10-19 (`notes/e2e-report-2026-10-19.md`).

@@ -61,6 +61,7 @@ class ToolCallDraft(BaseModel):
     status: Literal["drafting", "ready"] = "drafting"
     attempts: int = 0
     missing: list[str] = Field(default_factory=list)
+    error: str = ""  # why the last call failed; the Draft is not sent again until the customer gives something new
 
 
 class Flow(BaseModel):
