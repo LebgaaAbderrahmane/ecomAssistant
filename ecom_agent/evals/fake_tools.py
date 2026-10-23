@@ -12,6 +12,8 @@ PRODUCTS = [
     {"id": "p3", "name": "Hoodie Adidas", "price": 6000, "currency": "DZD", "stockStatus": "IN_STOCK"},
 ]
 SHIPPING = {"oran": ("Oran", 600), "alger": ("Alger", 400)}
+# The communes back knows. Like back, createOrder fails on any other commune of these wilayas.
+COMMUNES = {"oran": {"bir el djir", "es senia"}, "alger": {"bab ezzouar"}}
 ORDERS = {
     "o1": {
         "orderId": "o1", "status": "PENDING", "productId": "p1", "productName": "Nike Air Max", "quantity": 1,
@@ -75,6 +77,10 @@ def fake_call_tool(tool_name: str, entities: dict) -> str:
             return _not_found("No delivery cost configured for this wilaya")
         return json.dumps({"wilaya": hit[0], "cost": hit[1]}, ensure_ascii=False)
     if tool_name == "createOrder":
+        wilaya = str(entities.get("wilaya") or "").strip().lower()
+        commune = str(entities.get("commune") or "").strip().lower()
+        if wilaya in COMMUNES and commune not in COMMUNES[wilaya]:
+            return _not_found(f'Baladia "{entities.get("commune")}" makanach f l\'wilaya dyal {entities.get("wilaya")}.')
         return json.dumps({"orderId": "o-new", "status": "PENDING", **entities}, ensure_ascii=False)
     if tool_name == "getOrderStatus":
         return _order_result(entities)

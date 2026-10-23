@@ -23,14 +23,28 @@ def correct_args(outputs: dict, reference_outputs: dict) -> dict:
     expected_args = reference_outputs.get("expected_args") or {}
     if not expected_args:
         return {"key": "correct_args", "score": None, "comment": "no expected args for this case"}
+    # The last call counts: after a failed order and its fix, the second call is the real order.
     call = next(
-        (c for c in outputs["tools_called"] if c["name"] in (reference_outputs.get("expected_tools") or [])),
+        (c for c in reversed(outputs["tools_called"]) if c["name"] in (reference_outputs.get("expected_tools") or [])),
         None,
     )
     if call is None:
         return {"key": "correct_args", "score": 0, "comment": "expected tool was not called"}
     wrong = {k: call["args"].get(k) for k, v in expected_args.items() if _norm(call["args"].get(k)) != _norm(v)}
     return {"key": "correct_args", "score": int(not wrong), "comment": f"wrong args: {wrong}" if wrong else "ok"}
+
+
+def correct_address(outputs: dict, reference_outputs: dict) -> dict:
+    """The delivery address the agent saved in its notes. An expected None means the field must be empty."""
+    expected = reference_outputs.get("expected_address") or {}
+    if not expected:
+        return {"key": "correct_address", "score": None, "comment": "no expected address for this case"}
+    saved = outputs.get("address") or {}
+    wrong = {
+        k: saved.get(k) for k, v in expected.items()
+        if (saved.get(k) is None) != (v is None) or (v is not None and _norm(saved.get(k)) != _norm(v))
+    }
+    return {"key": "correct_address", "score": int(not wrong), "comment": f"wrong address fields: {wrong}" if wrong else "ok"}
 
 
 def server_sends_right_thing(outputs: dict, reference_outputs: dict) -> dict:
@@ -64,4 +78,6 @@ def llm_clean(outputs: dict, reference_outputs: dict) -> dict:
     return {"key": "llm_clean", "score": int(failures == 0), "comment": f"{failures} LLM provider failures"}
 
 
-EVALUATORS = [correct_outcome, correct_tool, correct_args, server_sends_right_thing, reply_mentions, llm_clean]
+EVALUATORS = [
+    correct_outcome, correct_tool, correct_args, correct_address, server_sends_right_thing, reply_mentions, llm_clean,
+]

@@ -775,6 +775,10 @@ Weak (details in the report):
     they need no database.
     - Run: from `ecom_agent/`, `python -m evals.run` (all cases) or
       `python -m evals.run --cases 6,7`.
+    - `python -m evals.run --local` scores the cases here and prints pass or fail per case. It makes no LangSmith
+      client and turns tracing off, so it works when the LangSmith trace limit is reached. It still calls the real LLM.
+    - Cases 18 to 23 are the order-flow bugs of the real end-to-end test. The fake shop refuses a commune that is not
+      in the wilaya (like `back`), and `correct_address` checks the address saved in the notes.
     - No-LLM self test: `python -m evals.selfcheck`.
     - One turn costs about 3.4K tokens. The free Groq tier allows 8K tokens per
       minute and 200K per day, so `--pause` (default 30 s) waits before each turn.

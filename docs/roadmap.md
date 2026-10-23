@@ -23,7 +23,7 @@ How the system works is in [architecture.md](architecture.md).
 - [x] **Hand over to a human.** The agent escalates when it cannot help.
 - [x] **Two AI providers.** If Groq fails, the agent uses Gemini.
 - [x] **Remember the chat.** The agent remembers what was said while the agent is running.
-- [x] **Agent evals.** 17 test conversations with a fake shop, scored by code checks in LangSmith.
+- [x] **Agent evals.** 23 test conversations with a fake shop, scored by code checks in LangSmith.
 - [x] **Confirm an order from the customer's reply.** The customer says "oui" and the agent confirms the current order. It never asks for an id. (Tested in French. Other languages are in the language item below.)
 - [x] **Keep the agent's working notes after a restart.** The agent's own state (an order in progress, the fields already collected) is saved in Postgres with `PostgresStore`, one row per conversation.
 - [x] **Load what the backend knows at the start of each message.** The agent reads the last 20 chat messages, the current order, the current product and the customer from `back` (`GetConversationContext`).

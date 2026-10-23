@@ -28,6 +28,20 @@ def check_fake_tools() -> None:
     assert fake_tools.calls == []
 
 
+def check_fake_create_order() -> None:
+    fake_tools.reset()
+    order = {"productId": "p1", "quantity": 1, "wilaya": "Oran", "address": "Cité 200 logements"}
+    ok = json.loads(fake_tools.fake_call_tool("createOrder", {**order, "commune": "bir el djir"}))
+    assert ok["status"] == "PENDING" and "error" not in ok, ok
+    # Like back: a commune that is not in the wilaya makes the order fail.
+    bad = json.loads(fake_tools.fake_call_tool("createOrder", {**order, "commune": "Oran"}))
+    assert bad["outcome"] == 2 and "Oran" in bad["error"], bad
+    # A wilaya the fake shop knows nothing about is not checked.
+    other = json.loads(fake_tools.fake_call_tool("createOrder", {**order, "wilaya": "Tizi Ouzou", "commune": "x"}))
+    assert "error" not in other, other
+    fake_tools.reset()
+
+
 def check_install() -> None:
     import tools.registry
     from tools import searchProducts
@@ -87,10 +101,60 @@ def check_evaluators() -> None:
     assert correct_tool(outputs={**out, "tools_called": []}, reference_outputs={**ref, "expected_tools": []})["score"] == 1
     assert correct_tool(outputs=out, reference_outputs={**ref, "expected_tools": []})["score"] == 0
 
+    # A failed order, then the fix: the last createOrder call is the one that counts.
+    two = {**out, "tools_called": [
+        {"name": "createOrder", "args": {"commune": "Oran"}}, {"name": "createOrder", "args": {"commune": "Bir El Djir"}},
+    ]}
+    order_ref = {"outcome": "reply", "expected_tools": ["createOrder"], "expected_args": {"commune": "bir el djir"}}
+    assert correct_args(outputs=two, reference_outputs=order_ref)["score"] == 1
+
+    from evals.evaluators import correct_address
+
+    saved = {**out, "address": {"wilaya": "Oran", "commune": None, "address": "Cité 200 logements"}}
+    assert correct_address(outputs=saved, reference_outputs={"expected_address": {"wilaya": "oran", "commune": None}})["score"] == 1
+    wrong = correct_address(outputs=saved, reference_outputs={"expected_address": {"commune": "es senia"}})
+    assert wrong["score"] == 0, wrong
+    assert correct_address(outputs=saved, reference_outputs={})["score"] is None
+
     # Stale reply bug: agent escalated, but the server would still send an old text.
     stale = {**out, "outcome": "escalate", "server_reply": "Salam!"}
     assert server_sends_right_thing(outputs=stale, reference_outputs={**ref, "outcome": "escalate"})["score"] == 0
     assert llm_clean(outputs={**out, "llm_failures": 2}, reference_outputs=ref)["score"] == 0
+
+
+def check_dataset() -> None:
+    from evals.dataset import CASES, _example
+
+    numbers = [c["case"] for c in CASES]
+    assert len(numbers) == len(set(numbers)), "case numbers must be unique"
+    for case in CASES:
+        example = _example(case)
+        assert example["inputs"]["turns"] and example["outputs"]["outcome"] in ("reply", "ask_info", "escalate"), case
+
+
+def check_run_local() -> None:
+    """--local scores the cases itself, with no LangSmith client."""
+    from evals import run, target
+
+    real = target.run_conversation
+    target.run_conversation = lambda inputs: {
+        "tools_called": [], "outcome": "reply", "reply": "salam", "server_reply": "salam", "llm_failures": 0,
+        "address": {},
+    }
+    try:
+        assert run.run_local({1}) == 0  # case 1 wants no tool and a reply
+        assert run.run_local({7}) == 1  # case 7 wants a createOrder
+    finally:
+        target.run_conversation = real
+
+
+def check_local_turns_tracing_off() -> None:
+    import subprocess
+    import sys
+
+    code = "import sys; sys.argv.append('--local'); import evals.run; from langsmith.utils import tracing_is_enabled; print(tracing_is_enabled())"
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert done.stdout.strip().splitlines()[-1] == "False", done.stdout
 
 
 def check_llm_failure_counter() -> None:
@@ -188,7 +252,7 @@ def check_checkpoint_allows_new_classes() -> None:
 
 def main() -> None:
     checks = (
-        check_fake_tools, check_install, check_last_turn_reply, check_outcome_of, check_evaluators,
+        check_fake_tools, check_fake_create_order, check_dataset, check_run_local, check_local_turns_tracing_off, check_install, check_last_turn_reply, check_outcome_of, check_evaluators,
         check_llm_failure_counter, check_fake_backend, check_reply_mentions, check_hydrate_uses_backend,
         check_checkpoint_allows_new_classes,
     )
