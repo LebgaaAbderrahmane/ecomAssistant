@@ -103,6 +103,19 @@ class TestGate:
         assert drafts.gate(notes, None, "hmm", model).direction == "normal"
         assert flow.tool_draft is not None
 
+    @pytest.mark.parametrize("text", ["la", "La!", " la. "])
+    def test_la_alone_cancels(self, model, text):
+        notes, _ = notes_with()
+        model.script("cancel", "ok, cancelled")
+        assert drafts.gate(notes, None, text, model).direction == "cancel"
+
+    @pytest.mark.parametrize("text", ["je veux la rouge", "la Montre Casio"])
+    def test_la_in_a_french_sentence_does_not_cancel(self, model, text):
+        notes, flow = notes_with()
+        model.script("gate", {"decision": "continue_draft"})
+        assert drafts.gate(notes, None, text, model).direction == "continue"
+        assert flow.tool_draft is not None
+
 
 class TestCollect:
     def test_nothing_to_collect_without_a_collecting_draft(self, model):

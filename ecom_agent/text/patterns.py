@@ -7,9 +7,11 @@ AFFIRM_RE = re.compile(
 )
 CANCEL_RE = re.compile(
     r"\b(cancel|cancel it|forget|forget it|never mind|nevermind|nvm|stop|abort|leave it|drop it|"
-    r"asba|khaleh|la|no thanks|not now|later)\b",
+    r"asba|khaleh|no thanks|not now|later)\b",
     re.IGNORECASE,
 )
+# Derdja "la" (no) cancels only alone. In French it means "the" ("je veux la rouge").
+NO_ALONE_RE = re.compile(r"^\W*la\W*$", re.IGNORECASE)
 BUY_RE = re.compile(
     r"\b(buy|order|take|get|want|grab|nedi|khoud|ekhdem|prefer)\b",
     re.IGNORECASE,
