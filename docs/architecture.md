@@ -441,7 +441,7 @@ What each node does:
 | Node | File | Job |
 |---|---|---|
 | `hydrate` | `nodes/memory.py` | Resets per-turn fields. Loads saved memory from the store. Calls `GetConversationContext` and replaces the chat history with the last 20 messages from the database. |
-| `draft_gate` | `nodes/draft.py` | Calls `drafts.gate`. If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. |
+| `draft_gate` | `nodes/draft.py` | Calls `drafts.gate`. If a tool call is half filled, decides: continue it, cancel it, or start something new. Uses regex first, then an LLM. A lone "la" (Derdja "no") cancels; "la" inside a sentence is French and does not. |
 | `check_llm` | `nodes/check.py` | Classifies the message: answer directly (only for reading what is in memory), or use a tool (any action, and anything that changes over time). Its prompt has a summary of the flows and the saved delivery address. |
 | `query_tool` | `nodes/query.py` | Picks one tool. Has a fast path for "buy" words that picks `createOrder`. Picks the tool even when arguments are missing (later nodes ask the customer). May decide to escalate. |
 | `flow_resolver` | `nodes/flow.py` | Decides which flow the tool applies to: continue one, create one, or ask the customer to clarify. |

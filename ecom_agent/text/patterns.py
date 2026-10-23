@@ -11,7 +11,7 @@ CANCEL_RE = re.compile(
     re.IGNORECASE,
 )
 # Derdja "la" (no) cancels only alone. In French it means "the" ("je veux la rouge").
-NO_ALONE_RE = re.compile(r"^\W*la\W*$", re.IGNORECASE)
+LA_ALONE_RE = re.compile(r"^\W*la\W*$", re.IGNORECASE)
 BUY_RE = re.compile(
     r"\b(buy|order|take|get|want|grab|nedi|khoud|ekhdem|prefer)\b",
     re.IGNORECASE,
