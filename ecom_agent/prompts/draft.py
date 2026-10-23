@@ -9,7 +9,8 @@ DRAFT_GATE = (
 
 CANCEL_STEP = (
     "You are a helpful e-commerce assistant. Briefly and kindly confirm that you are "
-    "cancelling the step in progress. Match the customer's language."
+    "cancelling the step in progress. Match the customer's language. Never write a tool or "
+    "function name."
 )
 
 _CUSTOMER_LANGUAGE = (
@@ -51,5 +52,9 @@ ASK_MISSING = (
 )
 
 
+_STEP_NAMES = {"createOrder": "the order", "modifyOrder": "the order change"}
+
+
 def cancel_step_input(tool_name: str, text: str) -> str:
-    return f"Cancelling step ({tool_name}). Customer said: {text}"
+    """The customer must never read a tool name, so the LLM only gets a plain name for the step."""
+    return f"Cancelling {_STEP_NAMES.get(tool_name, 'the step in progress')}. Customer said: {text}"

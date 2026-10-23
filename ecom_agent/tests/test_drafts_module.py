@@ -92,7 +92,14 @@ class TestGate:
         assert (result.direction, result.reply) == ("cancel", "ok, cancelled")
         assert result.notes.flows[0].tool_draft is None
         assert flow.tool_draft is not None  # the notes that were passed in are not changed
-        assert model.calls[0].human == "Cancelling step (createOrder). Customer said: khaleh"
+        assert model.calls[0].human == "Cancelling the order. Customer said: khaleh"
+
+    @pytest.mark.parametrize("tool", ["createOrder", "modifyOrder", "searchProducts"])
+    def test_the_cancel_text_never_holds_the_tool_name(self, model, tool):
+        notes, _ = notes_with(tool)
+        model.script("cancel", "ok, cancelled")
+        drafts.gate(notes, None, "khaleh", model)
+        assert tool not in model.calls[0].human
 
     def test_other_messages_are_decided_by_the_llm(self, model):
         notes, flow = notes_with()
