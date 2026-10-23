@@ -437,3 +437,17 @@ def test_gate_error_treats_the_message_as_a_new_request(chat, llm, shop):
     turn = chat.say("hmm")
     assert turn.reply == "salam, how can I help?"
     assert draft_of(turn) == draft_of(buy)
+
+
+def test_the_query_llm_sees_no_selected_product_after_a_list(chat, llm, shop):
+    search_two_then_buy(chat, llm)
+    flow = llm.calls_of("query")[-1].payload()["active_flow"]
+    assert flow["selected_product"] is None
+
+
+def test_the_query_llm_sees_the_product_the_customer_chose(chat, llm, shop):
+    search_two(chat, llm)
+    ask_details(chat, llm, "Montre Casio", _continue_flow)
+    ask_details(chat, llm, "Nike Air Max", {"action": "CREATE", "product_name": "Nike Air Max"})
+    flow = llm.calls_of("query")[-1].payload()["active_flow"]
+    assert flow["selected_product"]["product_id"] == "p2"
