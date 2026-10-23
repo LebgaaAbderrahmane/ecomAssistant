@@ -11,6 +11,7 @@
 
 - The agent asked the customer for an order id. `orderId` is optional now and `back` uses the current order (`b1b3a27`).
 - The agent asked for a street address and threw it away. `createOrder` now takes `address` and saves it on the order (`fe87750`).
+- After a search, the query LLM saw the first result as the "selected" product, even when the customer had not chosen. It now sees a selected product only when the customer chose one.
 - `check_llm` answered a buy request itself and lost the quantity. Any action now goes to a tool (`1e26315`).
 - The chat history came only from RAM. `hydrate` now loads the last 20 messages from the database, with the merchant's messages (`3fde97f`).
 - The agent did not know the current order, the current product or the customer. `GetConversationContext` gives them at each message (`1ef58f8`, `3fde97f`).
