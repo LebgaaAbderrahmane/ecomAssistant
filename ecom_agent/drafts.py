@@ -86,19 +86,22 @@ def _name_key(name: str) -> str:
 
 def _sync_address(notes: ConversationMemory, draft: ToolCallDraft, extracted: dict[str, Any]) -> None:
     """The notes keep the latest delivery address from this turn's arguments.
-    A new wilaya or commune makes the saved street wrong, so the street is dropped and asked again."""
+    A new wilaya or commune makes the saved street wrong, so the street is dropped and asked again.
+    Exception: a failed order fixed with a new commune in the same wilaya. The customer typed that street
+    seconds ago, in this same order."""
     if draft.tool_name != "createOrder":
         return
     gi = notes.global_information
-    moved = False
-    for field in ("wilaya", "commune"):
+    moved = {"wilaya": False, "commune": False}
+    for field in moved:
         new = str(extracted.get(field) or "").strip()
         old = getattr(gi, field)
         if not new or (old and _name_key(old) == _name_key(new)):
             continue
-        moved = moved or bool(old)
+        moved[field] = bool(old)
         setattr(gi, field, new)
-    if moved:
+    fixes_failed_order = bool(draft.error) and moved["commune"] and not moved["wilaya"]
+    if any(moved.values()) and not fixes_failed_order:
         gi.address = None
         if not extracted.get("address"):
             draft.args.pop("address", None)
