@@ -399,18 +399,30 @@ def test_a_failed_order_is_not_sent_again_without_a_fix(chat, llm, shop, monkeyp
     assert llm.calls_of("ask")[-1].payload()["last_error"] == "only 1 left in stock"
 
 
-def test_a_new_commune_after_a_failed_order_asks_the_street_again(chat, llm, shop, monkeypatch):
+def test_a_new_commune_after_a_failed_order_keeps_the_street_and_sends_the_order_again(
+    chat, llm, shop, monkeypatch
+):
     first_order_fails(monkeypatch, "commune not found")
+    sent = []
+    inner = tools.registry.call_tool
+
+    def spy(name, entities):
+        if name == "createOrder":
+            sent.append(entities)
+        return inner(name, entities)
+
+    monkeypatch.setattr(tools.registry, "call_tool", spy)
     place_first_order(chat, llm)
     llm.script("gate", {"decision": "continue_draft"})
     llm.script("args", {"commune": "Es Senia"})
-    llm.script("address", {})
-    llm.script("ask", "ask: address")
+    llm.script("reply", "order created again")
     turn = chat.say("Es Senia")
-    # The address rule: a new commune makes the saved street wrong.
-    assert turn.reply == "ask: address"
-    assert draft_of(turn)["missing"] == ["address"]
-    assert address_of(turn) == ("Oran", "Es Senia", None)
+    # The customer typed the street seconds ago, in this same order. No question, the order is sent again.
+    assert turn.reply == "order created again"
+    assert draft_of(turn) is None
+    assert address_of(turn) == ("Oran", "Es Senia", "Cité 200 logements")
+    assert len(sent) == 2
+    assert (sent[1]["commune"], sent[1]["address"]) == ("Es Senia", "Cité 200 logements")
 
 
 def test_llm_errors_keep_the_draft_and_use_the_fallback_question(chat, llm, shop):

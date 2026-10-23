@@ -213,6 +213,40 @@ class TestCollect:
         assert notes.global_information.address == "Rue New"
         assert drafts.ready_call(notes, None).args["address"] == "Rue New"
 
+    def test_a_new_commune_after_a_failed_order_keeps_the_saved_street(self, model):
+        notes, flow = notes_with(args=ORDER, wilaya="Oran", commune="Oran", address="Cité 200 logements")
+        flow.tool_draft.error = 'Baladia "Oran" makanach'
+        model.script("args", {"commune": "Bir El Djir"})
+        drafts.collect(notes, None, "Bir El Djir", model)
+        gi = notes.global_information
+        assert (gi.wilaya, gi.commune, gi.address) == ("Oran", "Bir El Djir", "Cité 200 logements")
+        assert flow.tool_draft.status == "ready"
+        assert flow.tool_draft.error == ""
+
+    def test_a_new_wilaya_after_a_failed_order_still_drops_the_saved_street(self, model):
+        notes, flow = notes_with(args=ORDER, wilaya="Oran", commune="Oran", address="Cité 200 logements")
+        flow.tool_draft.error = 'Baladia "Oran" makanach'
+        model.script("args", {"wilaya": "Alger", "commune": "Bab Ezzouar"})
+        model.script("address", {})
+        drafts.collect(notes, None, "Alger, Bab Ezzouar", model)
+        assert notes.global_information.address is None
+        assert flow.tool_draft.missing == ["address"]
+
+    def test_a_new_commune_without_a_failed_order_still_drops_the_saved_street(self, model):
+        notes, flow = notes_with(args=ORDER, wilaya="Oran", commune="Bir El Djir", address="Cité 200 logements")
+        model.script("args", {"commune": "Es Senia"})
+        model.script("address", {})
+        drafts.collect(notes, None, "Es Senia", model)
+        assert notes.global_information.address is None
+        assert flow.tool_draft.missing == ["address"]
+
+    def test_a_new_street_wins_after_a_failed_order(self, model):
+        notes, flow = notes_with(args=ORDER, wilaya="Oran", commune="Oran", address="Cité 200 logements")
+        flow.tool_draft.error = 'Baladia "Oran" makanach'
+        model.script("args", {"commune": "Es Senia", "address": "Rue 5"})
+        drafts.collect(notes, None, "Es Senia, Rue 5", model)
+        assert drafts.ready_call(notes, None).args["address"] == "Rue 5"
+
     def test_a_corrected_wilaya_is_saved_in_the_notes(self, model):
         notes, flow = notes_with(args=ORDER, wilaya="Oran", commune="Bir El Djir")
         model.script("args", {"wilaya": "Alger"})
