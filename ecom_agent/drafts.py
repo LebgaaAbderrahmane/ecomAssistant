@@ -92,16 +92,16 @@ def _sync_address(notes: ConversationMemory, draft: ToolCallDraft, extracted: di
     if draft.tool_name != "createOrder":
         return
     gi = notes.global_information
-    moved = {"wilaya": False, "commune": False}
-    for field in moved:
+    moved_fields = {"wilaya": False, "commune": False}
+    for field in moved_fields:
         new = str(extracted.get(field) or "").strip()
         old = getattr(gi, field)
         if not new or (old and _name_key(old) == _name_key(new)):
             continue
-        moved[field] = bool(old)
+        moved_fields[field] = bool(old)
         setattr(gi, field, new)
-    fixes_failed_order = bool(draft.error) and moved["commune"] and not moved["wilaya"]
-    if any(moved.values()) and not fixes_failed_order:
+    fixes_failed_order = bool(draft.error) and moved_fields["commune"] and not moved_fields["wilaya"]
+    if any(moved_fields.values()) and not fixes_failed_order:
         gi.address = None
         if not extracted.get("address"):
             draft.args.pop("address", None)
