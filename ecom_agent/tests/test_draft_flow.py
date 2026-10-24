@@ -144,11 +144,12 @@ def test_cancel_clears_the_draft(chat, llm, shop, golden):
 
 
 def test_side_question_keeps_the_draft(chat, llm, shop, golden):
+    # The flow LLM is not asked: when it said CONTINUE, the side tool replaced the order Draft (issue #71).
     _, buy = search_then_buy(chat, llm)
+    flow_calls = len(llm.calls_of("flow"))
     llm.script("gate", {"decision": "new_request"}, {"decision": "continue_draft"})
     llm.script("check", {"needs_tool": True, "tool_name": "calculateShipping", "reply": ""})
     llm.script("query", {"tool": "calculateShipping", "arguments": {"wilaya": "Oran"}})
-    llm.script("flow", {"action": "NO_FLOW_LOOKUP"})
     llm.script("tools", {"name": "calculateShipping", "args": {"wilaya": "Oran"}})
     llm.script("reply", "delivery to Oran: 600 DZD")
 
@@ -156,6 +157,7 @@ def test_side_question_keeps_the_draft(chat, llm, shop, golden):
     assert side.reply == "delivery to Oran: 600 DZD"
     assert tools_called(shop) == ["searchProducts", "calculateShipping"]
     assert draft_of(side) == draft_of(buy)
+    assert len(llm.calls_of("flow")) == flow_calls
 
     llm.script("args", {"wilaya": "Oran"})
     llm.script("address", {"wilaya": "Oran"})
@@ -164,6 +166,37 @@ def test_side_question_keeps_the_draft(chat, llm, shop, golden):
     assert draft_of(back)["args"] == {"productId": "p1", "quantity": 1, "wilaya": "Oran"}
     assert back.reply == "ask: commune"
     golden("side_question")
+
+
+def test_a_side_question_never_creates_the_order(chat, llm, shop):
+    _, buy = search_then_buy(chat, llm)
+    llm.script("gate", {"decision": "new_request"})
+    llm.script("check", {"needs_tool": True, "tool_name": "calculateShipping", "reply": ""})
+    llm.script("query", {"tool": "calculateShipping", "arguments": {"wilaya": "Oran"}})
+    # On the side path the tool LLM can pick any tool. Here it invents the missing order fields.
+    llm.script("tools", {"name": "createOrder", "args": {
+        "productId": "p1", "quantity": 1, "wilaya": "Oran", "commune": "Oran", "address": "centre",
+    }})
+    llm.script("reply", "your order is not finished yet")
+
+    side = chat.say("Est-ce que la livraison est gratuite ?")
+    assert tools_called(shop) == ["searchProducts"]
+    assert draft_of(side) == draft_of(buy)
+
+
+def test_a_message_with_no_tool_still_fills_the_open_order(chat, llm, shop):
+    search_then_buy(chat, llm)
+    llm.script("gate", {"decision": "new_request"})
+    llm.script("check", {"needs_tool": True, "tool_name": "", "reply": ""})
+    llm.script("flow", _continue_flow)
+    llm.script("args", {"wilaya": "Oran"})
+    llm.script("address", {"wilaya": "Oran"})
+    llm.script("ask", "ask: commune")
+
+    turn = chat.say("Oran")
+    assert draft_of(turn)["args"] == {"productId": "p1", "quantity": 1, "wilaya": "Oran"}
+    assert turn.reply == "ask: commune"
+    assert tools_called(shop) == ["searchProducts"]
 
 
 def test_second_order_reuses_the_saved_address(chat, llm, shop, golden):
@@ -382,6 +415,23 @@ def test_a_failed_order_keeps_what_the_customer_gave(chat, llm, shop, monkeypatc
         "productId": "p1", "quantity": 2, "wilaya": "Oran", "commune": "Bir El Djir",
         "address": "Cité 200 logements",
     }
+
+
+def test_a_side_question_after_a_failed_order_keeps_the_draft_and_its_error(chat, llm, shop, monkeypatch):
+    first_order_fails(monkeypatch, "commune not found")
+    failed = place_first_order(chat, llm)
+    flow_calls = len(llm.calls_of("flow"))
+    llm.script("gate", {"decision": "new_request"})
+    llm.script("check", {"needs_tool": True, "tool_name": "calculateShipping", "reply": ""})
+    llm.script("query", {"tool": "calculateShipping", "arguments": {"wilaya": "Oran"}})
+    llm.script("tools", {"name": "calculateShipping", "args": {"wilaya": "Oran"}})
+    llm.script("reply", "delivery to Oran: 600 DZD")
+
+    side = chat.say("chhal livraison l Oran?")
+    assert side.reply == "delivery to Oran: 600 DZD"
+    assert draft_of(side) == draft_of(failed)
+    assert side.draft.error == "commune not found"
+    assert len(llm.calls_of("flow")) == flow_calls
 
 
 def test_a_failed_order_is_not_sent_again_without_a_fix(chat, llm, shop, monkeypatch):

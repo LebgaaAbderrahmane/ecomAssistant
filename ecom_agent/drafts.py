@@ -148,6 +148,11 @@ def state_of(notes: ConversationMemory, flow_id: str | None) -> State:
     return _state(found[1] if found else None)
 
 
+def has_open_order(notes: ConversationMemory) -> bool:
+    found = _find(notes, None)
+    return found is not None and found[1].tool_name == "createOrder"
+
+
 def start(flow: Flow, tool_name: str) -> None:
     """A Draft for the same tool stays, so it keeps what it already collected."""
     draft = flow.tool_draft

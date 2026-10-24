@@ -59,6 +59,10 @@ def flow_resolver(state: AgentState) -> dict:
     if tool_name in ORDER_TOOLS:
         logger.info("flow_resolver -> action=NO_FLOW_LOOKUP (order tool %s)", tool_name)
         return {"resolved_flow_id": None, "flow_action": "NO_FLOW_LOOKUP"}
+    # A Flow holds one Draft. Another tool would replace the open order, so it runs on the side.
+    if tool_name and tool_name != "createOrder" and drafts.has_open_order(mem):
+        logger.info("flow_resolver -> action=NO_FLOW_LOOKUP (order open, side tool %s)", tool_name)
+        return {"resolved_flow_id": None, "flow_action": "NO_FLOW_LOOKUP"}
     last_tool =state.tool_outputs[-1] if state.tool_outputs else (
         state.tool_calls[0].get("name") if state.tool_calls else "unknown"
     )
