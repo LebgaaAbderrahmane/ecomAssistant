@@ -10,7 +10,7 @@ from config import model
 from flows import active_flow, clear_selected_product
 from models.domain import Product, ProductDiscoveryContext
 from models.state import AgentState
-from prompts.calling import calling_system
+from prompts.calling import ORDER_STILL_OPEN, calling_system
 from text.messages import last_user_text
 from tools import LIST_TOOLS, PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, tool_for, tool_node
 
@@ -67,6 +67,14 @@ def _run_tools(ai_msg: AIMessage, **error_fields: Any) -> list:
     except Exception as e:
         logger.warning("calling_tool delegate failed (%s)", e)
         return [ToolMessage(content=f"Tool execution failed: {e}", **error_fields)]
+
+
+def _not_run(call: dict[str, Any]) -> ToolMessage:
+    return ToolMessage(
+        content=json.dumps({"error": ORDER_STILL_OPEN}),
+        name=call.get("name", ""),
+        tool_call_id=call.get("id") or "not-run",
+    )
 
 
 def _pick_product(called_name: str, call_args: dict[str, Any], prods: list[Product]) -> Product:
@@ -127,7 +135,13 @@ def calling_tool(state: AgentState) -> dict:
         model_with_tools = model.bind_tools(TOOLS)
         system = calling_system(state.resolved_flow_id, tool_context)
         ai_msg = model_with_tools.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
-        if getattr(ai_msg, "tool_calls", None):
+        calls = getattr(ai_msg, "tool_calls", None) or []
+        if any(c.get("name") == "createOrder" for c in calls) and drafts.has_open_order(mem):
+            # Only the open order Draft creates the order, once the customer gave every field.
+            # The other calls of this answer are skipped too: it is rare, and the reply asks again.
+            logger.warning("calling_tool skipped %s: an order Draft is open", [c.get("name") for c in calls])
+            tool_messages = [_not_run(c) for c in calls]
+        elif calls:
             tool_messages = _run_tools(ai_msg, tool_call_id="delegate-error")
         else:
             logger.warning("Tool model returned no tool call; skipping tool execution")
