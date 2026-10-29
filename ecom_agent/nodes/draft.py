@@ -3,6 +3,7 @@ from typing import Any
 import drafts
 from config import model
 from models.state import AgentState
+from nodes.calling import search_catalog
 from text.messages import last_user_text
 
 
@@ -16,7 +17,7 @@ def draft_gate(state: AgentState) -> dict:
 
 def extract_tool_args(state: AgentState) -> dict:
     mem = state.conversation_memory.model_copy(deep=True)
-    if not drafts.collect(mem, state.resolved_flow_id, last_user_text(state.messages), model):
+    if not drafts.collect(mem, state.resolved_flow_id, last_user_text(state.messages), model, search_catalog):
         return {}
     updates: dict[str, Any] = {"conversation_memory": mem}
     reason = drafts.give_up(mem, state.resolved_flow_id)

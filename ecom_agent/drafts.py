@@ -8,14 +8,14 @@ import logging
 import re
 import unicodedata
 from datetime import datetime, timezone
-from typing import Any, Literal, NamedTuple
+from typing import Any, Callable, Literal, NamedTuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from flows import active_flow, current_selected_product, shown_products
+from flows import active_flow, clear_selected_product, current_selected_product, shown_products
 from llm.structured import ask_json_dict, call_json, llm_phrase
 from models.conversation import ConversationMemory
-from models.domain import Flow, ToolCallDraft
+from models.domain import Flow, Product, ProductDiscoveryContext, ToolCallDraft
 from models.state import AddressFields, DraftRoute
 from prompts.common import struct_schema_hint
 from prompts.draft import (
@@ -38,6 +38,9 @@ ADDRESS_FIELD_DESCS = {
 
 # Stalled Turns in a row before the agent hands over to a human.
 MAX_STALLED_TURNS = 3
+
+# Finds the products of the shop for a name. [] means back found none; None means the search failed.
+Search = Callable[[str], list[Product] | None]
 
 
 class Gate(NamedTuple):
@@ -126,6 +129,36 @@ def _drop_unknown_product(notes: ConversationMemory, tool_name: str, extracted: 
         del extracted["productId"]
 
 
+def _named_product(tool_name: str, raw: dict[str, Any], extracted: dict[str, Any]) -> str:
+    """A product the customer named that the LLM could not match to a shown one. createOrder has no
+    productName argument, so the name only comes from the raw LLM answer."""
+    if tool_name != "createOrder" or extracted.get("productId"):
+        return ""
+    return str(raw.get("productName") or "").strip()
+
+
+def _use_named_product(
+    notes: ConversationMemory, flow: Flow, draft: ToolCallDraft, name: str, found: list[Product] | None,
+) -> str:
+    """The product the customer named replaces their earlier choice. Returns the error the customer must
+    read, or an empty string."""
+    clear_selected_product(notes)
+    draft.args.pop("productId", None)
+    logger.info("named product %r -> found=%s", name, None if found is None else [p.product_id for p in found])
+    if found is None:
+        return ""
+    if not found:
+        return f'No product named "{name}" in the shop.'
+    if flow.product_discovery is None:
+        flow.product_discovery = ProductDiscoveryContext()
+    flow.product_discovery.tool_results = found
+    # Several products is not a choice: the agent asks which one.
+    if len(found) == 1:
+        flow.product_discovery.selected_product = found[0]
+        draft.args["productId"] = found[0].product_id
+    return ""
+
+
 def _fill_selected_product(notes: ConversationMemory, draft: ToolCallDraft) -> None:
     """The LLM often leaves productId out, even when the customer already selected the product."""
     selected = current_selected_product(notes)
@@ -154,10 +187,13 @@ def has_open_order(notes: ConversationMemory) -> bool:
 
 
 def start(flow: Flow, tool_name: str) -> None:
-    """A Draft for the same tool stays, so it keeps what it already collected."""
+    """A Draft for the same tool stays, so it keeps what it already collected.
+    A tool with no required argument has nothing to collect, so it gets no Draft: the tool LLM calls it
+    with the arguments query_tool chose (issue #72)."""
     draft = flow.tool_draft
     if tool_name and (draft is None or draft.tool_name != tool_name):
-        flow.tool_draft = ToolCallDraft(tool_name=tool_name)
+        required, _ = tool_schema_info(tool_name)
+        flow.tool_draft = ToolCallDraft(tool_name=tool_name) if required else None
 
 
 def _direction(draft: ToolCallDraft, text: str, model) -> Direction:
@@ -222,8 +258,9 @@ def _collect_address(notes: ConversationMemory, text: str, missing: list[str], m
         logger.info("global address updated -> wilaya=%s commune=%s address=%s", gi.wilaya, gi.commune, gi.address)
 
 
-def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) -> bool:
-    """Changes `notes`, so pass a copy. False when there is nothing to collect."""
+def collect(notes: ConversationMemory, flow_id: str | None, text: str, model, search: Search | None = None) -> bool:
+    """Changes `notes`, so pass a copy. False when there is nothing to collect.
+    Without `search`, a product the customer names is not looked up in the shop."""
     found = _find(notes, flow_id)
     if found is None or _state(found[1]) != "collecting":
         return False
@@ -245,7 +282,12 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) ->
     before = (dict(draft.args), notes.global_information.model_dump())
     _drop_unknown_product(notes, draft.tool_name, extracted)
     draft.args.update(extracted)
-    _fill_selected_product(notes, draft)
+    named = _named_product(draft.tool_name, raw, extracted)
+    not_found = ""
+    if named and search is not None:
+        not_found = _use_named_product(notes, flow, draft, named, search(named))
+    else:
+        _fill_selected_product(notes, draft)
     _sync_address(notes, draft, extracted)
 
     address_missing = _missing_address(draft.tool_name, notes)
@@ -260,6 +302,8 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model) ->
         draft.error = ""
     else:
         draft.attempts += 1
+    if not_found:
+        draft.error = not_found
     draft.missing = missing_args + missing_now
     if not draft.missing and not draft.error:
         draft.status = "ready"

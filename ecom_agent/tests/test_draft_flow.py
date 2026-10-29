@@ -9,6 +9,7 @@ import json
 import tools.registry
 from flows import shown_products
 from prompts.common import ASK_MORE_INFO
+from tools.grpc import ToolCallError
 
 
 def _continue_flow(call):
@@ -352,7 +353,7 @@ def ask_details(chat, llm, name, flow):
     llm.script("check", {"needs_tool": True, "tool_name": "getProductDetails", "reply": ""})
     llm.script("query", {"tool": "getProductDetails", "arguments": {"productName": name}})
     llm.script("flow", flow)
-    llm.script("args", {"productName": name})
+    llm.script("tools", {"name": "getProductDetails", "args": {"productName": name}})
     llm.script("reply", f"details {name}")
     return chat.say(f"details {name} ?")
 
@@ -513,3 +514,93 @@ def test_the_query_llm_sees_the_product_the_customer_chose(chat, llm, shop):
     ask_details(chat, llm, "Nike Air Max", {"action": "CREATE", "product_name": "Nike Air Max"})
     flow = llm.calls_of("query")[-1].payload()["active_flow"]
     assert flow["selected_product"]["product_id"] == "p2"
+
+
+def test_a_product_picked_by_name_is_selected_without_a_draft(chat, llm, shop):
+    # Issue #72: a Draft took the place of query_tool's arguments, and selectProduct ran with none.
+    llm.script("check", {"needs_tool": True, "tool_name": "selectProduct", "reply": ""})
+    llm.script("query", {"tool": "selectProduct", "arguments": {"productName": "Montre Casio"}})
+    llm.script("flow", {"action": "CREATE", "product_name": "Montre Casio"})
+    llm.script("tools", {"name": "selectProduct", "args": {"productName": "Montre Casio"}})
+    llm.script("reply", "casio selected")
+
+    turn = chat.say("nebghi la Montre Casio")
+    assert turn.reply == "casio selected"
+    assert draft_of(turn) is None
+    assert "'productName': 'Montre Casio'" in llm.calls_of("tools")[0].system
+    assert shop.calls == [{"name": "selectProduct", "args": {"productName": "Montre Casio"}}]
+    assert chosen_products(turn) == ["p2"]
+
+
+def order_by_name(chat, llm, name, ask="ask: wilaya, commune, address"):
+    """The customer orders a product by its name. The search for the name has no LLM: the fake shop answers."""
+    llm.script("check", {"needs_tool": True, "tool_name": "createOrder", "reply": ""})
+    llm.script("query", {"tool": "createOrder", "arguments": {"productName": name, "quantity": 2}})
+    llm.script("flow", {"action": "CREATE"})
+    llm.script("args", {"productName": name, "quantity": 2})
+    llm.script("address", {})
+    llm.script("ask", ask)
+    return chat.say(f"nebghi {name}, jouj pieces")
+
+
+def test_an_order_for_a_product_never_shown_searches_it(chat, llm, shop):
+    # Issue #72: the name was not in products_shown, so the agent asked for a product again and again.
+    turn = order_by_name(chat, llm, "Hoodie Adidas")
+    assert shop.calls == [{"name": "searchProducts", "args": {"product": "Hoodie Adidas"}}]
+    assert draft_of(turn)["args"] == {"productId": "p3", "quantity": 2}
+    assert "productId" not in draft_of(turn)["missing"]
+    assert chosen_products(turn) == ["p3"]
+    assert turn.reply == "ask: wilaya, commune, address"
+
+
+def test_a_named_product_wins_over_the_selected_one(chat, llm, shop):
+    llm.script("check", {"needs_tool": True, "tool_name": "searchProducts", "reply": ""})
+    llm.script("query", {"tool": "searchProducts", "arguments": {"product": "Nike Air Max"}})
+    llm.script("flow", {"action": "CREATE", "product_name": "Nike Air Max"})
+    llm.script("args", {"product": "Nike Air Max"})
+    llm.script("reply", "found nike")
+    search = chat.say("3andkom Nike Air Max?")
+    assert chosen_products(search) == ["p1"]
+
+    turn = order_by_name(chat, llm, "Hoodie Adidas")
+    assert draft_of(turn)["args"] == {"productId": "p3", "quantity": 2}
+    assert chosen_products(turn) == ["p3"]
+
+
+def test_a_named_product_that_is_not_in_the_shop_is_said_plainly(chat, llm, shop):
+    turn = order_by_name(chat, llm, "Oxygen", ask="we have no Oxygen, which product?")
+    assert tools_called(shop) == ["searchProducts"]
+    assert "productId" in draft_of(turn)["missing"]
+    assert turn.draft.error == 'No product named "Oxygen" in the shop.'
+    assert llm.calls_of("ask")[-1].payload()["last_error"] == 'No product named "Oxygen" in the shop.'
+    assert turn.reply == "we have no Oxygen, which product?"
+
+    # The next product the customer names is a real change, so the error goes away. "ok" skips the gate LLM.
+    llm.script("args", {"productName": "Montre Casio"})
+    llm.script("address", {})
+    llm.script("ask", "ask: wilaya")
+    fixed = chat.say("ok, la Montre Casio")
+    assert draft_of(fixed)["args"] == {"productId": "p2", "quantity": 2}
+    assert fixed.draft.error == ""
+
+
+def test_a_name_with_several_products_shows_them_and_asks(chat, llm, shop):
+    turn = order_by_name(chat, llm, "Nike ou Montre", ask="ask: which one?")
+    assert "productId" not in draft_of(turn)["args"]
+    assert chosen_products(turn) == []
+    assert {p["product_id"] for p in shown_products(turn.notes)} == {"p1", "p2"}
+    assert turn.reply == "ask: which one?"
+
+
+def test_a_failed_search_asks_for_the_product(chat, llm, shop, monkeypatch):
+    fake = tools.registry.call_tool
+
+    def search_is_down(name, entities):
+        if name == "searchProducts":
+            raise ToolCallError("UNAVAILABLE: back is down")
+        return fake(name, entities)
+
+    monkeypatch.setattr(tools.registry, "call_tool", search_is_down)
+    turn = order_by_name(chat, llm, "Hoodie Adidas", ask="ask: which product?")
+    assert "productId" in draft_of(turn)["missing"]
+    assert turn.draft.error == ""

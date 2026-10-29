@@ -27,7 +27,8 @@ EXTRACT_ARGS = (
     "from the customer message; leave every other field OUT. Do not invent values, do not repeat "
     "the schema itself.\n"
     "productId must be the product_id of a product in `products_shown` or `selected_product`. "
-    "Never put a product name in productId.\n"
+    "Never put a product name in productId. If the customer names a product that is not in "
+    "`products_shown` or `selected_product`, leave productId out and put the name they wrote in productName.\n"
     + _CUSTOMER_LANGUAGE
 )
 

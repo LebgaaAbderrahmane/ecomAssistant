@@ -8,11 +8,12 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 import drafts
 from config import model
 from flows import active_flow, clear_selected_product
+from grpc_gen.tools.v1 import tool_pb2
 from models.domain import Product, ProductDiscoveryContext
 from models.state import AgentState
 from prompts.calling import ORDER_STILL_OPEN, calling_system
 from text.messages import last_user_text
-from tools import LIST_TOOLS, PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, tool_for, tool_node
+from tools import LIST_TOOLS, PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, searchProducts, tool_for, tool_node
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,23 @@ def _tool_result_products(content: str) -> list[Product] | None:
             continue
         products.append(Product(product_id=str(pid), product_name=str(name), price=float(price)))
     return products or None
+
+
+def search_catalog(name: str) -> list[Product] | None:
+    """The shop's products for a name, for the order Draft. [] when back found none, None when the search failed."""
+    try:
+        content = searchProducts.invoke({"product": name})
+    except Exception as e:
+        logger.warning("catalog search for %r failed (%s)", name, e)
+        return None
+    found = _tool_result_products(content)
+    if found:
+        return found
+    try:
+        outcome = json.loads(content).get("outcome")
+    except (json.JSONDecodeError, AttributeError):
+        return None
+    return [] if outcome == tool_pb2.ExecuteToolResponse.OUTCOME_NOT_FOUND else None
 
 
 def _call_error(tool_messages: list) -> str:

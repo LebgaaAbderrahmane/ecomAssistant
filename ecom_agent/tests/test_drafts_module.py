@@ -74,6 +74,10 @@ def test_start_opens_a_draft_and_keeps_one_for_the_same_tool():
     drafts.start(flow, "")
     assert flow.tool_draft.tool_name == "calculateShipping"
 
+    # Nothing to collect: every argument of selectProduct is optional.
+    drafts.start(flow, "selectProduct")
+    assert flow.tool_draft is None
+
 
 class TestGate:
     def test_no_draft_means_a_normal_message(self, model):
