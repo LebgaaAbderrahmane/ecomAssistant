@@ -3,8 +3,8 @@ from typing import Any
 import drafts
 from config import model
 from models.state import AgentState
-from nodes.calling import search_catalog
 from text.messages import last_user_text
+from tools.products import search_catalog
 
 
 def draft_gate(state: AgentState) -> dict:

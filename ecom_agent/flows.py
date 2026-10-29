@@ -1,7 +1,7 @@
 from typing import Any
 
 from models.conversation import ConversationMemory
-from models.domain import Flow
+from models.domain import Flow, Product, ProductDiscoveryContext
 
 MAX_SHOWN_PRODUCTS = 10
 
@@ -24,6 +24,25 @@ def clear_selected_product(mem: ConversationMemory) -> None:
     for f in mem.flows:
         if f.product_discovery is not None:
             f.product_discovery.selected_product = None
+
+
+def _discovery(flow: Flow) -> ProductDiscoveryContext:
+    if flow.product_discovery is None:
+        flow.product_discovery = ProductDiscoveryContext()
+    return flow.product_discovery
+
+
+def select_product(mem: ConversationMemory, flow: Flow, product: Product) -> None:
+    clear_selected_product(mem)
+    _discovery(flow).selected_product = product
+
+
+def show_products(mem: ConversationMemory, flow: Flow, products: list[Product]) -> None:
+    """The list replaces the shown products. A list of several products is not a choice."""
+    _discovery(flow).tool_results = products
+    clear_selected_product(mem)
+    if len(products) == 1:
+        _discovery(flow).selected_product = products[0]
 
 
 def current_selected_product(mem: ConversationMemory) -> dict[str, Any] | None:

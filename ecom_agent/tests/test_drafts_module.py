@@ -342,6 +342,35 @@ class TestProduct:
         assert "productId" not in flow.tool_draft.args
         assert "productId" in flow.tool_draft.missing
 
+    def test_a_named_product_that_was_not_shown_is_searched(self, model):
+        notes, flow = self.notes_after_search([self.NIKE], self.NIKE)
+        searched = []
+
+        def search(name):
+            searched.append(name)
+            return [self.CASIO]
+
+        model.script("args", {"productName": "Casio"})
+        model.script("address", {})
+        drafts.collect(notes, None, "la Casio", model, search)
+        assert searched == ["Casio"]
+        assert flow.tool_draft.args["productId"] == "p2"
+        assert flow.product_discovery.selected_product == self.CASIO
+
+    def test_a_named_product_is_not_searched_when_its_id_is_known(self, model):
+        notes, flow = self.notes_after_search([self.NIKE, self.CASIO], None)
+        model.script("args", {"productId": "p2", "productName": "Montre Casio"})
+        model.script("address", {})
+        drafts.collect(notes, None, "la Casio", model, lambda name: pytest.fail("no search expected"))
+        assert flow.tool_draft.args["productId"] == "p2"
+
+    def test_a_product_name_the_customer_already_saw_is_not_searched(self, model):
+        notes, flow = self.notes_after_search([self.NIKE, self.CASIO], self.NIKE)
+        model.script("args", {"productName": "montre casio"})
+        model.script("address", {})
+        drafts.collect(notes, None, "la montre casio", model, lambda name: pytest.fail("no search expected"))
+        assert flow.tool_draft.args["productId"] == "p2"
+
 
 class TestAsk:
     def test_no_question_without_a_draft(self, model):

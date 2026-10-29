@@ -32,6 +32,9 @@ EXTRACT_ARGS = (
     + _CUSTOMER_LANGUAGE
 )
 
+# The Draft error when the shop has no product with the name the customer gave. The `ask` LLM says it.
+PRODUCT_NOT_FOUND = 'No product named "{name}" in the shop.'
+
 # Used in place of the productId schema text, so the customer is never asked for an id.
 PRODUCT_QUESTION = "which product the customer wants (ask by name, using products_shown; never ask for an id)"
 

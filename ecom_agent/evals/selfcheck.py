@@ -2,7 +2,7 @@
 import json
 
 from evals import fake_tools
-from nodes.calling import _tool_result_products
+from tools.products import tool_result_products
 
 
 def check_fake_tools() -> None:
@@ -17,7 +17,7 @@ def check_fake_tools() -> None:
     assert missing["outcome"] == 2 and missing["error"], missing
 
     # The agent must be able to read our product JSON, or buy flows break for a fake reason.
-    products = _tool_result_products(json.dumps(found))
+    products = tool_result_products(json.dumps(found))
     assert products and products[0].product_id == "p1" and products[0].price == 12000, products
 
     ship = json.loads(fake_tools.fake_call_tool("calculateShipping", {"wilaya": "Oran"}))

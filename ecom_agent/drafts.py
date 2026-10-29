@@ -12,14 +12,15 @@ from typing import Any, Callable, Literal, NamedTuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from flows import active_flow, clear_selected_product, current_selected_product, shown_products
+from flows import active_flow, clear_selected_product, current_selected_product, show_products, shown_products
 from llm.structured import ask_json_dict, call_json, llm_phrase
 from models.conversation import ConversationMemory
-from models.domain import Flow, Product, ProductDiscoveryContext, ToolCallDraft
+from models.domain import Flow, Product, ToolCallDraft
 from models.state import AddressFields, DraftRoute
 from prompts.common import struct_schema_hint
 from prompts.draft import (
-    ASK_MISSING, CANCEL_STEP, DRAFT_GATE, EXTRACT_ADDRESS, EXTRACT_ARGS, PRODUCT_QUESTION, cancel_step_input,
+    ASK_MISSING, CANCEL_STEP, DRAFT_GATE, EXTRACT_ADDRESS, EXTRACT_ARGS, PRODUCT_NOT_FOUND, PRODUCT_QUESTION,
+    cancel_step_input,
 )
 from text.patterns import AFFIRM_RE, CANCEL_RE, LA_ALONE_RE, NUM_RE
 from tools import tool_for
@@ -137,24 +138,28 @@ def _named_product(tool_name: str, raw: dict[str, Any], extracted: dict[str, Any
     return str(raw.get("productName") or "").strip()
 
 
+def _known_product_id(notes: ConversationMemory, name: str) -> str | None:
+    """The LLM sometimes names a product the customer already saw. Its id is known, so no search is needed."""
+    known = shown_products(notes)
+    selected = current_selected_product(notes)
+    if selected:
+        known.append(selected)
+    key = _name_key(name)
+    return next((p["product_id"] for p in known if _name_key(p["product_name"]) == key), None)
+
+
 def _use_named_product(
     notes: ConversationMemory, flow: Flow, draft: ToolCallDraft, name: str, found: list[Product] | None,
 ) -> str:
-    """The product the customer named replaces their earlier choice. Returns the error the customer must
-    read, or an empty string."""
-    clear_selected_product(notes)
-    draft.args.pop("productId", None)
+    """The product the customer named replaces their earlier choice.
+    Returns the error the customer must read, or an empty string."""
     logger.info("named product %r -> found=%s", name, None if found is None else [p.product_id for p in found])
-    if found is None:
-        return ""
+    draft.args.pop("productId", None)
     if not found:
-        return f'No product named "{name}" in the shop.'
-    if flow.product_discovery is None:
-        flow.product_discovery = ProductDiscoveryContext()
-    flow.product_discovery.tool_results = found
-    # Several products is not a choice: the agent asks which one.
+        clear_selected_product(notes)
+        return PRODUCT_NOT_FOUND.format(name=name) if found == [] else ""
+    show_products(notes, flow, found)
     if len(found) == 1:
-        flow.product_discovery.selected_product = found[0]
         draft.args["productId"] = found[0].product_id
     return ""
 
@@ -283,9 +288,12 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model, se
     _drop_unknown_product(notes, draft.tool_name, extracted)
     draft.args.update(extracted)
     named = _named_product(draft.tool_name, raw, extracted)
-    not_found = ""
-    if named and search is not None:
-        not_found = _use_named_product(notes, flow, draft, named, search(named))
+    known_id = _known_product_id(notes, named) if named else None
+    product_error = ""
+    if known_id:
+        draft.args["productId"] = known_id
+    elif named and search is not None:
+        product_error = _use_named_product(notes, flow, draft, named, search(named))
     else:
         _fill_selected_product(notes, draft)
     _sync_address(notes, draft, extracted)
@@ -302,8 +310,8 @@ def collect(notes: ConversationMemory, flow_id: str | None, text: str, model, se
         draft.error = ""
     else:
         draft.attempts += 1
-    if not_found:
-        draft.error = not_found
+    if product_error:
+        draft.error = product_error
     draft.missing = missing_args + missing_now
     if not draft.missing and not draft.error:
         draft.status = "ready"

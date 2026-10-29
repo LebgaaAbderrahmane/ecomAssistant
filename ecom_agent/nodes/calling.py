@@ -7,64 +7,15 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 import drafts
 from config import model
-from flows import active_flow, clear_selected_product
-from grpc_gen.tools.v1 import tool_pb2
-from models.domain import Product, ProductDiscoveryContext
+from flows import active_flow, clear_selected_product, select_product, show_products
+from models.domain import Product
 from models.state import AgentState
 from prompts.calling import ORDER_STILL_OPEN, calling_system
 from text.messages import last_user_text
-from tools import LIST_TOOLS, PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, searchProducts, tool_for, tool_node
+from tools import LIST_TOOLS, PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, tool_for, tool_node
+from tools.products import tool_result_products
 
 logger = logging.getLogger(__name__)
-
-
-def _tool_result_products(content: str) -> list[Product] | None:
-    try:
-        data = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if isinstance(data, dict):
-        unwrapped = None
-        for key in ("products", "results"):
-            if isinstance(data.get(key), list):
-                unwrapped = data[key]
-                break
-        if unwrapped is not None:
-            data = unwrapped
-        elif data.get("price") is not None and (
-            data.get("product_id") or data.get("productId") or data.get("id")
-        ):
-            data = [data]
-        else:
-            return None
-    if not isinstance(data, list):
-        return None
-    products = []
-    for item in data:
-        pid = item.get("product_id") or item.get("productId") or item.get("id")
-        name = item.get("product_name") or item.get("productName") or item.get("name")
-        price = item.get("price")
-        if not pid or not name or price is None:
-            continue
-        products.append(Product(product_id=str(pid), product_name=str(name), price=float(price)))
-    return products or None
-
-
-def search_catalog(name: str) -> list[Product] | None:
-    """The shop's products for a name, for the order Draft. [] when back found none, None when the search failed."""
-    try:
-        content = searchProducts.invoke({"product": name})
-    except Exception as e:
-        logger.warning("catalog search for %r failed (%s)", name, e)
-        return None
-    found = _tool_result_products(content)
-    if found:
-        return found
-    try:
-        outcome = json.loads(content).get("outcome")
-    except (json.JSONDecodeError, AttributeError):
-        return None
-    return [] if outcome == tool_pb2.ExecuteToolResponse.OUTCOME_NOT_FOUND else None
 
 
 def _call_error(tool_messages: list) -> str:
@@ -171,16 +122,12 @@ def calling_tool(state: AgentState) -> dict:
             call_args = ai_msg.tool_calls[0].get("args") or {}
 
     if called_name in PRODUCT_TOOLS and tool_messages:
-        prods = _tool_result_products(getattr(tool_messages[0], "content", ""))
+        prods = tool_result_products(getattr(tool_messages[0], "content", ""))
         if prods and flow is not None:
-            if flow.product_discovery is None:
-                flow.product_discovery = ProductDiscoveryContext()
             if called_name in LIST_TOOLS:
-                flow.product_discovery.tool_results = prods
-            clear_selected_product(mem)
-            # Showing a list of several products is not a choice.
-            if called_name not in LIST_TOOLS or len(prods) == 1:
-                flow.product_discovery.selected_product = _pick_product(called_name, call_args, prods)
+                show_products(mem, flow, prods)
+            else:
+                select_product(mem, flow, _pick_product(called_name, call_args, prods))
     if called_name == "createOrder" and not _call_error(tool_messages):
         clear_selected_product(mem)
 
