@@ -2,7 +2,8 @@
 
 Read this first. It takes about 10 minutes.
 The full version is [architecture.md](architecture.md).
-The plan for what to build next is [roadmap.md](roadmap.md).
+The rework program is [REWORK_PLAN.md](REWORK_PLAN.md), with designs in [specs/](specs/).
+The feature plan is [roadmap.md](roadmap.md).
 
 ## 1. What the product does
 

@@ -77,6 +77,7 @@ WhatsApp → openwa REST webhook
 Both services read the same proto definitions from `contracts/proto/`. Full
 protocol reference: [docs/grpc-contract.md](docs/grpc-contract.md).
 Phase ordering and rollback strategy: [docs/architecture-roadmap.md](docs/architecture-roadmap.md).
+Rework program (phases, specs, ADRs): [docs/REWORK_PLAN.md](docs/REWORK_PLAN.md).
 
 | Service | Auth | Notes |
 |---|---|---|
