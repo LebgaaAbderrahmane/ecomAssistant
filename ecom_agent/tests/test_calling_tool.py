@@ -1,7 +1,6 @@
 from langchain_core.messages import ToolMessage
-
-import nodes.calling as calling
 from models.state import AgentState
+from nodes import calling
 
 
 def test_calling_tool_executes_structured_choice_without_second_llm_call(monkeypatch):

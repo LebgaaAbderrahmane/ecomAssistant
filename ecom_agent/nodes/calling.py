@@ -3,16 +3,22 @@ import logging
 import uuid
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-
 import drafts
 from config import model
 from flows import active_flow, clear_selected_product
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from models.domain import Product, ProductDiscoveryContext
 from models.state import AgentState
 from prompts.calling import ORDER_STILL_OPEN, calling_system
 from text.messages import last_user_text
-from tools import LIST_TOOLS, PRODUCT_TOOLS, TOOL_NODE_CONFIG, TOOLS, tool_for, tool_node
+from tools import (
+    LIST_TOOLS,
+    PRODUCT_TOOLS,
+    TOOL_NODE_CONFIG,
+    TOOLS,
+    tool_for,
+    tool_node,
+)
 
 logger = logging.getLogger(__name__)
 
