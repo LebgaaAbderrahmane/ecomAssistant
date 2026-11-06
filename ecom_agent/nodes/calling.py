@@ -129,21 +129,52 @@ def calling_tool(state: AgentState) -> dict:
             drafts.close(mem, state.resolved_flow_id)
         logger.info("calling_tool executed ready draft -> %s %s", called_name, call_args)
     else:
-        # No ready draft: let the model choose the tool call itself.
-        user_text = last_user_text(state.messages)
-        tool_context = state.tool_outputs[-1] if state.tool_outputs else "No tool selected."
-        model_with_tools = model.bind_tools(TOOLS)
-        system = calling_system(state.resolved_flow_id, tool_context)
-        ai_msg = model_with_tools.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
-        calls = getattr(ai_msg, "tool_calls", None) or []
+        # query_tool already has a structured tool choice. When it also returned
+        # arguments, execute that choice directly instead of asking the model to
+        # select the same tool a second time.
+        selected = state.tool_calls[0] if state.tool_calls else None
+        selected_name = selected.get("name") if selected else None
+        selected_args = selected.get("arguments") if selected else None
+        executed_selected = False
+        if (
+            selected_name
+            and isinstance(selected_args, dict)
+            and selected_args
+            and not drafts.has_open_order(mem)
+        ):
+            tool = tool_for(selected_name)
+            if tool is None:
+                return {}
+            tool_call_id = "selected-" + uuid.uuid4().hex[:8]
+            ai_msg = AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tool.name,
+                    "args": selected_args,
+                    "id": tool_call_id,
+                    "type": "tool_call",
+                }],
+            )
+            calls = ai_msg.tool_calls
+            tool_messages = _run_tools(ai_msg, name=tool.name, tool_call_id=tool_call_id)
+            executed_selected = True
+        else:
+            # No ready draft or complete structured choice: let the model choose
+            # the tool call itself as the compatibility fallback.
+            user_text = last_user_text(state.messages)
+            tool_context = state.tool_outputs[-1] if state.tool_outputs else "No tool selected."
+            model_with_tools = model.bind_tools(TOOLS)
+            system = calling_system(state.resolved_flow_id, tool_context)
+            ai_msg = model_with_tools.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
+            calls = getattr(ai_msg, "tool_calls", None) or []
         if any(c.get("name") == "createOrder" for c in calls) and drafts.has_open_order(mem):
             # Only the open order Draft creates the order, once the customer gave every field.
             # The other calls of this answer are skipped too: it is rare, and the reply asks again.
             logger.warning("calling_tool skipped %s: an order Draft is open", [c.get("name") for c in calls])
             tool_messages = [_not_run(c) for c in calls]
-        elif calls:
+        elif calls and not executed_selected:
             tool_messages = _run_tools(ai_msg, tool_call_id="delegate-error")
-        else:
+        elif not executed_selected:
             logger.warning("Tool model returned no tool call; skipping tool execution")
             tool_messages = [
                 ToolMessage(content="No tool was called by the assistant.", tool_call_id="no_tool_call")
